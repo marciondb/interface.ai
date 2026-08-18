@@ -1,0 +1,59 @@
+[
+  {
+    "id": "10001",
+    "name": "Maria Santos",
+    "status": "Active",
+    "openedOn": "03/14/1998",
+    "restricted": false,
+    "accounts": [
+      {
+        "number": "100014521",
+        "type": "Checking",
+        "balance": "1,205.00"
+      },
+      {
+        "number": "100018830",
+        "type": "Savings",
+        "balance": "4,812.37"
+      }
+    ]
+  },
+  {
+    "id": "10002",
+    "name": "James Whitfield",
+    "status": "Active",
+    "openedOn": "11/02/2001",
+    "restricted": false,
+    "accounts": [
+      {
+        "number": "100022201",
+        "type": "Checking",
+        "balance": "890.12"
+      },
+      {
+        "number": "100022202",
+        "type": "Money Market",
+        "balance": "12,450.00"
+      },
+      {
+        "number": "100022203",
+        "type": "Savings",
+        "balance": "3,100.55"
+      }
+    ]
+  },
+  {
+    "id": "10009",
+    "name": "Patricia Alvarez",
+    "status": "Restricted",
+    "openedOn": "06/22/1995",
+    "restricted": true,
+    "accounts": [
+      {
+        "number": "100094400",
+        "type": "Savings",
+        "balance": "250.00"
+      }
+    ]
+  }
+]

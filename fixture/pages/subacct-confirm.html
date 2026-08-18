@@ -1,0 +1,55 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+  "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  <title>{{tenant.displayName}} - Sub-Account Confirmed</title>
+  <link rel="stylesheet" type="text/css" href="/public/legacy.css">
+</head>
+<body bgcolor="#FFFFFF" text="#000000" link="#0000CC" vlink="#0000CC">
+
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td>
+      <font size="2"><b>Sub-Account Opened</b></font>
+      <br><br>
+      <font size="2">
+        The sub-account request has been completed.
+      </font>
+      <br><br>
+
+      <table class="ns-form" cellpadding="3" cellspacing="0" border="0">
+        <tr>
+          <td><font size="2">Member ID:</font></td>
+          <td><font size="2">{{memberId}}</font></td>
+        </tr>
+        <tr>
+          <td><font size="2">Account Type:</font></td>
+          <td><font size="2">{{accountType}}</font></td>
+        </tr>
+        <tr>
+          <td><font size="2">Nickname:</font></td>
+          <td><font size="2">{{nickname}}</font></td>
+        </tr>
+        <tr>
+          <td><font size="2">Initial Deposit:</font></td>
+          <td><font size="2">${{initialDeposit}}</font></td>
+        </tr>
+        <tr>
+          <td><font size="2">New Account Number:</font></td>
+          <td><font size="2"><b>{{accountNumber}}</b></font></td>
+        </tr>
+      </table>
+
+      <br>
+      <font size="2">
+        <a href="/member/detail?memberId={{memberId}}">Return to Member Detail</a>
+        &nbsp;|&nbsp;
+        <a href="/member/search">New Search</a>
+      </font>
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>

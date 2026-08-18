@@ -1,0 +1,61 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+  "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  <title>{{tenant.displayName}} - Supervisor Approval</title>
+  <link rel="stylesheet" type="text/css" href="/public/legacy.css">
+</head>
+<body bgcolor="#FFFFFF" text="#000000" link="#0000CC" vlink="#0000CC">
+
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td>
+      <font size="2"><b>Supervisor Approval Required</b></font>
+      <br><br>
+      <font size="2">
+        Initial deposit of <b>${{initialDeposit}}</b> requires dual-control approval.
+        Enter the six-digit supervisor approval code to continue.
+      </font>
+      <br><br>
+
+      <table class="ns-form" cellpadding="3" cellspacing="0" border="0" bgcolor="#EEEEEE">
+        <tr>
+          <td><font size="2">Member:</font></td>
+          <td><font size="2">{{memberId}} / {{nickname}}</font></td>
+        </tr>
+        <tr>
+          <td><font size="2">Account Type:</font></td>
+          <td><font size="2">{{accountType}}</font></td>
+        </tr>
+      </table>
+
+      <br>
+      <form method="post" action="/member/subacct/approve">
+        <table class="ns-form" cellpadding="3" cellspacing="0" border="0">
+          {{raw:errorHtml}}
+          <tr>
+            <td><font size="2">Approval Code:</font></td>
+            <td>
+              <input type="password"
+                     name="{{name:txtApprovalCode}}"
+                     id="{{id:txtApprovalCode}}"
+                     size="8"
+                     maxlength="6"
+                     value="">
+            </td>
+            <td>
+              <input type="submit"
+                     {{primarySubmit}}
+                     value="Approve">
+            </td>
+          </tr>
+        </table>
+      </form>
+
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>

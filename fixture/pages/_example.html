@@ -1,0 +1,99 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+  "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  <title>{{tenant.displayName}} - Member Services Console</title>
+  <link rel="stylesheet" type="text/css" href="/public/legacy.css">
+</head>
+<body bgcolor="#C0C0C0" text="#000000" link="#0000CC" vlink="#0000CC">
+
+<table class="ns-page" width="760" cellpadding="0" cellspacing="0" border="0" align="center" bgcolor="#FFFFFF">
+  <tr>
+    <td class="ns-banner" bgcolor="#003366">
+      <font color="#FFFFFF" face="Arial" size="3"><b>{{tenant.displayName}}</b></font><br>
+      <font color="#B0C4DE" size="1">Member Services Console &nbsp;|&nbsp; Internal Use Only</font>
+    </td>
+  </tr>
+  <tr>
+    <td class="ns-body">
+
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" class="ns-layout">
+        <tr>
+          <td>
+
+            <font size="2"><b>Member Lookup</b></font>
+            <br><br>
+
+            <!--
+              Stage 0.6: primary submit must include the primarySubmit template token.
+              It expands to tenant-prefixed id/name attributes for btnPrimary.
+            -->
+            <form method="get" action="/_example">
+              <table class="ns-form" cellpadding="3" cellspacing="0" border="0">
+                <tr>
+                  <td><font size="2">{{label:memberId}}:</font></td>
+                  <td>
+                    <input type="text"
+                           name="{{name:txtMemberId}}"
+                           id="{{id:txtMemberId}}"
+                           size="12"
+                           maxlength="12"
+                           value="">
+                  </td>
+                  <td>
+                    <input type="submit"
+                           {{primarySubmit}}
+                           value="Search">
+                  </td>
+                </tr>
+              </table>
+            </form>
+
+            <br>
+
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td>
+                  <table class="ns-data" border="1" cellpadding="3" cellspacing="0">
+                    <tr class="ns-header" bgcolor="#003366">
+                      <td><font color="#FFFFFF" size="2"><b>Acct Type</b></font></td>
+                      <td><font color="#FFFFFF" size="2"><b>Acct Number</b></font></td>
+                      <td><font color="#FFFFFF" size="2"><b>Balance</b></font></td>
+                    </tr>
+                    <tr>
+                      <td><font size="2">Checking</font></td>
+                      <td><font size="2">****4521</font></td>
+                      <td align="right"><font size="2">1,205.00</font></td>
+                    </tr>
+                    <tr>
+                      <td><font size="2">Savings</font></td>
+                      <td><font size="2">****8830</font></td>
+                      <td align="right"><font size="2">4,812.37</font></td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <br>
+            <font size="1" color="#666666">
+              Stage 0 example page &mdash; not part of a production flow.
+              Tenant key: {{tenant.key}}. Id prefix applied to field and Search button.
+            </font>
+
+          </td>
+        </tr>
+      </table>
+
+    </td>
+  </tr>
+  <tr>
+    <td class="ns-footer">
+      <font size="1">{{tenant.displayName}} &mdash; Confidential &mdash; Unauthorized access prohibited</font>
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>

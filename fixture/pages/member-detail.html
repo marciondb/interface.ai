@@ -1,0 +1,77 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+  "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  <title>{{tenant.displayName}} - Member Detail</title>
+  <link rel="stylesheet" type="text/css" href="/public/legacy.css">
+</head>
+<body bgcolor="#FFFFFF" text="#000000" link="#0000CC" vlink="#0000CC">
+
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td>
+      <font size="2"><b>Member Detail</b></font>
+      <br><br>
+
+      <table class="ns-form" cellpadding="3" cellspacing="0" border="0">
+        <tr>
+          <td><font size="2">Member ID:</font></td>
+          <td><font size="2">{{memberId}}</font></td>
+        </tr>
+        <tr>
+          <td><font size="2">Name:</font></td>
+          <td><font size="2">{{memberName}}</font></td>
+        </tr>
+        <tr>
+          <td><font size="2">Status:</font></td>
+          <td><font size="2">{{memberStatus}}</font></td>
+        </tr>
+        <tr>
+          <td><font size="2">Opened:</font></td>
+          <td><font size="2">{{openedOn}}</font></td>
+        </tr>
+      </table>
+
+      <br>
+      <font size="2"><b>Accounts</b></font>
+      <br><br>
+
+      {{raw:accountsHtml}}
+
+      <br>
+      <table class="ns-form" cellpadding="3" cellspacing="0" border="0">
+        <tr>
+          <td>
+            <form method="get" action="/member/subacct/new">
+              <input type="hidden" name="memberId" value="{{memberId}}">
+              <input type="submit" value="Open Sub-Account">
+            </form>
+          </td>
+          <td>
+            <form method="get" action="/member/danger/close">
+              <input type="hidden" name="memberId" value="{{memberId}}">
+              <input type="submit" value="Close Account">
+            </form>
+          </td>
+          <td>
+            <form method="get" action="/member/danger/adjust">
+              <input type="hidden" name="memberId" value="{{memberId}}">
+              <input type="submit" value="Post Adjustment">
+            </form>
+          </td>
+        </tr>
+      </table>
+
+      <br>
+      <font size="2">
+        <a href="/member/results?memberId={{memberId}}">Back to Results</a>
+        &nbsp;|&nbsp;
+        <a href="/member/search">New Search</a>
+      </font>
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>

@@ -1,0 +1,44 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+  "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  <title>{{tenant.displayName}} - Member Lookup</title>
+  <link rel="stylesheet" type="text/css" href="/public/legacy.css">
+</head>
+<body bgcolor="#FFFFFF" text="#000000" link="#0000CC" vlink="#0000CC">
+
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td>
+      <font size="2"><b>Member Lookup</b></font>
+      <br><br>
+
+      <form method="post" action="/member/search">
+        <table class="ns-form" cellpadding="3" cellspacing="0" border="0">
+          {{raw:errorHtml}}
+          <tr>
+            <td><font size="2">{{label:memberId}}:</font></td>
+            <td>
+              <input type="text"
+                     name="{{name:txtMemberId}}"
+                     id="{{id:txtMemberId}}"
+                     size="12"
+                     maxlength="12"
+                     value="{{memberId}}">
+            </td>
+            <td>
+              <input type="submit"
+                     {{primarySubmit}}
+                     value="Search">
+            </td>
+          </tr>
+        </table>
+      </form>
+
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>

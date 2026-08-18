@@ -1,0 +1,21 @@
+# Internal planning notes — not part of the public submission
+.local/
+
+# Hiring process material
+Assignment A — Computer-Use Automation System.pdf
+assignment.txt
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+.venv*/
+__pycache__/
+
+# OS / editor
+.DS_Store

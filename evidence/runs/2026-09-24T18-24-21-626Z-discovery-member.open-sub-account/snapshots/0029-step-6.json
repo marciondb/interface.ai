@@ -1,0 +1,232 @@
+{
+  "observationId": 11,
+  "url": "http://localhost:65024/",
+  "frames": [
+    {
+      "name": null,
+      "url": "http://localhost:65024/"
+    },
+    {
+      "name": "content",
+      "url": "http://localhost:65024/member/subacct/new?memberId=[REDACTED:internal]"
+    }
+  ],
+  "nodes": [
+    {
+      "role": "cell",
+      "name": "Bank Test Member Services Console | Internal Use Only",
+      "frame": null,
+      "ref": "e1"
+    },
+    {
+      "role": "generic",
+      "name": "Bank Test",
+      "frame": null,
+      "ref": "e2"
+    },
+    {
+      "role": "text",
+      "name": "Member Services Console | Internal Use Only",
+      "frame": null
+    },
+    {
+      "role": "text",
+      "name": "Signed on: operator |",
+      "frame": null
+    },
+    {
+      "role": "link",
+      "name": "Sign Off",
+      "frame": null,
+      "ref": "e3"
+    },
+    {
+      "role": "cell",
+      "name": "MAIN MENU",
+      "frame": null,
+      "ref": "e4"
+    },
+    {
+      "role": "link",
+      "name": "Home",
+      "frame": null,
+      "ref": "e5"
+    },
+    {
+      "role": "link",
+      "name": "Member Lookup",
+      "frame": null,
+      "ref": "e6"
+    },
+    {
+      "role": "cell",
+      "name": "Open Sub-Account Member: [REDACTED:internal] — Maria Santos Account Type: Savings Nickname: Initial Deposit: $ Funding Source: Checking *****4521 ($1,205.00) Statement Delivery: Mail Electronic Continue Cancel",
+      "frame": "content",
+      "ref": "e7"
+    },
+    {
+      "role": "generic",
+      "name": "Open Sub-Account",
+      "frame": "content",
+      "ref": "e8"
+    },
+    {
+      "role": "text",
+      "name": "Member: [REDACTED:internal] — Maria Santos",
+      "frame": "content"
+    },
+    {
+      "role": "cell",
+      "name": "Account Type:",
+      "frame": "content",
+      "ref": "e9"
+    },
+    {
+      "role": "cell",
+      "name": "Savings",
+      "frame": "content",
+      "ref": "e10"
+    },
+    {
+      "role": "combobox",
+      "name": "",
+      "frame": "content",
+      "ref": "e11",
+      "label": "Account Type",
+      "value": "Savings"
+    },
+    {
+      "role": "option",
+      "name": "Savings",
+      "frame": "content"
+    },
+    {
+      "role": "option",
+      "name": "Money Market",
+      "frame": "content"
+    },
+    {
+      "role": "option",
+      "name": "Holiday Club",
+      "frame": "content"
+    },
+    {
+      "role": "cell",
+      "name": "Nickname:",
+      "frame": "content",
+      "ref": "e12"
+    },
+    {
+      "role": "textbox",
+      "name": "",
+      "frame": "content",
+      "ref": "e13",
+      "label": "Nickname",
+      "value": ""
+    },
+    {
+      "role": "cell",
+      "name": "Initial Deposit:",
+      "frame": "content",
+      "ref": "e14"
+    },
+    {
+      "role": "cell",
+      "name": "$",
+      "frame": "content",
+      "ref": "e15"
+    },
+    {
+      "role": "text",
+      "name": "$",
+      "frame": "content"
+    },
+    {
+      "role": "textbox",
+      "name": "",
+      "frame": "content",
+      "ref": "e16",
+      "label": "$",
+      "value": ""
+    },
+    {
+      "role": "cell",
+      "name": "Funding Source:",
+      "frame": "content",
+      "ref": "e17"
+    },
+    {
+      "role": "cell",
+      "name": "Checking *****4521 ($1,205.00)",
+      "frame": "content",
+      "ref": "e18"
+    },
+    {
+      "role": "combobox",
+      "name": "",
+      "frame": "content",
+      "ref": "e19",
+      "label": "Funding Source",
+      "value": "Checking *****4521 ($1,205.00)"
+    },
+    {
+      "role": "option",
+      "name": "Checking *****4521 ($1,205.00)",
+      "frame": "content"
+    },
+    {
+      "role": "option",
+      "name": "Savings *****8830 ($4,812.37)",
+      "frame": "content"
+    },
+    {
+      "role": "cell",
+      "name": "Statement Delivery:",
+      "frame": "content",
+      "ref": "e20"
+    },
+    {
+      "role": "radio",
+      "name": "",
+      "frame": "content",
+      "ref": "e21",
+      "checked": true
+    },
+    {
+      "role": "text",
+      "name": "Mail",
+      "frame": "content"
+    },
+    {
+      "role": "radio",
+      "name": "",
+      "frame": "content",
+      "ref": "e22",
+      "label": "Mail"
+    },
+    {
+      "role": "text",
+      "name": "Electronic",
+      "frame": "content"
+    },
+    {
+      "role": "button",
+      "name": "Continue",
+      "frame": "content",
+      "ref": "e23"
+    },
+    {
+      "role": "link",
+      "name": "Cancel",
+      "frame": "content",
+      "ref": "e24"
+    },
+    {
+      "role": "cell",
+      "name": "Bank Test — Confidential — Unauthorized access prohibited",
+      "frame": null,
+      "ref": "e25"
+    }
+  ],
+  "dialog": null
+}

@@ -1,0 +1,477 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "member.open-sub-account",
+    "version": "1.0.0",
+    "description": "Open a new sub-account for a member and read its account number; a human performs the final confirmation",
+    "app": {
+      "product": "legacy-member-console",
+      "surface": "web"
+    }
+  },
+  "preconditions": [
+    {
+      "kind": "authenticated_session"
+    }
+  ],
+  "inputs": {
+    "memberId": {
+      "type": "string",
+      "description": "Member ID, digits only",
+      "pattern": "^[0-9]+$",
+      "sensitivity": "internal"
+    },
+    "accountType": {
+      "type": "string",
+      "description": "Type of the new sub-account",
+      "enum": [
+        "Savings",
+        "Money Market",
+        "Holiday Club"
+      ],
+      "sensitivity": "none"
+    },
+    "nickname": {
+      "type": "string",
+      "description": "Nickname of the new sub-account; the application rejects special characters",
+      "pattern": "^.{1,40}$",
+      "sensitivity": "none"
+    },
+    "initialDeposit": {
+      "type": "string",
+      "description": "Initial deposit in dollars, e.g. 250.00; the application requires at least 25.00",
+      "pattern": "^[0-9]+(\\.[0-9]{1,2})?$",
+      "sensitivity": "financial"
+    }
+  },
+  "outputs": {
+    "accountNumber": {
+      "type": "string",
+      "description": "Number of the new sub-account as displayed, e.g. 10001MMRAIN025000",
+      "sensitivity": "financial"
+    }
+  },
+  "targets": {
+    "page.memberLookup": {
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "link",
+          "name": "Member Lookup"
+        },
+        {
+          "strategy": "text",
+          "text": "Member Lookup"
+        }
+      ]
+    },
+    "content.memberId": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "label",
+          "text": "Member ID:"
+        },
+        {
+          "strategy": "attribute",
+          "name": "name",
+          "value": "ctl00$ContentPlaceHolder1$txtMemberId"
+        },
+        {
+          "strategy": "attribute",
+          "name": "id",
+          "value": "ctl00_ContentPlaceHolder1_txtMemberId"
+        }
+      ]
+    },
+    "content.search": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "button",
+          "name": "Search"
+        },
+        {
+          "strategy": "attribute",
+          "name": "name",
+          "value": "ctl00$ContentPlaceHolder1$btnPrimary"
+        },
+        {
+          "strategy": "attribute",
+          "name": "id",
+          "value": "ctl00_ContentPlaceHolder1_btnPrimary"
+        }
+      ]
+    },
+    "content.name": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "table_cell",
+          "row": {
+            "column": "Member ID",
+            "equals": "{{inputs.memberId}}"
+          },
+          "column": "Name",
+          "role": "link"
+        }
+      ]
+    },
+    "content.openSubAccount": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "button",
+          "name": "Open Sub-Account"
+        }
+      ]
+    },
+    "content.accountType": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "label",
+          "text": "Account Type:"
+        },
+        {
+          "strategy": "attribute",
+          "name": "name",
+          "value": "ctl00$ContentPlaceHolder1$ddlAccountType"
+        },
+        {
+          "strategy": "attribute",
+          "name": "id",
+          "value": "ctl00_ContentPlaceHolder1_ddlAccountType"
+        }
+      ]
+    },
+    "content.nickname": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "label",
+          "text": "Nickname:"
+        },
+        {
+          "strategy": "attribute",
+          "name": "name",
+          "value": "ctl00$ContentPlaceHolder1$txtNickname"
+        },
+        {
+          "strategy": "attribute",
+          "name": "id",
+          "value": "ctl00_ContentPlaceHolder1_txtNickname"
+        }
+      ]
+    },
+    "content.initialDeposit": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "label",
+          "text": "Initial Deposit:"
+        },
+        {
+          "strategy": "attribute",
+          "name": "name",
+          "value": "ctl00$ContentPlaceHolder1$txtInitialDeposit"
+        },
+        {
+          "strategy": "attribute",
+          "name": "id",
+          "value": "ctl00_ContentPlaceHolder1_txtInitialDeposit"
+        }
+      ]
+    },
+    "content.continue": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "button",
+          "name": "Continue"
+        },
+        {
+          "strategy": "attribute",
+          "name": "name",
+          "value": "ctl00$ContentPlaceHolder1$btnPrimary"
+        },
+        {
+          "strategy": "attribute",
+          "name": "id",
+          "value": "ctl00_ContentPlaceHolder1_btnPrimary"
+        }
+      ]
+    },
+    "content.confirm": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "button",
+          "name": "Confirm"
+        },
+        {
+          "strategy": "attribute",
+          "name": "name",
+          "value": "ctl00$ContentPlaceHolder1$btnPrimary"
+        },
+        {
+          "strategy": "attribute",
+          "name": "id",
+          "value": "ctl00_ContentPlaceHolder1_btnPrimary"
+        }
+      ]
+    },
+    "content.newAccountNumber": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "label",
+          "text": "New Account Number:"
+        }
+      ]
+    },
+    "interstitial.continue": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "button",
+          "name": "Continue"
+        },
+        {
+          "strategy": "attribute",
+          "name": "value",
+          "value": "Continue"
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "id": "click-member-lookup",
+      "action": {
+        "kind": "click",
+        "target": "page.memberLookup"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "text_visible",
+        "text": "Member ID:",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "fill-member-id",
+      "action": {
+        "kind": "fill",
+        "target": "content.memberId",
+        "value": "{{inputs.memberId}}"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "value_equals",
+        "target": "content.memberId",
+        "value": "{{inputs.memberId}}"
+      }
+    },
+    {
+      "id": "click-search",
+      "action": {
+        "kind": "click",
+        "target": "content.search"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "text_visible",
+        "text": "Member Search Results",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "click-name",
+      "action": {
+        "kind": "click",
+        "target": "content.name"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "text_visible",
+        "text": "Member Detail",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "click-open-sub-account",
+      "action": {
+        "kind": "click",
+        "target": "content.openSubAccount"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "text_visible",
+        "text": "Account Type:",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "select-account-type",
+      "action": {
+        "kind": "select",
+        "target": "content.accountType",
+        "value": "{{inputs.accountType}}"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "value_equals",
+        "target": "content.accountType",
+        "value": "{{inputs.accountType}}"
+      }
+    },
+    {
+      "id": "fill-nickname",
+      "action": {
+        "kind": "fill",
+        "target": "content.nickname",
+        "value": "{{inputs.nickname}}"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "value_equals",
+        "target": "content.nickname",
+        "value": "{{inputs.nickname}}"
+      }
+    },
+    {
+      "id": "fill-initial-deposit",
+      "action": {
+        "kind": "fill",
+        "target": "content.initialDeposit",
+        "value": "{{inputs.initialDeposit}}"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "value_equals",
+        "target": "content.initialDeposit",
+        "value": "{{inputs.initialDeposit}}"
+      }
+    },
+    {
+      "id": "click-continue",
+      "action": {
+        "kind": "click",
+        "target": "content.continue"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "text_visible",
+        "text": "Review Sub-Account Request",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "click-confirm",
+      "action": {
+        "kind": "click",
+        "target": "content.confirm"
+      },
+      "risk": "risky",
+      "checkpoint": {
+        "kind": "text_visible",
+        "text": "Sub-Account Opened",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "read-account-number",
+      "action": {
+        "kind": "read",
+        "target": "content.newAccountNumber",
+        "output": "accountNumber"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "target_visible",
+        "target": "content.newAccountNumber"
+      }
+    }
+  ],
+  "outcomes": [
+    {
+      "id": "member_not_found",
+      "kind": "business",
+      "description": "No member has this ID",
+      "when": {
+        "kind": "text_visible",
+        "text": "No records found.",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "member_restricted",
+      "kind": "business",
+      "description": "The operator is not authorized to view this member",
+      "when": {
+        "kind": "text_visible",
+        "text": "not authorized",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "interstitial",
+      "kind": "recoverable",
+      "description": "Maintenance notice shown before the requested screen",
+      "when": {
+        "kind": "text_visible",
+        "text": "Click Continue to proceed",
+        "frame": "content"
+      },
+      "recover": {
+        "kind": "click",
+        "target": "interstitial.continue"
+      }
+    },
+    {
+      "id": "invalid_initial_deposit",
+      "kind": "business",
+      "description": "The initial deposit is below the minimum the application accepts",
+      "when": {
+        "kind": "text_visible",
+        "text": "Initial deposit must be at least $25.00",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "invalid_deposit_amount",
+      "kind": "business",
+      "description": "The application does not accept the initial deposit as an amount",
+      "when": {
+        "kind": "text_visible",
+        "text": "Initial deposit must be a valid amount.",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "invalid_nickname",
+      "kind": "business",
+      "description": "The nickname is empty or contains special characters",
+      "when": {
+        "kind": "text_visible",
+        "text": "Nickname is required and may not contain special characters.",
+        "frame": "content"
+      }
+    }
+  ],
+  "provenance": {
+    "method": "discovered",
+    "createdAt": "2026-09-24T18:25:29.799Z",
+    "runId": "2026-09-24T18-24-21-626Z-discovery-member.open-sub-account",
+    "reasoner": {
+      "adapter": "local",
+      "model": "qwen3:14b"
+    }
+  }
+}

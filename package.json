@@ -13,6 +13,7 @@
     "test:live": "RUN_LIVE_MODEL=1 vitest run tests/live --passWithNoTests",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run depcruise",
     "fixture": "node fixture/server.js",
+    "discover": "tsx src/diplomat/cli/discover.ts",
     "replay": "tsx src/diplomat/cli/replay.ts",
     "depcruise": "depcruise src"
   },

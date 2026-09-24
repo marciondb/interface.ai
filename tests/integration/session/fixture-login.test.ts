@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SessionError } from '../../../src/diplomat/session/errors';
 import { createFixtureSessionProvider } from '../../../src/diplomat/session/fixture-login';
+import { isSessionError } from '../../../src/diplomat/session/port';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
 import { loginObservation } from '../../support/observations';
 
@@ -10,8 +11,18 @@ async function rejection(promise: Promise<unknown>): Promise<SessionError> {
     (reason: unknown) => reason,
   );
   expect(error).toBeInstanceOf(SessionError);
+  expect(isSessionError(error)).toBe(true);
   return error as SessionError;
 }
+
+describe('isSessionError', () => {
+  it('recognizes only errors named SessionError with a known code', () => {
+    expect(isSessionError(new SessionError('unreachable', 'down'))).toBe(true);
+    expect(isSessionError(Object.assign(new Error('x'), { name: 'SessionError' }))).toBe(false);
+    expect(isSessionError(Object.assign(new Error('x'), { name: 'SessionError', code: 'other' }))).toBe(false);
+    expect(isSessionError({ name: 'SessionError', code: 'unreachable' })).toBe(false);
+  });
+});
 
 describe('fixture session provider', () => {
   let fixture: FixtureHandle;

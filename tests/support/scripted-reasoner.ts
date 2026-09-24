@@ -1,4 +1,5 @@
 import { parseModelDecision } from '../../src/adapters/model-decision';
+import { ReasonerError } from '../../src/diplomat/reasoner/errors';
 import type { Reasoner, ReasonerInput } from '../../src/diplomat/reasoner/port';
 import type { AgentDecision, Verb } from '../../src/models/action';
 import type { ObservationNode } from '../../src/models/observation';
@@ -28,12 +29,12 @@ function matches(node: ObservationNode, find: Find): boolean {
   );
 }
 
-class ScriptExhausted extends Error {
-  override readonly name = 'ReasonerError';
+// A Reasoner that answers from a script, one step per call; past the end, or on a step that does
+// not fit the screen, it fails like a reasoner that exhausted its retries.
+function exhausted(detail: string): ReasonerError {
+  return new ReasonerError('ollama', 'invalid_output', 1, detail);
 }
 
-// A Reasoner that answers from a script, one step per call; past the end it fails like a
-// reasoner that exhausted its retries.
 export function createScriptedReasoner(script: readonly ScriptedStep[]): ScriptedReasoner {
   const inputs: ReasonerInput[] = [];
   return {
@@ -43,18 +44,18 @@ export function createScriptedReasoner(script: readonly ScriptedStep[]): Scripte
     propose(input) {
       inputs.push(input);
       const step = script.at(inputs.length - 1);
-      if (step === undefined) return Promise.reject(new ScriptExhausted('script exhausted'));
+      if (step === undefined) return Promise.reject(exhausted('script exhausted'));
       if (typeof step === 'function') return Promise.resolve(step(input));
       let target: string | null = null;
       if (step.find !== undefined) {
         const { find } = step;
         const node = input.observation.nodes.find((candidate) => matches(candidate, find));
-        if (node?.ref === undefined) return Promise.reject(new ScriptExhausted(`no element matches ${JSON.stringify(find)}`));
+        if (node?.ref === undefined) return Promise.reject(exhausted(`no element matches ${JSON.stringify(find)}`));
         target = node.ref;
       }
       const answer = { verb: step.verb, target, argument: step.argument ?? null, rationale: `scripted ${step.verb}` };
       const parsed = parseModelDecision(JSON.stringify(answer), input.validRefs);
-      return parsed.ok ? Promise.resolve(parsed.decision) : Promise.reject(new ScriptExhausted(parsed.reason));
+      return parsed.ok ? Promise.resolve(parsed.decision) : Promise.reject(exhausted(parsed.reason));
     },
   };
 }

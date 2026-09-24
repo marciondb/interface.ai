@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ReasonerError } from '../../../src/diplomat/reasoner/errors';
 import { createOpenAiCompatibleReasoner } from '../../../src/diplomat/reasoner/openai-compatible';
-import type { ReasonerInput } from '../../../src/diplomat/reasoner/port';
+import { isReasonerError, type ReasonerInput } from '../../../src/diplomat/reasoner/port';
 import { fakeFetch, jsonResponse } from '../../support/fake-fetch';
 import { loginObservation } from '../../support/observations';
 
@@ -65,6 +65,7 @@ describe('createOpenAiCompatibleReasoner', () => {
 
     const error: unknown = await hosted.propose(input).catch((reason: unknown) => reason);
     expect(error).toBeInstanceOf(ReasonerError);
+    expect(isReasonerError(error)).toBe(true);
     expect(error).toMatchObject({ code: 'transport', attempts: 1 });
     expect(String(error)).toContain('HTTP 401');
     expect(String(error)).not.toContain(API_KEY);

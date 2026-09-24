@@ -1,7 +1,7 @@
 import type { EvidenceRecorder } from '../diplomat/evidence/port';
 import type { ActionGateway, GatewayOutcome, OpenDecision } from '../diplomat/gateway/port';
-import type { Reasoner, ReasonerAdapter } from '../diplomat/reasoner/port';
-import type { SessionCookie, SessionProvider } from '../diplomat/session/port';
+import { isReasonerError, type Reasoner, type ReasonerAdapter } from '../diplomat/reasoner/port';
+import { isSessionError, type SessionCookie, type SessionProvider } from '../diplomat/session/port';
 import type { ArtifactStore } from '../diplomat/store/port';
 import { DEFAULT_POLL_INTERVAL_MS, type Clock } from '../infrastructure/clock';
 import { errorMessage } from '../infrastructure/errors';
@@ -80,10 +80,6 @@ function reasonerKind(adapter: ReasonerAdapter): ReasonerInfo['adapter'] {
       return unhandled;
     }
   }
-}
-
-function errorName(error: unknown): string | undefined {
-  return error instanceof Error ? error.name : undefined;
 }
 
 function descriptorOf(target: HumanTarget): ElementDescriptor {
@@ -314,7 +310,7 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
         ...(feedback === undefined ? {} : { feedback }),
       });
     } catch (error) {
-      if (errorName(error) !== 'ReasonerError') throw error;
+      if (!isReasonerError(error)) throw error;
       return failed('reasoner_exhausted', errorMessage(error));
     }
     await evidence.event({ type: 'decision', stepId, ...decisionFields(decision), rationale: decision.rationale, latencyMs: clock.now() - asked, reasoner: info });
@@ -410,7 +406,7 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
     try {
       cookies = await session.establish(targetUrl);
     } catch (error) {
-      if (errorName(error) !== 'SessionError') throw error;
+      if (!isSessionError(error)) throw error;
       return failed('precondition_failed', errorMessage(error));
     }
     await evidence.event({ type: 'session', event: 'established' });

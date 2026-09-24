@@ -1,6 +1,6 @@
 import type { EvidenceRecorder } from '../diplomat/evidence/port';
 import type { ActionGateway, GatewayOutcome, OpenDecision } from '../diplomat/gateway/port';
-import type { SessionCookie, SessionProvider } from '../diplomat/session/port';
+import { isSessionError, type SessionCookie, type SessionProvider } from '../diplomat/session/port';
 import type { ArtifactStore } from '../diplomat/store/port';
 import { DEFAULT_POLL_INTERVAL_MS, type Clock } from '../infrastructure/clock';
 import { errorMessage } from '../infrastructure/errors';
@@ -71,10 +71,6 @@ type HumanNeeded = { readonly kind: 'requires_human'; readonly message: string }
 type AttemptOutcome = { readonly kind: 'done'; readonly value?: string } | Problem | HardFailure | HumanNeeded;
 
 type Pass = { readonly kind: 'restart' } | { readonly kind: 'end'; readonly ending: Ending };
-
-function errorName(error: unknown): string | undefined {
-  return error instanceof Error ? error.name : undefined;
-}
 
 // Executes a capability without a model (RFC-004): every step is resolved, performed through
 // the gateway and verified; anything else is classified against the artifact's declared outcomes.
@@ -542,7 +538,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
       try {
         cookies = await session.establish(request.targetUrl);
       } catch (error) {
-        if (errorName(error) !== 'SessionError') throw error;
+        if (!isSessionError(error)) throw error;
         return failed('preconditions', 'precondition_failed', 'an authenticated session', errorMessage(error));
       }
       await evidence.event({ type: 'session', event: reauthenticating ? 'reauthenticated' : 'established' });

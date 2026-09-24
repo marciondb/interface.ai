@@ -1,12 +1,10 @@
 import { truncate } from '../../infrastructure/errors';
-import type { ReasonerAdapter } from './port';
-
-export type ReasonerErrorCode = 'transport' | 'invalid_output';
+import type { ReasonerAdapter, ReasonerErrorCode, ReasonerFailure } from './port';
 
 const MAX_DETAIL_LENGTH = 200;
 
 // The message never carries the prompt, the observation, or credentials.
-export class ReasonerError extends Error {
+export class ReasonerError extends Error implements ReasonerFailure {
   override readonly name = 'ReasonerError';
 
   constructor(

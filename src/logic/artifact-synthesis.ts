@@ -5,6 +5,8 @@ import type { AgentTraceStep, HumanTraceStep, TraceStep } from '../models/discov
 import { outcomeTargets, type OutcomeCatalog } from '../models/outcome-catalog';
 import type { Observation, ObservationNode } from '../models/observation';
 import { evaluatePredicate } from './checkpoint';
+import { isMasked } from './redaction';
+import { escapeRegExp } from './regexp';
 import { targetNotes } from './target-notes';
 
 export type SynthesisErrorCode =
@@ -24,8 +26,6 @@ export type SynthesisError = {
 
 export type Synthesis = { readonly ok: true; readonly capability: Capability } | { readonly ok: false; readonly error: SynthesisError };
 
-// Text left by redaction: a candidate or checkpoint built from it would never match.
-const MASKED = /\[REDACTED:|\*{4}/;
 // Roles whose name is layout text, not a way to address the element.
 const CONTEXT_ROLES = new Set(['generic', 'text', 'cell', 'row', 'table']);
 // Controls whose name is not their visible text node.
@@ -49,7 +49,7 @@ function parameterizer(request: CapabilityRequest): (text: string) => string {
 }
 
 function words(text: string): string[] {
-  if (MASKED.test(text)) return [];
+  if (isMasked(text)) return [];
   return text
     .replace(PLACEHOLDER, (_, name: string) => name)
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
@@ -113,7 +113,7 @@ function candidatesFor(element: NonNullable<AgentTraceStep['element']>, read: bo
   const seen = new Set<string>();
   return chain.filter((candidate) => {
     const id = JSON.stringify(candidate);
-    if (seen.has(id) || strings(candidate).some((text) => MASKED.test(text))) return false;
+    if (seen.has(id) || strings(candidate).some((text) => isMasked(text))) return false;
     seen.add(id);
     return true;
   });
@@ -138,7 +138,7 @@ function revealedText(before: Observation, after: Observation): ObservationNode 
   const names = after.nodes.map((node) => node.name).filter((name) => name.trim() !== '');
   return after.nodes.find((node) => {
     const text = node.name.trim();
-    if (text === '' || shown.has(node.name) || /[0-9]/.test(text) || MASKED.test(text)) return false;
+    if (text === '' || shown.has(node.name) || /[0-9]/.test(text) || isMasked(text)) return false;
     return !names.some((other) => other !== node.name && node.name.includes(other));
   });
 }
@@ -148,9 +148,6 @@ function pathOf(url: string): string {
   return `${parsed.pathname}${parsed.search}`;
 }
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 // Descriptions are copied into the artifact: an example value of a sensitive input written into
 // one would publish a real record's data, so it becomes the input's name.

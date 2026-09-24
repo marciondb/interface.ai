@@ -1,5 +1,6 @@
 import type { Candidate } from './capability';
 import type { Ref } from './observation';
+import type { Landing } from './policy';
 
 // counts[i] is how many elements candidate i matched; resolution stops at the first exact match (ADR-008).
 export type Resolution =
@@ -33,3 +34,13 @@ export type PerformOutcome =
   | { readonly status: 'done'; readonly value?: string; readonly navigations: readonly Navigation[] }
   | { readonly status: 'timeout' }
   | { readonly status: 'error'; readonly message: string };
+
+// How the action gateway answered an action. `denied` and `requires_human` mean the driver was
+// not called. `denied` is outside the allowlist, or CONTROL_OWNED_BY_HUMAN; `requires_human` is
+// a risky action only a human may perform (RFC-005). `landed_outside_policy` means the driver
+// acted and the page ended up outside the policy: a hard stop.
+export type GatewayOutcome =
+  | PerformOutcome
+  | { readonly status: 'denied'; readonly reason: string }
+  | { readonly status: 'requires_human'; readonly reason: string }
+  | ({ readonly status: 'landed_outside_policy' } & Landing);

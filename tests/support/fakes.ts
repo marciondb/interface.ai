@@ -1,6 +1,6 @@
 import type { Escalation, HandoffRequest } from '../../src/controllers/escalation';
 import type { CapturePaths, EvidenceRecorder } from '../../src/diplomat/evidence/port';
-import type { ActionGateway, GatewayOutcome, GatewayRequest, OpenDecision } from '../../src/diplomat/gateway/port';
+import type { ActionGateway, GatewayRequest, OpenDecision } from '../../src/diplomat/gateway/port';
 import type { SessionErrorCode, SessionProvider } from '../../src/diplomat/session/port';
 import type { ArtifactStore, LoadResult } from '../../src/diplomat/store/port';
 import type { ScreenshotOptions, SurfaceErrorCode, SurfaceFault } from '../../src/diplomat/surface/port';
@@ -13,6 +13,7 @@ import type { EscalationReason, ExecutionResult } from '../../src/models/executi
 import type { InterventionRequest } from '../../src/models/intervention';
 import type { Dialog, Observation } from '../../src/models/observation';
 import type { PolicyDecision } from '../../src/models/policy';
+import type { GatewayOutcome } from '../../src/models/resolution';
 import type { RunEvent } from '../../src/models/run-event';
 
 // A rejection as the surface port defines it.

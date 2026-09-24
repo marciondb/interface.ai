@@ -15,8 +15,6 @@ export type AgentTraceStep = {
   readonly observation: Observation;
   // The element the decision's action.ref named: its node in `observation` and its descriptor.
   readonly element?: { readonly node: ObservationNode; readonly descriptor: ElementDescriptor };
-  // The value a `read` captured.
-  readonly value?: string;
   readonly observationAfter: Observation;
   readonly progressed: boolean;
 };

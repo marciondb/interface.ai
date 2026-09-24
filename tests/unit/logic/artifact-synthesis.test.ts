@@ -126,7 +126,7 @@ function readFlow(): AgentTraceStep[] {
       RESULTS,
       DETAIL,
     ),
-    step('step-6', decide('read', BALANCE, 'balance'), BALANCE, { attributes: {}, cell: BALANCE_ROW }, DETAIL, DETAIL, { value: '4,812.37' }),
+    step('step-6', decide('read', BALANCE, 'balance'), BALANCE, { attributes: {}, cell: BALANCE_ROW }, DETAIL, DETAIL),
   ];
 }
 

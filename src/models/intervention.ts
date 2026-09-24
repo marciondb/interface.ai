@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { EscalationReason } from './execution-result';
+import { RUN_MODES } from './run-event';
 
 // Why automation stopped and asked for a human (RFC-005 triggers); `unrecoverable` is a replay
 // step that failed in a way no declared recovery handles (requirement §3.6).
@@ -9,7 +10,7 @@ export const InterventionReasonSchema = z.enum(['risky_action', 'stalled', 'help
 export const InterventionRequestSchema = z.strictObject({
   interventionId: z.string(),
   runId: z.string(),
-  mode: z.enum(['replay', 'discovery']),
+  mode: z.enum(RUN_MODES),
   // `id@version`, when the run has one.
   capability: z.string().optional(),
   goal: z.string().optional(),

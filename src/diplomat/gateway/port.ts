@@ -3,7 +3,7 @@ import type { TargetSpec } from '../../models/capability';
 import type { ElementDescriptor } from '../../models/element-descriptor';
 import type { Observation } from '../../models/observation';
 import type { Landing, PolicyDecision } from '../../models/policy';
-import type { PerformOutcome, Resolution } from '../../models/resolution';
+import type { GatewayOutcome, Resolution } from '../../models/resolution';
 import type { ActionPurpose } from '../../models/run-event';
 import type { SessionCookie } from '../session/port';
 import type { ScreenshotOptions } from '../surface/port';
@@ -17,16 +17,6 @@ export type GatewayRequest = {
 
 // The denial reason while a human holds the live session (ADR-012).
 export const CONTROL_OWNED_BY_HUMAN = 'control_owned_by_human';
-
-// `denied` and `requires_human` mean the driver was not called. `denied` is outside the
-// allowlist, or CONTROL_OWNED_BY_HUMAN; `requires_human` is a risky action only a human may
-// perform (RFC-005). `landed_outside_policy` means the driver acted and the page ended up
-// outside the policy: a hard stop.
-export type GatewayOutcome =
-  | PerformOutcome
-  | { readonly status: 'denied'; readonly reason: string }
-  | { readonly status: 'requires_human'; readonly reason: string }
-  | ({ readonly status: 'landed_outside_policy' } & Landing);
 
 // `landed_outside_policy`: the target loaded, but the page or a frame ended up outside the policy.
 export type OpenDecision = PolicyDecision | ({ readonly decision: 'landed_outside_policy' } & Landing);

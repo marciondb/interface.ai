@@ -1,5 +1,5 @@
 import type { EvidenceRecorder, EvidenceRun } from '../diplomat/evidence/port';
-import type { ActionGateway, GatewayOutcome } from '../diplomat/gateway/port';
+import type { ActionGateway } from '../diplomat/gateway/port';
 import type { SessionProvider } from '../diplomat/session/port';
 import { isSurfaceError } from '../diplomat/surface/port';
 import type { ArtifactStore } from '../diplomat/store/port';
@@ -18,6 +18,7 @@ import type { EscalationReason, ExecutionResult, FailureCode, Recovery } from '.
 import type { InterventionReason, Verification } from '../models/intervention';
 import type { Dialog, Observation, Ref } from '../models/observation';
 import type { ReplayRequest } from '../models/replay-request';
+import type { GatewayOutcome } from '../models/resolution';
 import type { Escalation } from './escalation';
 import { pollUntil } from './poll';
 import { endRun, openSurface, photograph, recordOutcome, type ActionRecord } from './run-lifecycle';
@@ -161,7 +162,7 @@ async function finish(evidence: EvidenceRecorder, clock: Clock, record: RunRecor
 const RUN_FOLDER = '.';
 
 // Before the surface is open there is nothing to capture: the evidence is the run folder.
-function failedBeforeSurface(record: RunRecord, stepId: string, code: FailureCode, expected: string, observed: string): Ending {
+function failedBeforeSurface(stepId: string, code: FailureCode, expected: string, observed: string): Ending {
   return { status: 'failed', failure: { stepId, code, expected, observed, evidence: RUN_FOLDER } };
 }
 
@@ -584,7 +585,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
   const loaded = await store.loadLatest(request.capabilityId, request.major);
   if (!loaded.ok) {
     const expected = `a valid ${request.capabilityId} artifact with major version ${String(request.major)}`;
-    return finish(evidence, clock, record, failedBeforeSurface(record, 'artifact', 'artifact_unavailable', expected, loaded.issues.join('; ')));
+    return finish(evidence, clock, record, failedBeforeSurface('artifact', 'artifact_unavailable', expected, loaded.issues.join('; ')));
   }
   const { id, version } = loaded.capability.capability;
   record.capability = { id, requestedMajor: request.major, version };
@@ -595,7 +596,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
   const validation = validateInputs(loaded.capability, request.inputs);
   if (!validation.ok) {
     const expected = `inputs matching the ${id}@${version} contract`;
-    return finish(evidence, clock, record, failedBeforeSurface(record, 'inputs', 'invalid_input', expected, validation.errors.map((error) => error.message).join('; ')));
+    return finish(evidence, clock, record, failedBeforeSurface('inputs', 'invalid_input', expected, validation.errors.map((error) => error.message).join('; ')));
   }
 
   const ctx: ReplayContext = {

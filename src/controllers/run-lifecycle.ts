@@ -1,5 +1,5 @@
 import type { EvidenceRecorder } from '../diplomat/evidence/port';
-import type { ActionGateway, GatewayOutcome, OpenDecision } from '../diplomat/gateway/port';
+import type { ActionGateway, OpenDecision } from '../diplomat/gateway/port';
 import { isSessionError, type SessionCookie, type SessionProvider } from '../diplomat/session/port';
 import { isSurfaceError } from '../diplomat/surface/port';
 import { errorMessage } from '../infrastructure/errors';
@@ -9,6 +9,7 @@ import type { SurfaceAction } from '../models/action';
 import type { DiscoveryResult } from '../models/discovery';
 import type { ExecutionResult } from '../models/execution-result';
 import type { Observation } from '../models/observation';
+import type { GatewayOutcome } from '../models/resolution';
 import type { ActionPurpose, RunEvent } from '../models/run-event';
 
 // What replay and discovery share around their own loop: opening the surface, recording what

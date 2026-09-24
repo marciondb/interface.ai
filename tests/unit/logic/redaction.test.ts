@@ -39,8 +39,10 @@ describe('redactText', () => {
     );
   });
 
-  it('ignores sensitive values shorter than 4 characters', () => {
-    expect(redactText('row 12 of 123', { secrets: [], sensitive: [{ value: '12', sensitivity: 'internal' }] })).toBe('row 12 of 123');
+  it('masks a sensitive value shorter than 4 characters only where it is the whole text', () => {
+    const rules = { secrets: [], sensitive: [{ value: '25', sensitivity: 'financial' as const }] };
+    expect(redactText('row 25 of 125', rules)).toBe('row 25 of 125');
+    expect(redactText('25', rules)).toBe('[REDACTED:financial]');
   });
 
   it('masks URL-encoded and JSON-escaped forms of secrets', () => {

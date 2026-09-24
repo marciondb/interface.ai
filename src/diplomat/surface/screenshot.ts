@@ -1,4 +1,5 @@
 import type { Locator, Page } from 'playwright';
+import { escapeRegExp } from '../../logic/regexp';
 import { isDetachedFrameError } from './playwright-errors';
 
 export const MASK_COLOR = '#FF00FF';
@@ -8,10 +9,6 @@ type FieldElement = {
   readonly value?: string;
   readonly selectedOptions?: ArrayLike<{ readonly text: string }>;
 };
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 // Runs inside the page: indices of the fields whose value (a list: its chosen option text)
 // contains a needle.

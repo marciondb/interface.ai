@@ -87,8 +87,8 @@ The artifact records each step's `risk`; replay honors it even if policy changes
   - account-number-like runs of 8 to 17 digits, keeping the last 4 digits
   - SSN-like strings (`***-**-****`)
   - declared input and output values whose `sensitivity` (RFC-002) is not `none`
-    (`[REDACTED:<sensitivity>]`), from the moment they are known; values shorter
-    than 4 characters are not masked
+    (`[REDACTED:<sensitivity>]`), from the moment they are known; a value shorter
+    than 4 characters is masked only where it is a whole field, not inside other text
 - Redaction is pure Logic, applied in two places: in discovery, the controller
   redacts each observation before calling the reasoner; the evidence recorder
   redacts every JSON record before writing. Screenshot masking is done by the

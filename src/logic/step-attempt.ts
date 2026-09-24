@@ -1,16 +1,9 @@
 import type { FailureCode } from '../models/execution-result';
 import type { Verification } from '../models/intervention';
 import type { Landing, PolicyDecision } from '../models/policy';
-import type { Navigation, PerformOutcome } from '../models/resolution';
+import type { GatewayOutcome, Navigation } from '../models/resolution';
 import type { PredicateResult } from './checkpoint';
 import { describeLanding } from './policy';
-
-// How the action gateway answered an action (ActionGateway.perform).
-export type ActionOutcome =
-  | PerformOutcome
-  | { readonly status: 'denied'; readonly reason: string }
-  | { readonly status: 'requires_human'; readonly reason: string }
-  | ({ readonly status: 'landed_outside_policy' } & Landing);
 
 // A replay step that cannot go on; classified already, so no declared outcome applies.
 export type StepFailure = { readonly kind: 'failed'; readonly code: FailureCode; readonly expected: string; readonly observed: string };
@@ -41,7 +34,7 @@ export function gateRiskyStep(stepId: string, what: string, decision: PolicyDeci
 }
 
 // `what` describes the action, e.g. "click on lookup.search".
-export function afterAction(outcome: ActionOutcome, what: string, stepTimeoutMs: number): AfterAction {
+export function afterAction(outcome: GatewayOutcome, what: string, stepTimeoutMs: number): AfterAction {
   switch (outcome.status) {
     case 'denied':
       return { kind: 'failed', code: 'policy_denied', expected: `${what} allowed by policy`, observed: outcome.reason };
@@ -81,7 +74,7 @@ export function afterLanding(
 }
 
 // After a declared recovery control was clicked: `retry` attempts the step again.
-export function afterRecoveryAction(outcome: ActionOutcome, target: string): { readonly kind: 'retry' } | StepFailure | HumanNeeded {
+export function afterRecoveryAction(outcome: GatewayOutcome, target: string): { readonly kind: 'retry' } | StepFailure | HumanNeeded {
   const what = `click on ${target}`;
   switch (outcome.status) {
     case 'denied':

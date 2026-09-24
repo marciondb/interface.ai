@@ -6,7 +6,8 @@ import type { EscalationReason, ExecutionStatus, Recovery } from './execution-re
 import type { HumanAction, InterventionReason } from './intervention';
 import type { Navigation } from './resolution';
 
-export type RunMode = 'replay' | 'discovery';
+export const RUN_MODES = ['replay', 'discovery'] as const;
+export type RunMode = (typeof RUN_MODES)[number];
 
 export type ActionPurpose = 'step' | 'recovery' | 'checkpoint';
 

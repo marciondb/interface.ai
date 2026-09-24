@@ -1,4 +1,5 @@
 import type { Landing, Policy, PolicyDecision, PolicyRequest } from '../models/policy';
+import { escapeRegExp } from './regexp';
 
 // The path with each segment percent-decoded, `;params` dropped and empty segments removed;
 // undefined when a segment decodes to a separator or a dot segment (fail closed).
@@ -32,7 +33,7 @@ function normalize(text: string): string {
 
 // Whether phrase appears in text as whole words.
 function mentions(text: string, phrase: string): boolean {
-  const escaped = normalize(phrase).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = escapeRegExp(normalize(phrase));
   return escaped !== '' && new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'u').test(normalize(text));
 }
 

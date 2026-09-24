@@ -339,7 +339,6 @@ async function settle(ctx: DiscoveryContext, stepId: string, performed: Performe
     decision,
     observation,
     ...(node === undefined || descriptor === undefined ? {} : { element: { node, descriptor } }),
-    ...(value === undefined ? {} : { value }),
     observationAfter,
     progressed: moved,
   });

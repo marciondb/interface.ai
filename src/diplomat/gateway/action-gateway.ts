@@ -2,8 +2,9 @@ import { evaluateLanding, evaluatePolicy, urlViolation } from '../../logic/polic
 import type { SurfaceAction } from '../../models/action';
 import type { ControlOwner } from '../../models/control';
 import type { Policy, PolicyDecision } from '../../models/policy';
+import type { GatewayOutcome } from '../../models/resolution';
 import type { SurfaceDriver } from '../surface/port';
-import { CONTROL_OWNED_BY_HUMAN, type ActionGateway, type GatewayOutcome } from './port';
+import { CONTROL_OWNED_BY_HUMAN, type ActionGateway } from './port';
 
 export type ActionGatewayOptions = {
   readonly driver: SurfaceDriver;

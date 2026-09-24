@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createEscalationController } from '../../../src/controllers/escalation';
 import { createFsRecorder } from '../../../src/diplomat/evidence/fs-recorder';
 import { createActionGateway } from '../../../src/diplomat/gateway/action-gateway';
-import type { GatewayOutcome } from '../../../src/diplomat/gateway/port';
+import type { GatewayOutcome } from '../../../src/models/resolution';
 import { createFixtureSessionProvider } from '../../../src/diplomat/session/fixture-login';
 import { createPlaywrightDriver } from '../../../src/diplomat/surface/playwright-driver';
 import { systemClock } from '../../../src/infrastructure/clock';

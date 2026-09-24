@@ -1,5 +1,6 @@
 import type { Capability, Sensitivity } from '../models/capability';
 import type { Observation } from '../models/observation';
+import { escapeRegExp } from './regexp';
 
 export const SECRET_MASK = '[REDACTED:secret]';
 
@@ -21,8 +22,15 @@ const CREDENTIAL_KEY = /password|token|cookie|secret|authorization|api[-_]?key|s
 const CREDENTIAL_WORDS = new Set(['pin', 'otp']);
 const KEY_WORD_BREAK = /[^a-zA-Z0-9]+|(?<=[a-z0-9])(?=[A-Z])/;
 const MASK_TOKEN = /\[REDACTED:[a-z]+\]/g;
-// Shorter values (e.g. "1") would mask unrelated text everywhere.
+// Shorter values (e.g. "1") would mask unrelated text everywhere, so only whole fields equal to them are masked.
 const MIN_SENSITIVE_LENGTH = 4;
+// What any mask here leaves in a text.
+const MASKED = /\[REDACTED:|\*{4}/;
+
+// Whether text carries a mask: it is not the page's own wording.
+export function isMasked(text: string): boolean {
+  return MASKED.test(text);
+}
 
 type Mask = { readonly literal: string; readonly mask: string };
 
@@ -32,8 +40,7 @@ function isCredentialKey(key: string): boolean {
 
 function applyMasks(text: string, masks: readonly Mask[]): string {
   return masks.reduce((current, { literal, mask }) => {
-    const escaped = literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return current.replace(new RegExp(escaped, 'gi'), () => mask);
+    return current.replace(new RegExp(escapeRegExp(literal), 'gi'), () => mask);
   }, text);
 }
 
@@ -67,7 +74,11 @@ function redactor(rules: RedactionRules): (text: string) => string {
       return form !== literal && form.replace(MASK_TOKEN, '').length >= MIN_SENSITIVE_LENGTH ? [{ literal: form, mask }] : [];
     }),
   );
-  return (text) => applyMasks(patterned(text, secrets, sensitive), partial);
+  // Too short to mask inside other text; a field holding exactly the value is masked.
+  const exact = new Map(
+    rules.sensitive.filter(({ value }) => value !== '' && value.length < MIN_SENSITIVE_LENGTH).map(({ value, sensitivity }) => [value, `[REDACTED:${sensitivity}]`]),
+  );
+  return (text) => exact.get(text) ?? applyMasks(patterned(text, secrets, sensitive), partial);
 }
 
 export function redactText(text: string, rules: RedactionRules): string {

@@ -1,12 +1,15 @@
-import { chromium, errors, type Browser, type BrowserContext, type Locator, type Page, type Request } from 'playwright';
+import { chromium, errors, type Browser, type BrowserContext, type Dialog as PageDialog, type Frame, type Locator, type Page, type Request } from 'playwright';
 import { toObservation } from '../../adapters/aria-snapshot';
 import type { Action } from '../../models/action';
 import type { ElementDescriptor } from '../../models/element-descriptor';
+import { HumanActionSchema, type DialogDecision } from '../../models/intervention';
+import type { Dialog } from '../../models/observation';
 import type { ElementInfo, Navigation, PerformOutcome } from '../../models/resolution';
 import { AriaSnapshotWireSchema } from '../../wire/in/aria-snapshot';
 import { SurfaceError } from './errors';
+import { HUMAN_CAPTURE_SCRIPT, HUMAN_EVENT_BINDING } from './human-capture-script';
 import { candidateLocator, scopeOf } from './locators';
-import type { SurfaceDriver } from './port';
+import type { HumanCaptureListener, HumanSurface, SurfaceDriver } from './port';
 
 const LOAD_TIMEOUT_MS = 5_000;
 const SNAPSHOT_TIMEOUT_MS = 5_000;
@@ -19,6 +22,9 @@ const SETTLE_POLL_MS = 25;
 export type PlaywrightDriverOptions = {
   readonly headless?: boolean;
 };
+
+// The page itself is exposed for tests that play the human operator.
+export type PlaywrightDriver = SurfaceDriver & HumanSurface & { page(): Page };
 
 type Surface = {
   readonly browser: Browser;
@@ -38,10 +44,11 @@ type DomElement = {
   getAttribute(name: string): string | null;
 };
 
-async function launch(headless: boolean): Promise<Surface> {
+async function launch(headless: boolean, prepare: (context: BrowserContext) => Promise<void>): Promise<Surface> {
   const browser = await chromium.launch({ headless });
   try {
     const context = await browser.newContext();
+    await prepare(context);
     const page = await context.newPage();
     return { browser, context, page };
   } catch (error) {
@@ -188,6 +195,20 @@ async function stopLoading(page: Page): Promise<void> {
   }
 }
 
+function frameName(frame: Frame): string | null {
+  return frame.parentFrame() === null ? null : frame.name();
+}
+
+// Origin and path: a query string may carry what the human typed.
+function withoutQuery(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.origin === 'null' ? `${parsed.protocol}${parsed.pathname}` : `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return '';
+  }
+}
+
 function isTimeout(error: unknown): boolean {
   return error instanceof errors.TimeoutError;
 }
@@ -197,12 +218,57 @@ function failure(error: unknown): PerformOutcome {
   return { status: 'error', message: error instanceof Error ? error.message.split('\n')[0] : String(error) };
 }
 
-export function createPlaywrightDriver(options: PlaywrightDriverOptions = {}): SurfaceDriver {
+export function createPlaywrightDriver(options: PlaywrightDriverOptions = {}): PlaywrightDriver {
   const headless = options.headless ?? true;
   let surface: Surface | undefined;
   let refTargets: ReadonlyMap<string, string> = new Map();
   let resolvedTargets = new Map<string, Locator>();
   let observations = 0;
+  let capture: HumanCaptureListener | undefined;
+  // A dialog automation dismissed, shown in the next observation.
+  let dismissedDialog: Dialog | undefined;
+  let closed = false;
+  const closedCallbacks = new Set<() => void>();
+
+  function report(payload: unknown): void {
+    const parsed = HumanActionSchema.safeParse(payload);
+    if (parsed.success) capture?.onAction(parsed.data);
+  }
+
+  async function prepare(context: BrowserContext): Promise<void> {
+    await context.exposeBinding(HUMAN_EVENT_BINDING, ({ frame }, payload: unknown) => {
+      if (capture === undefined || typeof payload !== 'object' || payload === null) return;
+      const event = payload as { target?: object };
+      report({ ...event, target: { ...event.target, frame: frameName(frame) }, at: new Date().toISOString() });
+    });
+    await context.addInitScript({ content: HUMAN_CAPTURE_SCRIPT });
+  }
+
+  async function answer(dialog: PageDialog): Promise<void> {
+    const shown: Dialog = { type: dialog.type() as Dialog['type'], message: dialog.message() };
+    const listener = capture;
+    let decision: DialogDecision = 'dismiss';
+    if (listener === undefined) dismissedDialog = shown;
+    else decision = await listener.onDialog(shown).catch((): DialogDecision => 'dismiss');
+    // The operator may also have answered it in the window.
+    await (decision === 'accept' ? dialog.accept() : dialog.dismiss()).catch(() => undefined);
+  }
+
+  function markClosed(): void {
+    if (closed) return;
+    closed = true;
+    for (const callback of closedCallbacks) callback();
+    closedCallbacks.clear();
+  }
+
+  function watch({ browser, page }: Surface): void {
+    page.on('dialog', (dialog) => void answer(dialog));
+    page.on('framenavigated', (frame) => {
+      if (capture !== undefined) report({ kind: 'navigation', frame: frameName(frame), url: withoutQuery(frame.url()), at: new Date().toISOString() });
+    });
+    page.on('close', markClosed);
+    browser.on('disconnected', markClosed);
+  }
 
   function current(): Surface {
     if (surface === undefined) throw new SurfaceError('not_open', 'open() has not been called');
@@ -254,7 +320,11 @@ export function createPlaywrightDriver(options: PlaywrightDriverOptions = {}): S
 
   return {
     async open(url, session) {
-      surface ??= await launch(headless);
+      if (surface === undefined) {
+        surface = await launch(headless, prepare);
+        closed = false;
+        watch(surface);
+      }
       const origin = new URL(url).origin;
       await surface.context.addCookies(session.map((cookie) => ({ name: cookie.name, value: cookie.value, url: origin })));
       resetRefs();
@@ -281,7 +351,9 @@ export function createPlaywrightDriver(options: PlaywrightDriverOptions = {}): S
       if (!result.ok) throw new SurfaceError('snapshot_mismatch', result.reason);
       observations += 1;
       refTargets = result.refTargets;
-      return result.observation;
+      const dialog = dismissedDialog ?? null;
+      dismissedDialog = undefined;
+      return { ...result.observation, dialog };
     },
 
     async resolve(target) {
@@ -352,9 +424,32 @@ export function createPlaywrightDriver(options: PlaywrightDriverOptions = {}): S
       return current().page.screenshot({ fullPage: true, timeout: ACTION_TIMEOUT_MS });
     },
 
+    startHumanCapture(listener) {
+      capture = listener;
+    },
+
+    stopHumanCapture() {
+      capture = undefined;
+    },
+
+    onClosed(callback) {
+      if (closed) {
+        queueMicrotask(callback);
+        return () => undefined;
+      }
+      closedCallbacks.add(callback);
+      return () => closedCallbacks.delete(callback);
+    },
+
+    page() {
+      return current().page;
+    },
+
     async close() {
       const closing = surface;
       surface = undefined;
+      capture = undefined;
+      closedCallbacks.clear();
       resetRefs();
       await closing?.browser.close();
     },

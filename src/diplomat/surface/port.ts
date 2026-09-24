@@ -1,7 +1,8 @@
 import type { Action } from '../../models/action';
 import type { TargetSpec } from '../../models/capability';
 import type { ElementDescriptor } from '../../models/element-descriptor';
-import type { Observation } from '../../models/observation';
+import type { DialogDecision, HumanAction } from '../../models/intervention';
+import type { Dialog, Observation } from '../../models/observation';
 import type { ElementInfo, PerformOutcome, Resolution } from '../../models/resolution';
 import type { SessionCookie } from '../session/port';
 
@@ -32,4 +33,25 @@ export type SurfaceDriver = {
   // PNG of the full page.
   screenshot(): Promise<Uint8Array>;
   close(): Promise<void>;
+};
+
+export type HumanCaptureListener = {
+  // Clicks, changed fields (value masked in the page) and frame navigations.
+  onAction(action: HumanAction): void;
+  // A native dialog raised while a human holds control; the answer is applied to it.
+  onDialog(dialog: Dialog): Promise<DialogDecision>;
+};
+
+// The live window a human works in during a handoff (ADR-012). It offers no way to act on the
+// page: automation acts only through the gateway.
+export type HumanSurface = {
+  observe(): Promise<Observation>;
+  screenshot(): Promise<Uint8Array>;
+  currentUrl(): string;
+  // Until stopHumanCapture(), what happens on the page is reported as human. Outside a capture,
+  // dialogs are dismissed and shown in the next observation.
+  startHumanCapture(listener: HumanCaptureListener): void;
+  stopHumanCapture(): void;
+  // Called once when the window is closed or the browser goes away; returns an unsubscribe.
+  onClosed(callback: () => void): () => void;
 };

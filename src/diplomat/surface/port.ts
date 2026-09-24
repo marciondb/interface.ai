@@ -1,5 +1,6 @@
 import type { Action } from '../../models/action';
 import type { TargetSpec } from '../../models/capability';
+import type { ElementDescriptor } from '../../models/element-descriptor';
 import type { Observation } from '../../models/observation';
 import type { ElementInfo, PerformOutcome, Resolution } from '../../models/resolution';
 import type { SessionCookie } from '../session/port';
@@ -25,6 +26,8 @@ export type SurfaceDriver = {
   // Page failures are outcomes; only misuse (unknown ref, unsupported verb) rejects.
   perform(action: Action, options?: PerformOptions): Promise<PerformOutcome>;
   describe(ref: string): Promise<ElementInfo>;
+  // The element's attributes, adjacent label and table position, for building locators (discovery).
+  inspect(ref: string): Promise<ElementDescriptor>;
   currentUrl(): string;
   // PNG of the full page.
   screenshot(): Promise<Uint8Array>;

@@ -1,6 +1,7 @@
 import { chromium, errors, type Browser, type BrowserContext, type Locator, type Page, type Request } from 'playwright';
 import { toObservation } from '../../adapters/aria-snapshot';
 import type { Action } from '../../models/action';
+import type { ElementDescriptor } from '../../models/element-descriptor';
 import type { ElementInfo, Navigation, PerformOutcome } from '../../models/resolution';
 import { AriaSnapshotWireSchema } from '../../wire/in/aria-snapshot';
 import { SurfaceError } from './errors';
@@ -128,6 +129,55 @@ function elementInfo(element: DomElement): ElementInfo {
   }
   const info: ElementInfo = { role, name, frameUrl: element.ownerDocument.location.href };
   return destination === undefined ? info : { ...info, destination };
+}
+
+type InspectedElement = {
+  readonly tagName: string;
+  readonly textContent: string | null;
+  readonly parentElement: InspectedElement | null;
+  readonly previousElementSibling: InspectedElement | null;
+  readonly cellIndex?: number;
+  readonly cells?: ArrayLike<InspectedElement>;
+  readonly rows?: ArrayLike<InspectedElement>;
+  getAttribute(name: string): string | null;
+  closest(selectors: string): InspectedElement | null;
+};
+
+// Runs inside the page, same constraints as elementInfo. The label and header rules mirror
+// the `label` and `table_cell` locators, so what is described here can be located again.
+function elementDescriptor(element: InspectedElement): ElementDescriptor {
+  const attributes: { name?: string; id?: string } = {};
+  const nameAttribute = element.getAttribute('name');
+  if (nameAttribute !== null && nameAttribute !== '') attributes.name = nameAttribute;
+  const idAttribute = element.getAttribute('id');
+  if (idAttribute !== null && idAttribute !== '') attributes.id = idAttribute;
+
+  const cell = element.closest('td, th');
+  const row = cell?.parentElement ?? null;
+  const table = row?.closest('table') ?? null;
+  if (cell === null || row === null || table === null) return { attributes };
+
+  const tag = element.tagName.toLowerCase();
+  const type = (element.getAttribute('type') ?? 'text').toLowerCase();
+  const valueControl =
+    tag === 'select' || tag === 'textarea' || (tag === 'input' && !['hidden', 'submit', 'button', 'image', 'reset'].includes(type));
+  const label = valueControl ? (cell.previousElementSibling?.textContent ?? '').replace(/\s+/g, ' ').trim() : '';
+
+  let position: { column: string; row: Record<string, string> } | undefined;
+  const header = table.rows?.[0];
+  if (header !== undefined && header !== row && cell.cellIndex !== undefined) {
+    const headers = Array.from(header.cells ?? [], (headerCell) => (headerCell.textContent ?? '').replace(/\s+/g, ' ').trim());
+    const column = headers[cell.cellIndex] ?? '';
+    if (column !== '') {
+      const texts: Record<string, string> = {};
+      Array.from(row.cells ?? []).forEach((rowCell, index) => {
+        const heading = headers[index] ?? '';
+        if (heading !== '') texts[heading] = (rowCell.textContent ?? '').replace(/\s+/g, ' ').trim();
+      });
+      position = { column, row: texts };
+    }
+  }
+  return { attributes, ...(label === '' ? {} : { label }), ...(position === undefined ? {} : { cell: position }) };
 }
 
 // Abandons loads still in flight after a timeout, so a retried action starts a fresh request
@@ -287,6 +337,11 @@ export function createPlaywrightDriver(options: PlaywrightDriverOptions = {}): S
     async describe(ref) {
       const { page } = current();
       return locate(page, ref).evaluate(elementInfo, undefined, { timeout: ACTION_TIMEOUT_MS });
+    },
+
+    async inspect(ref) {
+      const { page } = current();
+      return locate(page, ref).evaluate(elementDescriptor, undefined, { timeout: ACTION_TIMEOUT_MS });
     },
 
     currentUrl() {

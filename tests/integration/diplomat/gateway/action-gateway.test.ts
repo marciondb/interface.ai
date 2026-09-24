@@ -27,6 +27,7 @@ function fakeDriver(element: ElementInfo) {
       return Promise.resolve({ status: 'done', navigations: [] });
     },
     describe: () => Promise.resolve(element),
+    inspect: () => Promise.resolve({ attributes: {} }),
     currentUrl: () => 'http://localhost:8080/',
     screenshot: () => Promise.resolve(new Uint8Array()),
     close: () => Promise.resolve(),

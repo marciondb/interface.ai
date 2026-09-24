@@ -1,5 +1,6 @@
 import type { Action } from '../../models/action';
 import type { TargetSpec } from '../../models/capability';
+import type { ElementDescriptor } from '../../models/element-descriptor';
 import type { Observation } from '../../models/observation';
 import type { PolicyDecision } from '../../models/policy';
 import type { PerformOutcome, Resolution } from '../../models/resolution';
@@ -27,6 +28,8 @@ export type ActionGateway = {
   open(url: string, session: readonly SessionCookie[]): Promise<PolicyDecision>;
   observe(): Promise<Observation>;
   resolve(target: TargetSpec): Promise<Resolution>;
+  // Describes an element of the latest observation without acting on it (discovery).
+  inspect(ref: string): Promise<ElementDescriptor>;
   perform(request: GatewayRequest): Promise<GatewayOutcome>;
   screenshot(): Promise<Uint8Array>;
 };

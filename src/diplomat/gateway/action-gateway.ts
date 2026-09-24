@@ -23,6 +23,8 @@ export function createActionGateway({ driver, policy }: ActionGatewayOptions): A
 
     resolve: (target) => driver.resolve(target),
 
+    inspect: (ref) => driver.inspect(ref),
+
     async perform({ action, timeoutMs }) {
       const element = action.target === null ? undefined : await driver.describe(action.target);
       const decision = evaluatePolicy({ action, element, currentUrl: driver.currentUrl() }, policy);

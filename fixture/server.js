@@ -6,7 +6,8 @@ const { createApp, tenant, membersById } = require('./lib/app');
 
 const server = createApp();
 
-server.listen(config.PORT, () => {
+// Loopback only: the fixture has no real authentication and POST /_fault is open.
+server.listen(config.PORT, '127.0.0.1', () => {
   console.log(`Legacy Console listening on http://localhost:${config.PORT}`);
   console.log(`Tenant: ${tenant.key} (${tenant.displayName})`);
   console.log(`Members loaded: ${membersById.size}`);

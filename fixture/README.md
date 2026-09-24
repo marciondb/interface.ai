@@ -14,7 +14,9 @@ This is **not** a product. It is a controlled target application: ugly IDs, nest
 node server.js
 ```
 
-Open [http://localhost:8080/login](http://localhost:8080/login).
+Open [http://localhost:8080/login](http://localhost:8080/login). The server listens on
+`127.0.0.1` only: it has no real authentication and `POST /_fault` is open to anyone who can
+reach it.
 
 ### Demo credentials
 
@@ -36,7 +38,7 @@ This value is **not** shown in the UI, HTML, or terminal logs. It is documented 
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PORT` | `8080` | HTTP port |
+| `PORT` | `8080` | HTTP port (on `127.0.0.1`) |
 | `TENANT` | `banktest` | Tenant config key |
 | `SESSION_TTL_MIN` | `30` | Session cookie lifetime |
 | `SUPERVISOR_CODE` | `482917` | Dual-control approval code |

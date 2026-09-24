@@ -110,6 +110,9 @@ async function run() {
 
     const authHeaders = { Cookie: cookie };
 
+    const badCookie = await request('GET', '/', { headers: { Cookie: 'a=%; ' + cookie } });
+    assert(badCookie.status === 200, 'malformed cookie ignored');
+
     const shell = await request('GET', '/', { headers: authHeaders });
     assert(shell.status === 200, 'GET / shell');
     assert(shell.body.includes('name="content"'), 'iframe present');

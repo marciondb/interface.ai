@@ -116,7 +116,7 @@ describe('human handoff of the live session', { timeout: 60_000 }, () => {
         act: async ({ page, gateway }) => {
           const resolution = await gateway.resolve({ frame: 'content', candidates: [{ strategy: 'role', role: 'button', name: 'Close Account' }] });
           if (resolution.status !== 'resolved') throw new Error('Close Account did not resolve');
-          const click = { verb: 'click' as const, target: resolution.ref, argument: null, rationale: 'automation while a human holds control' };
+          const click = { kind: 'click', ref: resolution.ref } as const;
           refused = await gateway.perform({ stepId: 'intruder', purpose: 'step', action: click, timeoutMs: 1_000 });
           frameUrl = content(page).url();
         },
@@ -189,7 +189,7 @@ describe('human handoff of the live session', { timeout: 60_000 }, () => {
       operator.attach({ page: driver.page(), gateway });
       const shell = await gateway.observe();
       const lookup = shell.nodes.find((node) => node.role === 'link' && node.name === 'Member Lookup');
-      await gateway.perform({ stepId: 'lookup', purpose: 'step', action: { verb: 'click', target: lookup?.ref ?? '', argument: null, rationale: 'open the lookup' }, timeoutMs: 2_000 });
+      await gateway.perform({ stepId: 'lookup', purpose: 'step', action: { kind: 'click', ref: lookup?.ref ?? '' }, timeoutMs: 2_000 });
 
       const outcome = await escalation.handOff({
         run,

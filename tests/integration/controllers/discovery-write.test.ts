@@ -43,7 +43,8 @@ describe('discovery of the write flow with a human at Confirm', { timeout: 60_00
 
     expect(run.result).toMatchObject({ status: 'succeeded', outputs: { accountNumber: '10001MMRAIN025000' } });
     expect(run.escalations).toMatchObject([{ reason: 'risky_action', stepId: 'step-10', mode: 'discovery' }]);
-    expect(run.driverCalls.some((action) => action.verb === 'click' && action.rationale.includes('Confirm'))).toBe(false);
+    // Member Lookup, Search, Maria Santos, Open Sub-Account and Continue: never Confirm.
+    expect(run.driverCalls.filter((action) => action.kind === 'click')).toHaveLength(5);
     const recorded = await events(run);
     expect(recorded.filter((event) => event.type === 'handoff_human_action').map((event) => (event.action as { kind: string }).kind)).toEqual([
       'click',

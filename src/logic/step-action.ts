@@ -1,22 +1,53 @@
-import type { Action } from '../models/action';
+import type { SurfaceAction } from '../models/action';
 import type { StepAction } from '../models/capability';
 import type { Ref } from '../models/observation';
 
-// The surface action for an artifact action; ref is the resolved target, null for navigate.
-export function toSurfaceAction(stepId: string, action: StepAction, ref: Ref | null, targetUrl: string): Action {
-  const rationale = `replay ${stepId}`;
+export type TargetedStepAction = Exclude<StepAction, { readonly kind: 'navigate' }>;
+
+// The surface action for an artifact action on its resolved target.
+export function toSurfaceAction(action: TargetedStepAction, ref: Ref): SurfaceAction {
   switch (action.kind) {
     case 'click':
-      return { verb: 'click', target: ref, argument: null, rationale };
+      return { kind: 'click', ref };
     case 'fill':
+      return { kind: 'fill', ref, value: action.value };
     case 'select':
-      return { verb: action.kind, target: ref, argument: action.value, rationale };
+      return { kind: 'select', ref, option: action.value };
     case 'press':
-      return { verb: 'press', target: ref, argument: action.key, rationale };
-    case 'navigate':
-      return { verb: 'navigate', target: null, argument: new URL(action.path, targetUrl).href, rationale };
+      return { kind: 'press', ref, key: action.key };
     case 'read':
-      return { verb: 'read', target: ref, argument: action.output, rationale };
+      return { kind: 'read', ref };
+    default: {
+      const unhandled: never = action;
+      return unhandled;
+    }
+  }
+}
+
+// An artifact navigate step: its path is relative to the target application.
+export function navigateAction(path: string, targetUrl: string): SurfaceAction {
+  return { kind: 'navigate', url: new URL(path, targetUrl).href };
+}
+
+// The element the action is performed on; navigate has none.
+export function actionRef(action: SurfaceAction): Ref | undefined {
+  return action.kind === 'navigate' ? undefined : action.ref;
+}
+
+// The text the action types, chooses, presses or opens, as recorded in the evidence.
+export function actionArgument(action: SurfaceAction): string | undefined {
+  switch (action.kind) {
+    case 'fill':
+      return action.value;
+    case 'select':
+      return action.option;
+    case 'press':
+      return action.key;
+    case 'navigate':
+      return action.url;
+    case 'click':
+    case 'read':
+      return undefined;
     default: {
       const unhandled: never = action;
       return unhandled;

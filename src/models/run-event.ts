@@ -1,4 +1,4 @@
-import type { Verb } from './action';
+import type { SurfaceActionKind, Verb } from './action';
 import type { Candidate } from './capability';
 import type { Classification, ClassificationTrigger } from './classification';
 import type { DiscoveryFailureReason, DiscoveryLimits } from './discovery';
@@ -36,7 +36,7 @@ export type RunEvent =
       readonly type: 'policy';
       readonly stepId: string;
       readonly purpose: ActionPurpose;
-      readonly verb: Verb;
+      readonly verb: SurfaceActionKind;
       readonly decision: 'allow' | 'deny' | 'requires_human';
       readonly reason?: string;
     }
@@ -44,7 +44,7 @@ export type RunEvent =
       readonly type: 'action';
       readonly stepId: string;
       readonly purpose: ActionPurpose;
-      readonly verb: Verb;
+      readonly verb: SurfaceActionKind;
       readonly target?: string;
       readonly argument?: string;
       readonly outcome: 'done' | 'timeout' | 'error';

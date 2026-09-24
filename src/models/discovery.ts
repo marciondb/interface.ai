@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { AgentDecision } from './action';
+import type { SurfaceDecision } from './action';
 import type { ElementDescriptor } from './element-descriptor';
 import { EscalationReasonSchema } from './execution-result';
 import type { HumanAction } from './intervention';
@@ -8,11 +8,11 @@ import type { Observation, ObservationNode } from './observation';
 // One action the model had performed on the surface. Observations are the redacted ones the
 // model saw (RFC-006); the synthesizer builds the artifact from the trace alone.
 export type AgentTraceStep = {
-  readonly actor?: 'agent';
+  readonly actor: 'agent';
   readonly stepId: string;
-  readonly decision: AgentDecision;
+  readonly decision: SurfaceDecision;
   readonly observation: Observation;
-  // The element decision.target named: its node in `observation` and its descriptor.
+  // The element the decision's action.ref named: its node in `observation` and its descriptor.
   readonly element?: { readonly node: ObservationNode; readonly descriptor: ElementDescriptor };
   // The value a `read` captured.
   readonly value?: string;

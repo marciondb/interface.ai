@@ -158,7 +158,7 @@ function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog:
 
   function targetFor(step: TraceStep, read: boolean): string {
     const { element } = step;
-    const verb = step.actor === 'human' ? `the human's ${step.action.kind}` : step.decision.verb;
+    const verb = step.actor === 'human' ? `the human's ${step.action.kind}` : step.decision.action.kind;
     if (element === undefined) return fail('untargetable_element', `${verb} has no element to locate`, step.stepId);
     const candidates = candidatesFor(element, read, parameterize);
     if (candidates.length === 0) {
@@ -222,51 +222,49 @@ function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog:
     }
     if (!step.progressed || rejected(step)) continue;
     const { decision } = step;
-    const argument = decision.argument ?? '';
     let action: StepAction;
     let checkpoint: Predicate;
     let label: string[];
-    switch (decision.verb) {
-      case 'click':
-      case 'press': {
-        const target = targetFor(step, false);
-        action = decision.verb === 'click' ? { kind: 'click', target } : { kind: 'press', target, key: argument };
-        checkpoint = revealed(step);
-        label = words(target.split('.').at(-1) ?? target);
-        break;
-      }
-      case 'fill':
-      case 'select': {
-        const target = targetFor(step, false);
-        const value = parameterize(argument);
-        action = { kind: decision.verb, target, value };
-        checkpoint = { kind: 'value_equals', target, value };
-        label = words(target.split('.').at(-1) ?? target);
-        break;
-      }
-      case 'navigate':
-        action = { kind: 'navigate', path: pathOf(argument) };
-        checkpoint = revealed(step);
-        label = words(action.path);
-        break;
-      case 'read': {
-        if (produced.has(argument)) continue;
-        produced.add(argument);
-        const target = targetFor(step, true);
-        action = { kind: 'read', target, output: argument };
-        checkpoint = { kind: 'target_visible', target };
-        label = words(argument);
-        break;
-      }
-      case 'finish':
-      case 'request_help':
-        continue;
-      default: {
-        const unhandled: never = decision.verb;
-        return unhandled;
+    if (decision.kind === 'read') {
+      const { output } = decision;
+      if (produced.has(output)) continue;
+      produced.add(output);
+      const target = targetFor(step, true);
+      action = { kind: 'read', target, output };
+      checkpoint = { kind: 'target_visible', target };
+      label = words(output);
+    } else {
+      const performed = decision.action;
+      switch (performed.kind) {
+        case 'click':
+        case 'press': {
+          const target = targetFor(step, false);
+          action = performed.kind === 'click' ? { kind: 'click', target } : { kind: 'press', target, key: performed.key };
+          checkpoint = revealed(step);
+          label = words(target.split('.').at(-1) ?? target);
+          break;
+        }
+        case 'fill':
+        case 'select': {
+          const target = targetFor(step, false);
+          const value = parameterize(performed.kind === 'fill' ? performed.value : performed.option);
+          action = { kind: performed.kind, target, value };
+          checkpoint = { kind: 'value_equals', target, value };
+          label = words(target.split('.').at(-1) ?? target);
+          break;
+        }
+        case 'navigate':
+          action = { kind: 'navigate', path: pathOf(performed.url) };
+          checkpoint = revealed(step);
+          label = words(action.path);
+          break;
+        default: {
+          const unhandled: never = performed;
+          return unhandled;
+        }
       }
     }
-    const id = unique(kebab([decision.verb, ...label]), new Set(steps.map((existing) => existing.id)), '-');
+    const id = unique(kebab([decision.action.kind, ...label]), new Set(steps.map((existing) => existing.id)), '-');
     steps.push({ id, action, risk: 'safe', checkpoint });
   }
 

@@ -33,7 +33,7 @@ easy to bypass by accident. The policy also needs to be testable and configurabl
   is matched as whole words in any label the control shows (RFC-006)
 - **Landing check:** after the driver acts, the gateway checks where the page and
   its frames ended up; outside the allowlist or on a newly reached risky route, the
-  outcome is `denied` with the landed URL. The gateway also installs a navigation
+  outcome is `landed_outside_policy` with the landed URL. The gateway also installs a navigation
   guard on the driver that aborts off-allowlist navigations and closes popups
 
 Risky-action policy: **block for automation, allow only through human handoff.**

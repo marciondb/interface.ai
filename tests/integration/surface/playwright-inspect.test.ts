@@ -36,7 +36,7 @@ describe('Playwright element descriptors against the fixture', { timeout: 30_000
 
   async function click(match: (node: ObservationNode) => boolean): Promise<void> {
     const ref = refOf(await surface().observe(), match);
-    expect(await surface().perform({ verb: 'click', target: ref, argument: null, rationale: 'test' })).toMatchObject({ status: 'done' });
+    expect(await surface().perform({ kind: 'click', ref: ref })).toMatchObject({ status: 'done' });
   }
 
   it('describes the unnamed Member ID input by its adjacent label and ASP.NET attributes', async () => {
@@ -52,7 +52,7 @@ describe('Playwright element descriptors against the fixture', { timeout: 30_000
 
   it('describes a balance cell and a member link by their table columns and rows', async () => {
     const lookup = await surface().observe();
-    await surface().perform({ verb: 'fill', target: refOf(lookup, (node) => node.role === 'textbox'), argument: '10002', rationale: 'test' });
+    await surface().perform({ kind: 'fill', ref: refOf(lookup, (node) => node.role === 'textbox'), value: '10002' });
     await click((node) => node.role === 'button' && node.name === 'Search');
 
     const results = await surface().observe();

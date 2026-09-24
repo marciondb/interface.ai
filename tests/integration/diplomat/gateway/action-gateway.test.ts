@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { createActionGateway } from '../../../../src/diplomat/gateway/action-gateway';
 import type { SurfaceDriver } from '../../../../src/diplomat/surface/port';
-import type { Action } from '../../../../src/models/action';
+import type { SurfaceAction } from '../../../../src/models/action';
 import type { ControlOwner } from '../../../../src/models/control';
 import type { Policy } from '../../../../src/models/policy';
 import type { ElementInfo, PerformOutcome } from '../../../../src/models/resolution';
@@ -37,7 +37,7 @@ function fakeDriver(element: ElementInfo, options: FakeOptions = {}) {
     observe: () => Promise.resolve(emptyObservation()),
     resolve: () => Promise.resolve({ status: 'unresolved', counts: [] }),
     perform: (action, performOptions) => {
-      calls.push(`perform ${action.verb} ${String(performOptions?.timeoutMs)}`);
+      calls.push(`perform ${action.kind} ${String(performOptions?.timeoutMs)}`);
       frames = options.framesAfter ?? frames;
       return Promise.resolve(options.outcome ?? { status: 'done', navigations: [] });
     },
@@ -58,8 +58,8 @@ function gatewayOf(driver: SurfaceDriver, policy: Policy = POLICY, owner: Contro
   return createActionGateway({ driver, policy, controlOwner: () => owner });
 }
 
-function click(): Action {
-  return { verb: 'click', target: 'e1', argument: null, rationale: 'test' };
+function click(): SurfaceAction {
+  return { kind: 'click', ref: 'e1' };
 }
 
 const SEARCH_FRAME = 'http://localhost:8080/member/search';
@@ -86,7 +86,7 @@ describe('action gateway', () => {
 
   it('denies verbs outside the allowlist', async () => {
     const { driver, calls } = fakeDriver({ role: 'textbox', name: '', frameUrl: SEARCH_FRAME });
-    const fill: Action = { verb: 'fill', target: 'e1', argument: '1', rationale: 'test' };
+    const fill: SurfaceAction = { kind: 'fill', ref: 'e1', value: '1' };
 
     const outcome = await gatewayOf(driver).perform({ stepId: 's', purpose: 'step', action: fill, timeoutMs: 1 });
 
@@ -133,26 +133,26 @@ describe('action gateway', () => {
     expect(calls).toEqual(['open http://localhost:8080/']);
   });
 
-  it('denies an open that lands outside the allowlist', async () => {
+  it('reports an open that lands outside the allowlist', async () => {
     const { driver } = fakeDriver({ role: 'x', name: '', frameUrl: SEARCH_FRAME }, { framesAfter: [SHELL, 'http://evil.example/'] });
 
     expect(await gatewayOf(driver, { ...POLICY, allowedActions: ['navigate'] }).open(SHELL, [])).toEqual({
-      decision: 'deny',
+      decision: 'landed_outside_policy',
       reason: 'landed_outside_allowlist',
       landedAt: 'http://evil.example/',
     });
   });
 
-  it('denies, after the driver acted, an action whose page ended up outside the allowlist', async () => {
+  it('reports, after the driver acted, an action whose page ended up outside the allowlist', async () => {
     const { driver, calls } = fakeDriver(DETAIL, { framesAfter: [SHELL, 'http://evil.example/steal'] });
 
     const outcome = await gatewayOf(driver).perform({ stepId: 's', purpose: 'step', action: click(), timeoutMs: 1 });
 
-    expect(outcome).toEqual({ status: 'denied', reason: 'landed_outside_allowlist', landedAt: 'http://evil.example/steal' });
+    expect(outcome).toEqual({ status: 'landed_outside_policy', reason: 'landed_outside_allowlist', landedAt: 'http://evil.example/steal' });
     expect(calls).toEqual(['perform click 1']);
   });
 
-  it('denies an action that redirected through a URL outside the allowlist, even when it came back', async () => {
+  it('reports an action that redirected through a URL outside the allowlist, even when it came back', async () => {
     const navigations = [
       { url: 'http://localhost:8080/logout', status: 302 },
       { url: SEARCH_FRAME, status: 200 },
@@ -160,18 +160,18 @@ describe('action gateway', () => {
     const { driver } = fakeDriver(DETAIL, { outcome: { status: 'done', navigations } });
 
     expect(await gatewayOf(driver).perform({ stepId: 's', purpose: 'step', action: click(), timeoutMs: 1 })).toEqual({
-      status: 'denied',
+      status: 'landed_outside_policy',
       reason: 'landed_outside_allowlist',
       landedAt: 'http://localhost:8080/logout',
     });
   });
 
-  it('denies an action that took a frame to a risky route, even after a timeout', async () => {
+  it('reports an action that took a frame to a risky route, even after a timeout', async () => {
     const danger = 'http://localhost:8080/member/danger/close?memberId=1';
     const { driver } = fakeDriver(DETAIL, { framesAfter: [SHELL, danger], outcome: { status: 'timeout' } });
 
     expect(await gatewayOf(driver).perform({ stepId: 's', purpose: 'step', action: click(), timeoutMs: 1 })).toEqual({
-      status: 'denied',
+      status: 'landed_outside_policy',
       reason: 'landed_on_risky_route',
       landedAt: danger,
     });
@@ -190,7 +190,7 @@ describe('action gateway', () => {
 
   it('does not judge where a read landed, since reading never moves the page', async () => {
     const { driver } = fakeDriver(DETAIL, { framesAfter: [SHELL, 'http://localhost:8080/member/danger/close'] });
-    const read: Action = { verb: 'read', target: 'e1', argument: 'balance', rationale: 'test' };
+    const read: SurfaceAction = { kind: 'read', ref: 'e1' };
 
     expect(await gatewayOf(driver).perform({ stepId: 's', purpose: 'checkpoint', action: read, timeoutMs: 1 })).toMatchObject({ status: 'done' });
   });
@@ -210,7 +210,7 @@ describe('action gateway', () => {
     const { driver, calls } = fakeDriver(DETAIL);
     const described = vi.spyOn(driver, 'describe');
     const gateway = gatewayOf(driver, POLICY, 'human');
-    const read: Action = { verb: 'read', target: 'e1', argument: 'balance', rationale: 'test' };
+    const read: SurfaceAction = { kind: 'read', ref: 'e1' };
 
     expect(await gateway.perform({ stepId: 's', purpose: 'step', action: click(), timeoutMs: 1 })).toEqual({
       status: 'denied',

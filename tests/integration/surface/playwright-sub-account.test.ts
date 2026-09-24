@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createFixtureSessionProvider } from '../../../src/diplomat/session/fixture-login';
 import { createPlaywrightDriver, type PlaywrightDriver } from '../../../src/diplomat/surface/playwright-driver';
-import type { Verb } from '../../../src/models/action';
+import type { SurfaceAction } from '../../../src/models/action';
 import type { HumanAction } from '../../../src/models/intervention';
 import type { Observation, ObservationNode } from '../../../src/models/observation';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
@@ -45,24 +45,26 @@ describe('Playwright driver on the sub-account flow', { timeout: 30_000 }, () =>
     return frame;
   }
 
-  async function act(verb: Verb, match: (node: ObservationNode) => boolean, argument: string | null = null): Promise<void> {
-    const target = refOf(await surface().observe(), match);
-    expect(await surface().perform({ verb, target, argument, rationale: 'test' })).toMatchObject({ status: 'done' });
+  async function act(match: (node: ObservationNode) => boolean, action: (ref: string) => SurfaceAction): Promise<void> {
+    const ref = refOf(await surface().observe(), match);
+    expect(await surface().perform(action(ref))).toMatchObject({ status: 'done' });
   }
+
+  const click = (ref: string): SurfaceAction => ({ kind: 'click', ref });
 
   it('fills the form and reaches the review', async () => {
     await content().goto(`${fixture?.baseUrl ?? ''}/member/detail?memberId=10001`);
-    await act('click', (node) => node.role === 'button' && node.name === 'Open Sub-Account');
-    await act('select', (node) => node.role === 'combobox' && node.label === 'Account Type', 'Money Market');
-    await act('fill', (node) => node.role === 'textbox' && node.label === 'Nickname', 'Rainy Day');
-    await act('fill', (node) => node.role === 'textbox' && node.label === '$', '250.00');
-    await act('click', (node) => node.role === 'button' && node.name === 'Continue');
+    await act((node) => node.role === 'button' && node.name === 'Open Sub-Account', click);
+    await act((node) => node.role === 'combobox' && node.label === 'Account Type', (ref) => ({ kind: 'select', ref, option: 'Money Market' }));
+    await act((node) => node.role === 'textbox' && node.label === 'Nickname', (ref) => ({ kind: 'fill', ref, value: 'Rainy Day' }));
+    await act((node) => node.role === 'textbox' && node.label === '$', (ref) => ({ kind: 'fill', ref, value: '250.00' }));
+    await act((node) => node.role === 'button' && node.name === 'Continue', click);
 
     expect(text(await surface().observe())).toContain('Review Sub-Account Request');
   });
 
   it('refuses the confirm() dialog under automation and shows it in the next observation', async () => {
-    await act('click', (node) => node.role === 'button' && node.name === 'Confirm');
+    await act((node) => node.role === 'button' && node.name === 'Confirm', click);
 
     const observation = await surface().observe();
     expect(observation.dialog).toEqual({ type: 'confirm', message: 'Submit this sub-account request?' });
@@ -85,7 +87,7 @@ describe('Playwright driver on the sub-account flow', { timeout: 30_000 }, () =>
     const resolution = await surface().resolve({ frame: 'content', candidates: [{ strategy: 'label', text: 'New Account Number:' }] });
     expect(resolution).toMatchObject({ status: 'resolved', strategy: 'label', counts: [1] });
     if (resolution.status !== 'resolved') return;
-    expect(await surface().perform({ verb: 'read', target: resolution.ref, argument: 'accountNumber', rationale: 'test' })).toMatchObject({
+    expect(await surface().perform({ kind: 'read', ref: resolution.ref })).toMatchObject({
       status: 'done',
       value: '10001MMRAIN025000',
     });

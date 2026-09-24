@@ -59,7 +59,7 @@ describe('discovery with a human handoff', { timeout: 60_000 }, () => {
     expect(run.result).toMatchObject({ status: 'succeeded', outputs: { balance: '4,812.37' } });
     expect(run.result.interventions).toHaveLength(1);
     expect(run.escalations).toMatchObject([{ reason: 'risky_action', stepId: 'step-6', mode: 'discovery' }]);
-    expect(run.driverCalls.filter((action) => action.verb === 'click')).toHaveLength(3);
+    expect(run.driverCalls.filter((action) => action.kind === 'click')).toHaveLength(3);
     const recorded = await events(run);
     expect(recorded.filter((event) => event.type === 'policy' && event.stepId === 'step-6')).toMatchObject([{ decision: 'requires_human' }]);
     expect(recorded.filter((event) => event.type === 'handoff_human_action').map((event) => (event.action as { kind: string }).kind)).toEqual([

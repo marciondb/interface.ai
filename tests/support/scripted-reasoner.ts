@@ -1,3 +1,4 @@
+import { parseModelDecision } from '../../src/adapters/model-decision';
 import type { Reasoner, ReasonerInput } from '../../src/diplomat/reasoner/port';
 import type { AgentDecision, Verb } from '../../src/models/action';
 import type { ObservationNode } from '../../src/models/observation';
@@ -51,7 +52,9 @@ export function createScriptedReasoner(script: readonly ScriptedStep[]): Scripte
         if (node?.ref === undefined) return Promise.reject(new ScriptExhausted(`no element matches ${JSON.stringify(find)}`));
         target = node.ref;
       }
-      return Promise.resolve({ verb: step.verb, target, argument: step.argument ?? null, rationale: `scripted ${step.verb}` });
+      const answer = { verb: step.verb, target, argument: step.argument ?? null, rationale: `scripted ${step.verb}` };
+      const parsed = parseModelDecision(JSON.stringify(answer), input.validRefs);
+      return parsed.ok ? Promise.resolve(parsed.decision) : Promise.reject(new ScriptExhausted(parsed.reason));
     },
   };
 }

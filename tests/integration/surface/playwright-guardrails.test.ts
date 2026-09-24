@@ -70,7 +70,7 @@ describe('Playwright driver guardrails against the fixture', { timeout: 30_000 }
     for (const id of ['image-input', 'image-button', 'labelled', 'titled']) {
       const resolution = await surface().resolve({ frame: 'content', candidates: [{ strategy: 'attribute', name: 'id', value: id }] });
       if (resolution.status !== 'resolved') throw new Error(`${id} did not resolve`);
-      const decision = await policed().check({ verb: 'click', target: resolution.ref, argument: null, rationale: 'test' });
+      const decision = await policed().check({ kind: 'click', ref: resolution.ref });
       expect(decision, id).toMatchObject({ decision: 'requires_human' });
     }
     const image = await surface().resolve({ frame: 'content', candidates: [{ strategy: 'attribute', name: 'id', value: 'image-input' }] });
@@ -78,7 +78,7 @@ describe('Playwright driver guardrails against the fixture', { timeout: 30_000 }
     expect(await surface().describe(image.ref)).toMatchObject({ role: 'button', name: 'Confirm', texts: ['Confirm'] });
     const plain = await surface().resolve({ frame: 'content', candidates: [{ strategy: 'attribute', name: 'id', value: 'plain' }] });
     if (plain.status !== 'resolved') throw new Error('plain did not resolve');
-    expect(await policed().check({ verb: 'click', target: plain.ref, argument: null, rationale: 'test' })).toEqual({ decision: 'allow' });
+    expect(await policed().check({ kind: 'click', ref: plain.ref })).toEqual({ decision: 'allow' });
   });
 
   it('aborts a frame navigation a page script starts outside the allowlist', async () => {

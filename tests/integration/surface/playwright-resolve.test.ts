@@ -35,7 +35,7 @@ describe('Playwright target resolution against the fixture', { timeout: 30_000 }
   }
 
   async function click(target: TargetSpec): Promise<void> {
-    const outcome = await surface().perform({ verb: 'click', target: resolvedRef(await surface().resolve(target)), argument: null, rationale: 'test' });
+    const outcome = await surface().perform({ kind: 'click', ref: resolvedRef(await surface().resolve(target)) });
     expect(outcome.status).toBe('done');
   }
 
@@ -52,8 +52,8 @@ describe('Playwright target resolution against the fixture', { timeout: 30_000 }
 
     expect(resolution).toMatchObject({ status: 'resolved', candidateIndex: 1, strategy: 'label', counts: [0, 1] });
     const ref = resolvedRef(resolution);
-    await surface().perform({ verb: 'fill', target: ref, argument: '10002', rationale: 'test' });
-    expect(await surface().perform({ verb: 'read', target: ref, argument: 'memberId', rationale: 'test' })).toEqual({
+    await surface().perform({ kind: 'fill', ref: ref, value: '10002' });
+    expect(await surface().perform({ kind: 'read', ref: ref })).toEqual({
       status: 'done',
       value: '10002',
       navigations: [],
@@ -75,7 +75,7 @@ describe('Playwright target resolution against the fixture', { timeout: 30_000 }
 
     expect(resolution).toMatchObject({ status: 'resolved', candidateIndex: 1, strategy: 'table_cell' });
     expect(resolution.counts[0]).toBeGreaterThan(1);
-    const read = await surface().perform({ verb: 'read', target: resolvedRef(resolution), argument: 'balance', rationale: 'test' });
+    const read = await surface().perform({ kind: 'read', ref: resolvedRef(resolution) });
     expect(read).toMatchObject({ status: 'done', value: '3,100.55' });
   });
 

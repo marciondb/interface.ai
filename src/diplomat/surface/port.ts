@@ -1,4 +1,4 @@
-import type { Action } from '../../models/action';
+import type { SurfaceAction } from '../../models/action';
 import type { TargetSpec } from '../../models/capability';
 import type { ElementDescriptor } from '../../models/element-descriptor';
 import type { DialogDecision, HumanAction } from '../../models/intervention';
@@ -6,7 +6,7 @@ import type { Dialog, Observation } from '../../models/observation';
 import type { ElementInfo, PerformOutcome, Resolution } from '../../models/resolution';
 import type { SessionCookie } from '../session/port';
 
-export type SurfaceErrorCode = 'not_open' | 'unknown_ref' | 'unsupported_action' | 'snapshot_mismatch';
+export type SurfaceErrorCode = 'not_open' | 'unknown_ref' | 'snapshot_mismatch';
 
 export type PerformOptions = {
   // Budget for the action and for the navigations it starts to finish loading (default 5000).
@@ -23,9 +23,9 @@ export type SurfaceDriver = {
   // Tries the candidates in order; the first with exactly one match gets a ref (ADR-008),
   // valid until the next observe().
   resolve(target: TargetSpec): Promise<Resolution>;
-  // action.target must be a ref from the latest observe() or a later resolve().
-  // Page failures are outcomes; only misuse (unknown ref, unsupported verb) rejects.
-  perform(action: Action, options?: PerformOptions): Promise<PerformOutcome>;
+  // action.ref must be from the latest observe() or a later resolve(). A read resolves to done
+  // with the value. Page failures are outcomes; only misuse (unknown ref) rejects.
+  perform(action: SurfaceAction, options?: PerformOptions): Promise<PerformOutcome>;
   describe(ref: string): Promise<ElementInfo>;
   // The element's attributes, adjacent label and table position, for building locators (discovery).
   inspect(ref: string): Promise<ElementDescriptor>;

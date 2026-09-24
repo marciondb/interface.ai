@@ -6,7 +6,7 @@ const VERB_HELP: Record<Verb, string> = {
   click: 'click the element `target`; argument is null.',
   fill: 'type `argument` into the text field `target`, replacing its value.',
   select: 'choose the option labelled `argument` in the list `target`.',
-  press: 'press the key `argument` (for example Enter) on `target`, or on the focused element when target is null.',
+  press: 'press the key `argument` (for example Enter) on the element `target`.',
   navigate: 'open the URL `argument`; target is null.',
   read: 'capture the visible text of `target` as the output named `argument`.',
   finish: 'the goal is complete; argument is an optional one-line summary; target is null.',

@@ -1,12 +1,12 @@
 import { z } from 'zod';
-import { ActionFieldsSchema } from '../models/action';
+import { ModelStepSchema } from '../models/action';
 
 // Generation grammar only: it must stay within the JSON Schema subset that both
 // Ollama `format` and OpenAI strict `response_format` accept. Per-verb rules and a
-// non-empty rationale are enforced afterwards by ActionSchema.
+// non-empty rationale are enforced afterwards, when the answer becomes an AgentDecision.
 export function stepActionSchema(refs: readonly string[]) {
   const target = refs.length === 0 ? z.null() : z.enum(refs).nullable();
-  return ActionFieldsSchema.extend({ target, rationale: z.string() });
+  return ModelStepSchema.extend({ target, rationale: z.string() });
 }
 
 export function stepJsonSchema(refs: readonly string[]) {

@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { synthesizeArtifact, type Synthesis } from '../../../src/logic/artifact-synthesis';
-import type { AgentDecision } from '../../../src/models/action';
+import type { SurfaceActionKind, SurfaceDecision } from '../../../src/models/action';
 import type { Capability, Provenance } from '../../../src/models/capability';
 import type { CapabilityRequest } from '../../../src/models/capability-request';
 import type { AgentTraceStep, HumanTraceStep, TraceStep } from '../../../src/models/discovery';
 import type { ElementDescriptor } from '../../../src/models/element-descriptor';
 import type { Observation, ObservationNode } from '../../../src/models/observation';
 import type { OutcomeCatalog } from '../../../src/models/outcome-catalog';
+import { surfaceDecision } from '../../support/decisions';
 
 const REQUEST: CapabilityRequest = {
   capability: {
@@ -82,13 +83,13 @@ const DETAIL = screen([
   BALANCE,
 ]);
 
-function decide(verb: AgentDecision['verb'], node: ObservationNode | undefined, argument: string | null = null): AgentDecision {
-  return { verb, target: node?.ref ?? null, argument, rationale: 'test' };
+function decide(verb: SurfaceActionKind, node: ObservationNode | undefined, argument?: string): SurfaceDecision {
+  return surfaceDecision(verb, node?.ref ?? '', argument);
 }
 
 function step(
   stepId: string,
-  decision: AgentDecision,
+  decision: SurfaceDecision,
   node: ObservationNode | undefined,
   descriptor: ElementDescriptor,
   observation: Observation,
@@ -96,6 +97,7 @@ function step(
   extra: Partial<AgentTraceStep> = {},
 ): AgentTraceStep {
   return {
+    actor: 'agent',
     stepId,
     decision,
     observation,

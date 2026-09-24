@@ -40,7 +40,7 @@ describe('Playwright human capture against the fixture', { timeout: 30_000 }, ()
 
     const shell = await surface().observe();
     const lookup = shell.nodes.find((node) => node.role === 'link' && node.name === 'Member Lookup');
-    await surface().perform({ verb: 'click', target: lookup?.ref ?? '', argument: null, rationale: 'automation' });
+    await surface().perform({ kind: 'click', ref: lookup?.ref ?? '' });
     await content().waitForSelector('text=Member ID:');
 
     surface().startHumanCapture(listener);

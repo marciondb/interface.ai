@@ -17,7 +17,7 @@ import { createPlaywrightDriver } from '../../src/diplomat/surface/playwright-dr
 import type { SurfaceDriver } from '../../src/diplomat/surface/port';
 import { systemClock, type Clock } from '../../src/infrastructure/clock';
 import { readJsonFile } from '../../src/infrastructure/json-file';
-import type { Action } from '../../src/models/action';
+import type { SurfaceAction } from '../../src/models/action';
 import type { CapabilityRequest } from '../../src/models/capability-request';
 import type { DiscoveryResult } from '../../src/models/discovery';
 import type { Policy } from '../../src/models/policy';
@@ -47,7 +47,7 @@ export type DiscoveryHarnessRun = {
   readonly evidenceRoot: string;
   readonly capabilitiesDir: string;
   // Actions that reached the surface driver.
-  readonly driverCalls: readonly Action[];
+  readonly driverCalls: readonly SurfaceAction[];
   readonly escalations: readonly HandoffRequest[];
 };
 
@@ -74,7 +74,7 @@ export async function runDiscovery(fixture: FixtureHandle, reasoner: Reasoner, o
     { surface: driver, broker, evidence, clock },
     { ttlMs: options.handoffTtlMs ?? 30_000, humanSurfaceAvailable: options.operator !== undefined, operatorId: OPERATOR_ID },
   );
-  const driverCalls: Action[] = [];
+  const driverCalls: SurfaceAction[] = [];
   const spiedDriver: SurfaceDriver = {
     ...driver,
     perform(action, performOptions) {

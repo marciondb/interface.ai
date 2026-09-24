@@ -6,11 +6,12 @@ import type { Clock } from '../infrastructure/clock';
 import { bindInputs, validateInputs } from '../logic/capability-inputs';
 import { describeCounts, evaluateCheckpoint, factsNeeded, type Facts, type TargetFact } from '../logic/checkpoint';
 import { classify, describeClassification, isDefinitive } from '../logic/outcome-classifier';
+import { describeLanding } from '../logic/policy';
 import { nextMove, type Move } from '../logic/recovery';
 import { sensitiveValuesOf } from '../logic/redaction';
-import { toSurfaceAction } from '../logic/step-action';
-import type { Action } from '../models/action';
-import { actionTarget, type Capability, type Predicate, type Step } from '../models/capability';
+import { actionArgument, navigateAction, toSurfaceAction } from '../logic/step-action';
+import type { SurfaceAction } from '../models/action';
+import type { Capability, Predicate, Step } from '../models/capability';
 import type { Classification, ClassificationTrigger } from '../models/classification';
 import type { EscalationReason, ExecutionResult, Failure, FailureCode, Recovery } from '../models/execution-result';
 import type { Observation, Ref } from '../models/observation';
@@ -78,10 +79,6 @@ function errorName(error: unknown): string | undefined {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message.split('\n')[0] : String(error);
-}
-
-function denialOf(denied: { readonly reason: string; readonly landedAt?: string }): string {
-  return denied.landedAt === undefined ? denied.reason : `${denied.reason} at ${denied.landedAt}`;
 }
 
 // Executes a capability without a model (RFC-004): every step is resolved, performed through
@@ -202,21 +199,37 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
     );
   }
 
-  async function perform(stepId: string, purpose: ActionPurpose, action: Action, target?: string): Promise<GatewayOutcome> {
+  // `output` is the name a read captures into, recorded as its argument.
+  async function perform(stepId: string, purpose: ActionPurpose, action: SurfaceAction, target?: string, output?: string): Promise<GatewayOutcome> {
     const outcome = await gateway.perform({ stepId, purpose, action, timeoutMs: stepTimeoutMs });
-    if (outcome.status === 'denied' || outcome.status === 'requires_human') {
-      const decision = outcome.status === 'denied' ? 'deny' : 'requires_human';
-      await evidence.event({ type: 'policy', stepId, purpose, verb: action.verb, decision, reason: denialOf(outcome) });
-      return outcome;
+    const policy = { type: 'policy', stepId, purpose, verb: action.kind } as const;
+    switch (outcome.status) {
+      case 'denied':
+        await evidence.event({ ...policy, decision: 'deny', reason: outcome.reason });
+        return outcome;
+      case 'landed_outside_policy':
+        await evidence.event({ ...policy, decision: 'deny', reason: describeLanding(outcome) });
+        return outcome;
+      case 'requires_human':
+        await evidence.event({ ...policy, decision: 'requires_human', reason: outcome.reason });
+        return outcome;
+      case 'done':
+      case 'timeout':
+      case 'error':
+        break;
+      default: {
+        const unhandled: never = outcome;
+        return unhandled;
+      }
     }
     if (purpose === 'checkpoint') return outcome;
-    await evidence.event({ type: 'policy', stepId, purpose, verb: action.verb, decision: 'allow' });
-    const argument = action.argument ?? undefined;
+    await evidence.event({ ...policy, decision: 'allow' });
+    const argument = output ?? actionArgument(action);
     await evidence.event({
       type: 'action',
       stepId,
       purpose,
-      verb: action.verb,
+      verb: action.kind,
       ...(target === undefined ? {} : { target }),
       ...(argument === undefined ? {} : { argument }),
       outcome: outcome.status,
@@ -238,8 +251,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
       const resolution = await gateway.resolve(spec);
       let value: string | undefined;
       if (resolution.status === 'resolved' && needsValue) {
-        const read: Action = { verb: 'read', target: resolution.ref, argument: target, rationale: `checkpoint ${stepId}` };
-        const outcome = await perform(stepId, 'checkpoint', read);
+        const outcome = await perform(stepId, 'checkpoint', { kind: 'read', ref: resolution.ref });
         if (outcome.status === 'done') value = outcome.value;
       }
       targets[target] = { candidates: spec.candidates, counts: resolution.counts, resolved: resolution.status === 'resolved', value };
@@ -330,41 +342,41 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
   }
 
   async function attemptStep(capability: Capability, step: Step): Promise<AttemptOutcome> {
-    const name = actionTarget(step.action);
-    let ref: Ref | null = null;
-    if (name !== undefined) {
+    let action: SurfaceAction;
+    let name: string | undefined;
+    if (step.action.kind === 'navigate') {
+      action = navigateAction(step.action.path, request.targetUrl);
+    } else {
+      name = step.action.target;
       const found = await waitForTarget(capability, step, name);
       if (found.kind === 'problem') return found;
-      ref = found.ref;
+      action = toSurfaceAction(step.action, found.ref);
     }
-
-    const action = toSurfaceAction(step.id, step.action, ref, request.targetUrl);
-    const what = name === undefined ? action.verb : `${action.verb} on ${name}`;
+    const what = name === undefined ? action.kind : `${action.kind} on ${name}`;
     // The artifact's risk holds even if policy.json changes (RFC-006): the gateway is only asked
     // whether the policy denies the step, since deny wins over handing it to a human.
     if (step.risk === 'risky') {
       const decision = await gateway.check(action);
       if (decision.decision === 'deny') {
-        await evidence.event({ type: 'policy', stepId: step.id, purpose: 'step', verb: action.verb, decision: 'deny', reason: decision.reason });
+        await evidence.event({ type: 'policy', stepId: step.id, purpose: 'step', verb: action.kind, decision: 'deny', reason: decision.reason });
         return { kind: 'failed', code: 'policy_denied', expected: `${what} allowed by policy`, observed: decision.reason };
       }
       return { kind: 'requires_human', message: `step ${step.id} is risky: ${what} needs a human` };
     }
-    const outcome = await perform(step.id, 'step', action, name);
+    const outcome = await perform(step.id, 'step', action, name, step.action.kind === 'read' ? step.action.output : undefined);
     let serverError = false;
     let value: string | undefined;
     switch (outcome.status) {
-      case 'denied': {
-        if ('landedAt' in outcome) {
-          // The sign-in page is the one place off the allowlist a run recovers from: the session
-          // provider owns it (ADR-013), so an expired session is still reauthenticated.
-          const { observation, classification } = await classifyNow(capability, step.id, 'checkpoint_not_met', false);
-          if (classification.kind === 'session_expired') {
-            return { kind: 'problem', trigger: 'checkpoint_not_met', classification, expected: `${what} to keep the session`, observed: denialOf(outcome), observation };
-          }
-          return { kind: 'failed', code: 'policy_denied', expected: `${what} to stay within the policy`, observed: denialOf(outcome) };
-        }
+      case 'denied':
         return { kind: 'failed', code: 'policy_denied', expected: `${what} allowed by policy`, observed: outcome.reason };
+      case 'landed_outside_policy': {
+        // The sign-in page is the one place off the allowlist a run recovers from: the session
+        // provider owns it (ADR-013), so an expired session is still reauthenticated.
+        const { observation, classification } = await classifyNow(capability, step.id, 'checkpoint_not_met', false);
+        if (classification.kind === 'session_expired') {
+          return { kind: 'problem', trigger: 'checkpoint_not_met', classification, expected: `${what} to keep the session`, observed: describeLanding(outcome), observation };
+        }
+        return { kind: 'failed', code: 'policy_denied', expected: `${what} to stay within the policy`, observed: describeLanding(outcome) };
       }
       case 'requires_human':
         return { kind: 'requires_human', message: `${what} needs a human: ${outcome.reason}` };
@@ -413,19 +425,30 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
         `${name} did not resolve: ${describeCounts(spec.candidates, resolution.counts)}`,
       );
     }
-    const click = toSurfaceAction(stepId, move.recover, resolution.ref, request.targetUrl);
-    const outcome = await perform(stepId, 'recovery', click, name);
-    if (outcome.status === 'denied') return failed(stepId, 'policy_denied', `click on ${name} allowed by policy`, denialOf(outcome));
-    if (outcome.status === 'requires_human') {
-      const condition = capability.outcomes.find((declared) => declared.id === move.outcomeId)?.when;
-      return handOff(stepId, `click on ${name} needs a human: ${outcome.reason}`, async () => {
-        if (condition === undefined) return { held: true };
-        const shown = evaluateCheckpoint(condition, await gatherFacts(capability, stepId, await gateway.observe(), [condition]));
-        return shown.holds ? { held: false, expected: `${move.outcomeId} to be dismissed`, observed: shown.observed } : { held: true };
-      });
+    const outcome = await perform(stepId, 'recovery', toSurfaceAction(move.recover, resolution.ref), name);
+    switch (outcome.status) {
+      case 'denied':
+        return failed(stepId, 'policy_denied', `click on ${name} allowed by policy`, outcome.reason);
+      case 'landed_outside_policy':
+        return failed(stepId, 'policy_denied', `click on ${name} allowed by policy`, describeLanding(outcome));
+      case 'requires_human': {
+        const condition = capability.outcomes.find((declared) => declared.id === move.outcomeId)?.when;
+        return handOff(stepId, `click on ${name} needs a human: ${outcome.reason}`, async () => {
+          if (condition === undefined) return { held: true };
+          const shown = evaluateCheckpoint(condition, await gatherFacts(capability, stepId, await gateway.observe(), [condition]));
+          return shown.holds ? { held: false, expected: `${move.outcomeId} to be dismissed`, observed: shown.observed } : { held: true };
+        });
+      }
+      case 'error':
+        return failed(stepId, 'driver_error', `click on ${name} to complete`, outcome.message);
+      case 'done':
+      case 'timeout':
+        return undefined;
+      default: {
+        const unhandled: never = outcome;
+        return unhandled;
+      }
     }
-    if (outcome.status === 'error') return failed(stepId, 'driver_error', `click on ${name} to complete`, outcome.message);
-    return undefined;
   }
 
   async function runSteps(capability: Capability, reauthUsed: boolean): Promise<Pass> {
@@ -497,7 +520,9 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
       case 'allow':
         return undefined;
       case 'deny':
-        return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed by policy`, denialOf(decision));
+        return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed by policy`, decision.reason);
+      case 'landed_outside_policy':
+        return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed by policy`, describeLanding(decision));
       case 'requires_human':
         return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed for automation`, `needs a human: ${decision.reason}`);
       default: {

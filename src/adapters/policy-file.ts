@@ -1,4 +1,4 @@
-import { VERBS, type Verb } from '../models/action';
+import { SURFACE_ACTION_KINDS, type SurfaceActionKind } from '../models/action';
 import type { Policy } from '../models/policy';
 import { PolicyFileInSchema } from '../wire/in/policy-file';
 
@@ -6,8 +6,8 @@ export type PolicyFileResult = { ok: true; policy: Policy } | { ok: false; issue
 
 const ROUTE = /^\/[^*]*\*?$/;
 
-function isVerb(value: string): value is Verb {
-  return (VERBS as readonly string[]).includes(value);
+function isVerb(value: string): value is SurfaceActionKind {
+  return (SURFACE_ACTION_KINDS as readonly string[]).includes(value);
 }
 
 function isOrigin(value: string): boolean {

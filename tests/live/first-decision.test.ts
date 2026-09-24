@@ -67,7 +67,7 @@ describe.skipIf(process.env.RUN_LIVE_MODEL !== '1')('first real decision on Memb
     const shell = await surface.observe();
     const lookup = shell.nodes.find((node) => node.role === 'link' && node.name === 'Member Lookup');
     if (lookup?.ref === undefined) throw new Error('Member Lookup link not found on the shell');
-    await surface.perform({ verb: 'click', target: lookup.ref, argument: null, rationale: 'test setup' });
+    await surface.perform({ kind: 'click', ref: lookup.ref });
     await expect.poll(async () => contentTextboxes(await surface.observe()).length).toBeGreaterThan(0);
 
     const observation = await surface.observe();
@@ -81,8 +81,6 @@ describe.skipIf(process.env.RUN_LIVE_MODEL !== '1')('first real decision on Memb
       `[live-decision] ${JSON.stringify({ reasoner: reasoner.adapter, model: reasoner.model, latencyMs, decision })}`,
     );
 
-    expect(decision.verb).toBe('fill');
-    expect(decision.target).toBe(textboxes[0]?.ref);
-    expect(decision.argument).toBe('10001');
+    expect(decision).toMatchObject({ kind: 'act', action: { kind: 'fill', ref: textboxes[0]?.ref, value: '10001' } });
   }, 180_000);
 });

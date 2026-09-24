@@ -1,20 +1,19 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createFixtureSessionProvider } from '../../../src/diplomat/session/fixture-login';
-import { SurfaceError } from '../../../src/diplomat/surface/errors';
 import { createPlaywrightDriver } from '../../../src/diplomat/surface/playwright-driver';
 import type { SurfaceDriver } from '../../../src/diplomat/surface/port';
-import type { Action } from '../../../src/models/action';
+import type { SurfaceAction } from '../../../src/models/action';
 import type { Observation, ObservationNode } from '../../../src/models/observation';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
 
 const PASSWORD = 'training';
 
-function click(target: string): Action {
-  return { verb: 'click', target, argument: null, rationale: 'test' };
+function click(ref: string): SurfaceAction {
+  return { kind: 'click', ref };
 }
 
-function fill(target: string, argument: string): Action {
-  return { verb: 'fill', target, argument, rationale: 'test' };
+function fill(ref: string, value: string): SurfaceAction {
+  return { kind: 'fill', ref, value };
 }
 
 function memberIdBox(observation: Observation): ObservationNode | undefined {
@@ -76,14 +75,6 @@ describe('Playwright surface driver against the fixture', { timeout: 30_000 }, (
     await surface().perform(fill(textbox?.ref ?? '', '10001'));
     const filled = await surface().observe();
     expect(memberIdBox(filled)?.value).toBe('10001');
-  });
-
-  it('rejects verbs that are not page actions without touching the page', async () => {
-    await surface().observe();
-
-    await expect(surface().perform({ verb: 'finish', target: null, argument: null, rationale: 'test' })).rejects.toBeInstanceOf(
-      SurfaceError,
-    );
   });
 
   it('refuses to observe before open', async () => {

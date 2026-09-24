@@ -50,7 +50,7 @@
   and closes popups
 - After an action, every URL it loaded and every frame must still be inside the
   allowlist, and no frame it moved may be on a risky route; otherwise the result is
-  `denied` (`landed_outside_allowlist` / `landed_on_risky_route`), a hard stop in
+  `landed_outside_policy` (`landed_outside_allowlist` / `landed_on_risky_route`), a hard stop in
   both modes. Replay's one exception is the sign-in page, handled as an expired
   session (ADR-013)
 - The target URL is checked before signing in, so credentials are never sent for a

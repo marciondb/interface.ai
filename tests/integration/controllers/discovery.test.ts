@@ -122,7 +122,7 @@ describe('discovery controller against the fixture', { timeout: 60_000 }, () => 
   });
 
   it('rejects a ref that is not on the screen without touching the surface, and says so', async () => {
-    const reasoner = createScriptedReasoner([() => ({ verb: 'click', target: 'e999', argument: null, rationale: 'stale' })]);
+    const reasoner = createScriptedReasoner([() => ({ kind: 'act', action: { kind: 'click', ref: 'e999' }, rationale: 'stale' })]);
 
     const run = await discover(reasoner);
 
@@ -192,7 +192,7 @@ describe('discovery controller against the fixture', { timeout: 60_000 }, () => 
 
     expect(expectStatus(run.result, 'escalated')).toMatchObject({ reason: 'no_operator_surface', stepId: 'step-5' });
     expect(run.escalations).toMatchObject([{ reason: 'risky_action', stepId: 'step-5' }]);
-    expect(run.driverCalls.map((action) => action.verb)).toEqual(['click', 'fill', 'click', 'click']);
+    expect(run.driverCalls.map((action) => action.kind)).toEqual(['click', 'fill', 'click', 'click']);
   });
 
   it('keeps going after finish while an output is still unread', async () => {

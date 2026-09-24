@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { synthesizeArtifact, type Synthesis } from '../../../src/logic/artifact-synthesis';
-import type { AgentDecision } from '../../../src/models/action';
+import type { SurfaceActionKind } from '../../../src/models/action';
 import type { Capability, Provenance } from '../../../src/models/capability';
 import type { CapabilityRequest } from '../../../src/models/capability-request';
 import type { AgentTraceStep, HumanTraceStep, TraceStep } from '../../../src/models/discovery';
@@ -8,6 +8,7 @@ import type { ElementDescriptor } from '../../../src/models/element-descriptor';
 import type { HumanAction } from '../../../src/models/intervention';
 import type { Observation, ObservationNode } from '../../../src/models/observation';
 import type { OutcomeCatalog } from '../../../src/models/outcome-catalog';
+import { surfaceDecision } from '../../support/decisions';
 
 // The write flow as discovery records it: the model fills the form up to the review, the
 // gateway blocks its Confirm, and a human clicks it and accepts the page's confirm().
@@ -105,7 +106,7 @@ const OPENED = screen([
 
 function agent(
   stepId: string,
-  decision: [AgentDecision['verb'], ObservationNode, string?],
+  decision: [SurfaceActionKind, ObservationNode, string?],
   descriptor: ElementDescriptor,
   observation: Observation,
   observationAfter: Observation,
@@ -113,8 +114,9 @@ function agent(
 ): AgentTraceStep {
   const [verb, node, argument] = decision;
   return {
+    actor: 'agent',
     stepId,
-    decision: { verb, target: node.ref ?? null, argument: argument ?? null, rationale: 'test' },
+    decision: surfaceDecision(verb, node.ref ?? '', argument),
     observation,
     element: { node, descriptor },
     ...(value === undefined ? {} : { value }),

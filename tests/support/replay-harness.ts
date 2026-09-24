@@ -16,7 +16,7 @@ import { createPlaywrightDriver } from '../../src/diplomat/surface/playwright-dr
 import type { SurfaceDriver } from '../../src/diplomat/surface/port';
 import { systemClock } from '../../src/infrastructure/clock';
 import { readJsonFile } from '../../src/infrastructure/json-file';
-import type { Verb } from '../../src/models/action';
+import type { SurfaceActionKind } from '../../src/models/action';
 import type { ExecutionResult } from '../../src/models/execution-result';
 import type { Policy } from '../../src/models/policy';
 import type { ActionPurpose } from '../../src/models/run-event';
@@ -56,7 +56,7 @@ export function armBefore(gateway: ActionGateway, fixture: FixtureHandle, plan: 
 export type DriverCall = {
   readonly stepId: string;
   readonly purpose: ActionPurpose;
-  readonly verb: Verb;
+  readonly verb: SurfaceActionKind;
 };
 
 export type HarnessRun = {
@@ -116,7 +116,7 @@ export async function runReplay(
   const spiedDriver: SurfaceDriver = {
     ...driver,
     perform(action, performOptions) {
-      driverCalls.push({ ...current, verb: action.verb });
+      driverCalls.push({ ...current, verb: action.kind });
       return driver.perform(action, performOptions);
     },
   };

@@ -14,6 +14,7 @@ const input: ReasonerInput = {
 };
 
 const decision = { verb: 'click', target: 'e5', argument: null, rationale: 'submit the form' };
+const parsed = { kind: 'act', action: { kind: 'click', ref: 'e5' }, rationale: 'submit the form' };
 
 function answer(content: string | null): Response {
   return jsonResponse({ choices: [{ index: 0, message: { role: 'assistant', content } }] });
@@ -35,7 +36,7 @@ describe('createOpenAiCompatibleReasoner', () => {
   it('calls /chat/completions with a bearer key and the strict step schema', async () => {
     const { reasoner: hosted, calls } = reasoner([answer(JSON.stringify(decision))]);
 
-    await expect(hosted.propose(input)).resolves.toEqual(decision);
+    await expect(hosted.propose(input)).resolves.toEqual(parsed);
     expect(hosted).toMatchObject({ adapter: 'openai-compatible', model: 'gpt-test' });
     expect(calls[0]?.url).toBe('https://llm.test/v1/chat/completions');
     expect(calls[0]?.headers.authorization).toBe(`Bearer ${API_KEY}`);
@@ -52,7 +53,7 @@ describe('createOpenAiCompatibleReasoner', () => {
   it('treats a refusal as invalid output and asks again', async () => {
     const { reasoner: hosted, calls } = reasoner([answer(null), answer(JSON.stringify(decision))]);
 
-    await expect(hosted.propose(input)).resolves.toEqual(decision);
+    await expect(hosted.propose(input)).resolves.toEqual(parsed);
     expect(calls).toHaveLength(2);
     expect(JSON.stringify(calls[1]?.body)).toContain('Previous answer rejected: the answer was empty');
   });

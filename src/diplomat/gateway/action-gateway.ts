@@ -1,11 +1,9 @@
 import { evaluateLanding, evaluatePolicy, urlViolation } from '../../logic/policy';
-import type { Action } from '../../models/action';
+import type { SurfaceAction } from '../../models/action';
 import type { ControlOwner } from '../../models/control';
 import type { Policy, PolicyDecision } from '../../models/policy';
 import type { SurfaceDriver } from '../surface/port';
-import type { ActionGateway, GatewayOutcome } from './port';
-
-const CONTROL_OWNED_BY_HUMAN = 'control_owned_by_human';
+import { CONTROL_OWNED_BY_HUMAN, type ActionGateway, type GatewayOutcome } from './port';
 
 export type ActionGatewayOptions = {
   readonly driver: SurfaceDriver;
@@ -21,11 +19,11 @@ export function createActionGateway({ driver, policy, controlOwner }: ActionGate
 
   function checkOpen(url: string): PolicyDecision {
     if (controlOwner() !== 'automation') return { decision: 'deny', reason: CONTROL_OWNED_BY_HUMAN };
-    return evaluatePolicy({ action: { verb: 'navigate', target: null, argument: url, rationale: 'open the target' }, currentUrl: url }, policy);
+    return evaluatePolicy({ action: { kind: 'navigate', url }, currentUrl: url }, policy);
   }
 
-  async function check(action: Action): Promise<PolicyDecision> {
-    const element = action.target === null ? undefined : await driver.describe(action.target);
+  async function check(action: SurfaceAction): Promise<PolicyDecision> {
+    const element = action.kind === 'navigate' ? undefined : await driver.describe(action.ref);
     return evaluatePolicy({ action, element, currentUrl: driver.currentUrl() }, policy);
   }
 
@@ -37,7 +35,7 @@ export function createActionGateway({ driver, policy, controlOwner }: ActionGate
       if (decision.decision !== 'allow') return decision;
       await driver.open(url, session);
       const landing = evaluateLanding({ loaded: [], frames: driver.frameUrls(), before: [] }, policy);
-      return landing === undefined ? decision : { decision: 'deny', ...landing };
+      return landing === undefined ? decision : { decision: 'landed_outside_policy', ...landing };
     },
 
     observe: () => driver.observe(),
@@ -50,7 +48,7 @@ export function createActionGateway({ driver, policy, controlOwner }: ActionGate
 
     async perform({ action, timeoutMs }): Promise<GatewayOutcome> {
       // Reading changes nothing, so a checkpoint can still be verified while a human holds control.
-      if (action.verb !== 'read' && controlOwner() !== 'automation') return { status: 'denied', reason: CONTROL_OWNED_BY_HUMAN };
+      if (action.kind !== 'read' && controlOwner() !== 'automation') return { status: 'denied', reason: CONTROL_OWNED_BY_HUMAN };
       const decision = await check(action);
       switch (decision.decision) {
         case 'allow':
@@ -64,12 +62,12 @@ export function createActionGateway({ driver, policy, controlOwner }: ActionGate
           return unhandled;
         }
       }
-      if (action.verb === 'read') return driver.perform(action, { timeoutMs });
+      if (action.kind === 'read') return driver.perform(action, { timeoutMs });
       const before = driver.frameUrls();
       const outcome = await driver.perform(action, { timeoutMs });
       const loaded = outcome.status === 'done' ? outcome.navigations.map((navigation) => navigation.url) : [];
       const landing = evaluateLanding({ loaded, frames: driver.frameUrls(), before }, policy);
-      return landing === undefined ? outcome : { status: 'denied', ...landing };
+      return landing === undefined ? outcome : { status: 'landed_outside_policy', ...landing };
     },
 
     screenshot: () => driver.screenshot(),

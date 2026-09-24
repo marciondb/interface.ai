@@ -48,7 +48,7 @@ interface Reasoner {
     goal: string
     observation: Observation      // redacted, with observation-scoped element refs
     validRefs: string[]           // refs present in this observation
-    feedback?: StepFeedback       // why the previous action did not advance the run
+    feedback?: string             // why the previous action did not advance the run
   }): Promise<AgentDecision>      // validated, or throws — never best-effort
 }
 ```
@@ -67,15 +67,29 @@ receives an observation that is already redacted.
    observation right after `observe()` and before `propose`, so the model and
    the trace see the same redacted observation (RFC-006).
 2. **Decide** — the controller calls the reasoner, which builds this step's JSON
-   Schema from the domain `Action` schema with `target` narrowed to `validRefs`.
-   The answer is one action:
+   Schema from the flat `ModelStep` schema with `target` narrowed to `validRefs`.
+   The answer is one flat object:
 
    ```json
    { "verb": "fill", "target": "e12", "argument": "10001", "rationale": "Member ID field on the lookup form" }
    ```
 
    Verbs: `click`, `fill`, `select`, `press`, `navigate`, `read`, `finish`,
-   `request_help`.
+   `request_help`. `navigate`, `finish` and `request_help` take no target; every
+   other verb requires one. The adapter checks these rules and turns the answer
+   into an `AgentDecision`:
+
+   ```ts
+   type AgentDecision =
+     | { kind: 'act'; action: PageAction; rationale: string }          // click, fill, select, press, navigate
+     | { kind: 'read'; action: { kind: 'read'; ref: Ref }; output: string; rationale: string }
+     | { kind: 'finish'; summary: string | null; rationale: string }
+     | { kind: 'request_help'; message: string; rationale: string }
+   ```
+
+   The surface only ever receives the `SurfaceAction` (`click{ref}`,
+   `fill{ref,value}`, `select{ref,option}`, `press{ref,key}`, `navigate{url}`,
+   `read{ref}`).
 3. **Ground** — the controller re-checks that the ref belongs to the current
    observation. A mismatch is rejected without touching the surface.
 4. **Gate** — the action gateway evaluates policy (ADR-011). A `requires_human`

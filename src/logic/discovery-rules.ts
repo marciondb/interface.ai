@@ -1,7 +1,26 @@
-import type { AgentDecision } from '../models/action';
+import type { AgentDecision, ModelStep, SurfaceDecision } from '../models/action';
 import type { CapabilityRequest } from '../models/capability-request';
 import type { DiscoveryLimits } from '../models/discovery';
 import type { Observation, ObservationNode } from '../models/observation';
+import { actionArgument, actionRef } from './step-action';
+
+// The decision as the model's flat answer, as the evidence records it.
+export function decisionFields(decision: AgentDecision): Omit<ModelStep, 'rationale'> {
+  switch (decision.kind) {
+    case 'act':
+      return { verb: decision.action.kind, target: actionRef(decision.action) ?? null, argument: actionArgument(decision.action) ?? null };
+    case 'read':
+      return { verb: 'read', target: decision.action.ref, argument: decision.output };
+    case 'finish':
+      return { verb: 'finish', target: null, argument: decision.summary };
+    case 'request_help':
+      return { verb: 'request_help', target: null, argument: decision.message };
+    default: {
+      const unhandled: never = decision;
+      return unhandled;
+    }
+  }
+}
 
 // What the page shows, without refs or ids: equal fingerprints mean an action changed nothing.
 export function fingerprint(observation: Observation): string {
@@ -25,21 +44,22 @@ export function missingOutputs(request: CapabilityRequest, captured: Readonly<Re
 
 // Why the previous answer did not advance the run.
 export type Setback =
-  | { readonly kind: 'no_progress'; readonly decision: AgentDecision; readonly node?: ObservationNode }
-  | { readonly kind: 'unknown_ref'; readonly decision: AgentDecision }
-  | { readonly kind: 'denied'; readonly decision: AgentDecision; readonly node?: ObservationNode; readonly reason: string }
-  | { readonly kind: 'action_failed'; readonly decision: AgentDecision; readonly node?: ObservationNode; readonly detail: string }
-  | { readonly kind: 'unknown_output'; readonly decision: AgentDecision; readonly outputs: readonly string[] }
+  | { readonly kind: 'no_progress'; readonly decision: SurfaceDecision; readonly node?: ObservationNode }
+  | { readonly kind: 'unknown_ref'; readonly decision: SurfaceDecision }
+  | { readonly kind: 'denied'; readonly decision: SurfaceDecision; readonly node?: ObservationNode; readonly reason: string }
+  | { readonly kind: 'action_failed'; readonly decision: SurfaceDecision; readonly node?: ObservationNode; readonly detail: string }
+  | { readonly kind: 'unknown_output'; readonly decision: Extract<AgentDecision, { readonly kind: 'read' }>; readonly outputs: readonly string[] }
   | { readonly kind: 'goal_not_met'; readonly missing: readonly string[] }
   | { readonly kind: 'no_elements' }
   // A human took over and handed back the page as it was (RFC-003).
   | { readonly kind: 'human_declined' };
 
 // Refs change with every observation, so the element is named by what it shows.
-function describeAction(decision: AgentDecision, node: ObservationNode | undefined): string {
-  if (node === undefined) return decision.target === null ? decision.verb : `${decision.verb} on ${decision.target}`;
+function describeAction({ action }: SurfaceDecision, node: ObservationNode | undefined): string {
+  const ref = actionRef(action);
+  if (node === undefined) return ref === undefined ? action.kind : `${action.kind} on ${ref}`;
   const text = node.name !== '' ? node.name : (node.label ?? '');
-  return `${decision.verb} on ${node.role}${text === '' ? '' : ` ${JSON.stringify(text)}`}`;
+  return `${action.kind} on ${node.role}${text === '' ? '' : ` ${JSON.stringify(text)}`}`;
 }
 
 // One line for the next reasoner call.
@@ -48,13 +68,13 @@ export function feedbackFor(setback: Setback): string {
     case 'no_progress':
       return `your previous ${describeAction(setback.decision, setback.node)} changed nothing`;
     case 'unknown_ref':
-      return `${setback.decision.target ?? 'the target'} is not on the current screen`;
+      return `${actionRef(setback.decision.action) ?? 'the target'} is not on the current screen`;
     case 'denied':
       return `your previous ${describeAction(setback.decision, setback.node)} was denied: ${setback.reason}`;
     case 'action_failed':
       return `your previous ${describeAction(setback.decision, setback.node)} failed: ${setback.detail}`;
     case 'unknown_output':
-      return `${JSON.stringify(setback.decision.argument)} is not an output of the goal; read into one of: ${setback.outputs.join(', ')}`;
+      return `${JSON.stringify(setback.decision.output)} is not an output of the goal; read into one of: ${setback.outputs.join(', ')}`;
     case 'goal_not_met':
       return `the goal is not complete: not read yet: ${setback.missing.join(', ')}`;
     case 'no_elements':

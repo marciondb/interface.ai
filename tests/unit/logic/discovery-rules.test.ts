@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { feedbackFor, fingerprint, missingOutputs, progressed, stopCheck } from '../../../src/logic/discovery-rules';
-import type { AgentDecision } from '../../../src/models/action';
+import { decisionFields, feedbackFor, fingerprint, missingOutputs, progressed, stopCheck } from '../../../src/logic/discovery-rules';
 import type { CapabilityRequest } from '../../../src/models/capability-request';
 import { DEFAULT_DISCOVERY_LIMITS } from '../../../src/models/discovery';
 import type { Observation } from '../../../src/models/observation';
+import { surfaceDecision } from '../../support/decisions';
 import { loginObservation } from '../../support/observations';
 
-const CLICK: AgentDecision = { verb: 'click', target: 'e5', argument: null, rationale: 'sign on' };
+const CLICK = surfaceDecision('click', 'e5');
 
 function withRefsRenumbered(observation: Observation): Observation {
   return {
@@ -43,6 +43,16 @@ describe('missingOutputs', () => {
   });
 });
 
+describe('decisionFields', () => {
+  it('gives back the flat fields the model answered with', () => {
+    expect(decisionFields(surfaceDecision('fill', 'e2', '10001'))).toEqual({ verb: 'fill', target: 'e2', argument: '10001' });
+    expect(decisionFields(surfaceDecision('navigate', '', 'http://localhost:8080/'))).toEqual({ verb: 'navigate', target: null, argument: 'http://localhost:8080/' });
+    expect(decisionFields(surfaceDecision('read', 'e4', 'balance'))).toEqual({ verb: 'read', target: 'e4', argument: 'balance' });
+    expect(decisionFields({ kind: 'finish', summary: null, rationale: 'done' })).toEqual({ verb: 'finish', target: null, argument: null });
+    expect(decisionFields({ kind: 'request_help', message: 'stuck', rationale: 'r' })).toEqual({ verb: 'request_help', target: null, argument: 'stuck' });
+  });
+});
+
 describe('feedbackFor', () => {
   const node = loginObservation().nodes[5];
 
@@ -54,8 +64,8 @@ describe('feedbackFor', () => {
   });
 
   it('explains rejected refs, unknown outputs and an unmet goal', () => {
-    expect(feedbackFor({ kind: 'unknown_ref', decision: { ...CLICK, target: 'e99' } })).toBe('e99 is not on the current screen');
-    expect(feedbackFor({ kind: 'unknown_output', decision: { verb: 'read', target: 'e1', argument: 'total', rationale: 'r' }, outputs: ['balance'] })).toBe(
+    expect(feedbackFor({ kind: 'unknown_ref', decision: surfaceDecision('click', 'e99') })).toBe('e99 is not on the current screen');
+    expect(feedbackFor({ kind: 'unknown_output', decision: { kind: 'read', action: { kind: 'read', ref: 'e1' }, output: 'total', rationale: 'r' }, outputs: ['balance'] })).toBe(
       '"total" is not an output of the goal; read into one of: balance',
     );
     expect(feedbackFor({ kind: 'goal_not_met', missing: ['balance'] })).toBe('the goal is not complete: not read yet: balance');

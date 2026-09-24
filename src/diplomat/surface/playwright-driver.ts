@@ -1,6 +1,6 @@
 import { chromium, errors, type Browser, type BrowserContext, type Dialog as PageDialog, type Frame, type Locator, type Page, type Request } from 'playwright';
 import { toObservation } from '../../adapters/aria-snapshot';
-import type { Action } from '../../models/action';
+import type { PageAction } from '../../models/action';
 import type { ElementDescriptor } from '../../models/element-descriptor';
 import { HumanActionSchema, type DialogDecision } from '../../models/intervention';
 import type { Dialog } from '../../models/observation';
@@ -319,39 +319,34 @@ export function createPlaywrightDriver(options: PlaywrightDriverOptions = {}): P
   }
 
   // Only checks the ref is known; that it belongs to the current observation is the controller's Ground step.
-  function locate(page: Page, ref: string | null): Locator {
-    const raw = ref === null ? undefined : refTargets.get(ref);
+  function locate(page: Page, ref: string): Locator {
+    const raw = refTargets.get(ref);
     if (raw !== undefined) return page.locator(`aria-ref=${raw}`);
-    const resolved = ref === null ? undefined : resolvedTargets.get(ref);
+    const resolved = resolvedTargets.get(ref);
     if (resolved !== undefined) return resolved;
-    throw new SurfaceError('unknown_ref', `${ref ?? 'no target'} is not in the latest observation`);
+    throw new SurfaceError('unknown_ref', `${ref} is not in the latest observation`);
   }
 
-  async function act(page: Page, action: Action, timeout: number): Promise<void> {
-    switch (action.verb) {
+  async function act(page: Page, action: PageAction, timeout: number): Promise<void> {
+    switch (action.kind) {
       case 'click':
-        await locate(page, action.target).click({ timeout });
+        await locate(page, action.ref).click({ timeout });
         return;
       case 'fill':
-        await locate(page, action.target).fill(argumentOf(action), { timeout });
+        await locate(page, action.ref).fill(action.value, { timeout });
         return;
       case 'select':
-        await locate(page, action.target).selectOption({ label: argumentOf(action) }, { timeout });
+        await locate(page, action.ref).selectOption({ label: action.option }, { timeout });
         return;
       case 'press':
-        if (action.target === null) await page.keyboard.press(argumentOf(action));
-        else await locate(page, action.target).press(argumentOf(action), { timeout });
+        await locate(page, action.ref).press(action.key, { timeout });
         return;
       case 'navigate':
-        await page.goto(argumentOf(action), { timeout, waitUntil: 'commit' });
+        await page.goto(action.url, { timeout, waitUntil: 'commit' });
         return;
-      case 'read':
-      case 'finish':
-      case 'request_help':
-        throw new SurfaceError('unsupported_action', `${action.verb} is not a page action`);
       default: {
-        const unhandled: never = action.verb;
-        throw new SurfaceError('unsupported_action', String(unhandled));
+        const unhandled: never = action;
+        return unhandled;
       }
     }
   }
@@ -416,18 +411,15 @@ export function createPlaywrightDriver(options: PlaywrightDriverOptions = {}): P
       const { page } = current();
       const timeout = performOptions?.timeoutMs ?? ACTION_TIMEOUT_MS;
       const deadline = Date.now() + timeout;
-      if (action.verb === 'read') {
-        const locator = locate(page, action.target);
+      if (action.kind === 'read') {
+        const locator = locate(page, action.ref);
         try {
           return { status: 'done', value: await readValue(locator, timeout), navigations: [] };
         } catch (error) {
           return failure(error);
         }
       }
-      if (action.verb === 'finish' || action.verb === 'request_help') {
-        throw new SurfaceError('unsupported_action', `${action.verb} is not a page action`);
-      }
-      if (action.target !== null) locate(page, action.target);
+      if (action.kind !== 'navigate') locate(page, action.ref);
 
       const tracker = trackNavigations(page);
       try {
@@ -502,9 +494,4 @@ export function createPlaywrightDriver(options: PlaywrightDriverOptions = {}): P
       await closing?.browser.close();
     },
   };
-}
-
-function argumentOf(action: Action): string {
-  if (action.argument === null) throw new SurfaceError('unsupported_action', `${action.verb} needs an argument`);
-  return action.argument;
 }

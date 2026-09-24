@@ -3,7 +3,6 @@ import { createOllamaReasoner } from '../../src/diplomat/reasoner/ollama';
 import { createOpenAiCompatibleReasoner } from '../../src/diplomat/reasoner/openai-compatible';
 import type { Reasoner, ReasonerInput } from '../../src/diplomat/reasoner/port';
 import { loadConfig } from '../../src/infrastructure/config';
-import { ActionSchema } from '../../src/models/action';
 import { ObservationSchema } from '../../src/models/observation';
 
 const config = loadConfig();
@@ -26,9 +25,10 @@ const input: ReasonerInput = {
 
 async function proposeOnce(reasoner: Reasoner) {
   const started = performance.now();
-  const decision = ActionSchema.parse(await reasoner.propose(input));
+  const decision = await reasoner.propose(input);
   console.info(`${reasoner.adapter} ${reasoner.model}: ${String(Math.round(performance.now() - started))} ms ->`, decision);
-  expect(input.validRefs).toContain(decision.target);
+  expect(decision.kind === 'act' || decision.kind === 'read').toBe(true);
+  if (decision.kind === 'act' && decision.action.kind !== 'navigate') expect(input.validRefs).toContain(decision.action.ref);
 }
 
 describe('live reasoner', () => {

@@ -1,4 +1,4 @@
-import type { Action } from '../../models/action';
+import type { SurfaceAction } from '../../models/action';
 import type { TargetSpec } from '../../models/capability';
 import type { ElementDescriptor } from '../../models/element-descriptor';
 import type { Observation } from '../../models/observation';
@@ -10,21 +10,25 @@ import type { SessionCookie } from '../session/port';
 export type GatewayRequest = {
   readonly stepId: string;
   readonly purpose: ActionPurpose;
-  readonly action: Action;
+  readonly action: SurfaceAction;
   readonly timeoutMs: number;
 };
 
-// `denied` with only a reason and `requires_human` mean the driver was not called. `denied` is
-// outside the allowlist, or reason 'control_owned_by_human' while a human holds the live session
-// (ADR-012); `requires_human` is a risky action only a human may perform (RFC-005).
-// `denied` with `landedAt` means the driver acted and the page ended up outside the policy: a hard stop.
+// The denial reason while a human holds the live session (ADR-012).
+export const CONTROL_OWNED_BY_HUMAN = 'control_owned_by_human';
+
+// `denied` and `requires_human` mean the driver was not called. `denied` is outside the
+// allowlist, or CONTROL_OWNED_BY_HUMAN; `requires_human` is a risky action only a human may
+// perform (RFC-005). `landed_outside_policy` means the driver acted and the page ended up
+// outside the policy: a hard stop.
 export type GatewayOutcome =
   | PerformOutcome
   | { readonly status: 'denied'; readonly reason: string }
-  | ({ readonly status: 'denied' } & Landing)
-  | { readonly status: 'requires_human'; readonly reason: string };
+  | { readonly status: 'requires_human'; readonly reason: string }
+  | ({ readonly status: 'landed_outside_policy' } & Landing);
 
-export type OpenDecision = PolicyDecision | ({ readonly decision: 'deny' } & Landing);
+// `landed_outside_policy`: the target loaded, but the page or a frame ended up outside the policy.
+export type OpenDecision = PolicyDecision | ({ readonly decision: 'landed_outside_policy' } & Landing);
 
 // The only way controllers reach the surface (ADR-011): every action is checked against
 // the policy before the driver is called, and where it landed after. Observing and resolving
@@ -40,7 +44,7 @@ export type ActionGateway = {
   // Describes an element of the latest observation without acting on it (discovery).
   inspect(ref: string): Promise<ElementDescriptor>;
   // The policy decision for action, without acting.
-  check(action: Action): Promise<PolicyDecision>;
+  check(action: SurfaceAction): Promise<PolicyDecision>;
   perform(request: GatewayRequest): Promise<GatewayOutcome>;
   screenshot(): Promise<Uint8Array>;
 };

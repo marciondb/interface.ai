@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { evaluateLanding, evaluatePolicy, urlViolation } from '../../../src/logic/policy';
-import type { Action } from '../../../src/models/action';
+import type { SurfaceAction } from '../../../src/models/action';
 import type { Policy } from '../../../src/models/policy';
 import type { ElementInfo } from '../../../src/models/resolution';
 
@@ -15,12 +15,12 @@ const POLICY: Policy = {
 const SHELL = 'http://localhost:8080/';
 const DETAIL_FRAME = 'http://localhost:8080/member/detail?memberId=10001';
 
-function click(): Action {
-  return { verb: 'click', target: 'e1', argument: null, rationale: 'test' };
+function click(): SurfaceAction {
+  return { kind: 'click', ref: 'e1' };
 }
 
-function navigate(url: string): Action {
-  return { verb: 'navigate', target: null, argument: url, rationale: 'test' };
+function navigate(url: string): SurfaceAction {
+  return { kind: 'navigate', url };
 }
 
 function linkTo(destination: string, frameUrl = 'http://localhost:8080/member/search') {
@@ -39,14 +39,14 @@ describe('evaluatePolicy', () => {
   });
 
   it('allows filling the member id on the search screen', () => {
-    const fill: Action = { verb: 'fill', target: 'e1', argument: '10001', rationale: 'test' };
+    const fill: SurfaceAction = { kind: 'fill', ref: 'e1', value: '10001' };
     const element = { role: 'textbox', name: '', frameUrl: 'http://localhost:8080/member/search' };
 
     expect(evaluatePolicy({ action: fill, element, currentUrl: SHELL }, POLICY)).toEqual({ decision: 'allow' });
   });
 
   it('denies an action type outside the allowlist', () => {
-    const press: Action = { verb: 'press', target: null, argument: 'Enter', rationale: 'test' };
+    const press: SurfaceAction = { kind: 'press', ref: 'e1', key: 'Enter' };
 
     expect(evaluatePolicy({ action: press, currentUrl: SHELL }, POLICY)).toEqual({ decision: 'deny', reason: 'action press is not allowed' });
   });
@@ -122,7 +122,7 @@ describe('evaluatePolicy', () => {
   });
 
   it('allows reading a risky control, since reading never changes the page', () => {
-    const read: Action = { verb: 'read', target: 'e1', argument: 'label', rationale: 'test' };
+    const read: SurfaceAction = { kind: 'read', ref: 'e1' };
 
     expect(evaluatePolicy({ action: read, element: button('Close Account'), currentUrl: SHELL }, POLICY)).toEqual({ decision: 'allow' });
   });
@@ -151,15 +151,14 @@ describe('evaluatePolicy', () => {
     expect(evaluatePolicy({ action: click(), element: titled, currentUrl: SHELL }, POLICY)).toMatchObject({ decision: 'requires_human' });
   });
 
-  it('denies a key press without a target and checks a press on a control like a click', () => {
+  it('checks a key press on a control like a click', () => {
     const withPress: Policy = { ...POLICY, allowedActions: [...POLICY.allowedActions, 'press'] };
-    const pressOn = (target: string | null): Action => ({ verb: 'press', target, argument: 'Enter', rationale: 'test' });
+    const press: SurfaceAction = { kind: 'press', ref: 'e1', key: 'Enter' };
 
-    expect(evaluatePolicy({ action: pressOn(null), currentUrl: SHELL }, withPress)).toEqual({ decision: 'deny', reason: 'press requires a target' });
-    expect(evaluatePolicy({ action: pressOn('e1'), element: button('Confirm'), currentUrl: SHELL }, withPress)).toMatchObject({
+    expect(evaluatePolicy({ action: press, element: button('Confirm'), currentUrl: SHELL }, withPress)).toMatchObject({
       decision: 'requires_human',
     });
-    expect(evaluatePolicy({ action: pressOn('e1'), element: button('Go', 'http://localhost:8080/member/danger/close'), currentUrl: SHELL }, withPress)).toMatchObject({
+    expect(evaluatePolicy({ action: press, element: button('Go', 'http://localhost:8080/member/danger/close'), currentUrl: SHELL }, withPress)).toMatchObject({
       decision: 'requires_human',
     });
   });

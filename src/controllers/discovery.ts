@@ -6,11 +6,13 @@ import type { ArtifactStore } from '../diplomat/store/port';
 import type { Clock } from '../infrastructure/clock';
 import { synthesizeArtifact } from '../logic/artifact-synthesis';
 import { renderGoal } from '../logic/capability-request';
-import { feedbackFor, missingOutputs, progressed, stopCheck, type Setback } from '../logic/discovery-rules';
+import { decisionFields, feedbackFor, missingOutputs, progressed, stopCheck, type Setback } from '../logic/discovery-rules';
 import { findNode, observationRefs } from '../logic/grounding';
 import { matchHumanTarget } from '../logic/human-trace';
+import { describeLanding } from '../logic/policy';
 import { redactDeep, redactObservation, type RedactionRules, type SensitiveValue } from '../logic/redaction';
-import type { AgentDecision } from '../models/action';
+import { actionArgument, actionRef } from '../logic/step-action';
+import type { AgentDecision, SurfaceAction } from '../models/action';
 import type { CapabilityRequest } from '../models/capability-request';
 import {
   DEFAULT_DISCOVERY_LIMITS,
@@ -102,17 +104,15 @@ function failed(reason: DiscoveryFailureReason, message: string): Ending {
   return { status: 'failed', reason, message };
 }
 
-function denialOf(denied: { readonly reason: string; readonly landedAt?: string }): string {
-  return denied.landedAt === undefined ? denied.reason : `${denied.reason} at ${denied.landedAt}`;
-}
-
 // Why opening targetUrl is refused, or undefined when it is allowed.
 function openRefused(targetUrl: string, decision: OpenDecision): Ending | undefined {
   switch (decision.decision) {
     case 'allow':
       return undefined;
     case 'deny':
-      return failed('policy_denied', `opening ${targetUrl}: ${denialOf(decision)}`);
+      return failed('policy_denied', `opening ${targetUrl}: ${decision.reason}`);
+    case 'landed_outside_policy':
+      return failed('policy_denied', `opening ${targetUrl}: ${describeLanding(decision)}`);
     case 'requires_human':
       return failed('policy_denied', `opening ${targetUrl} needs a human: ${decision.reason}`);
     default: {
@@ -241,19 +241,35 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
     return undefined;
   }
 
-  async function recordAction(stepId: string, decision: AgentDecision, target: string | undefined, outcome: GatewayOutcome): Promise<void> {
-    if (outcome.status === 'denied' || outcome.status === 'requires_human') {
-      const verdict = outcome.status === 'denied' ? 'deny' : 'requires_human';
-      await evidence.event({ type: 'policy', stepId, purpose: 'step', verb: decision.verb, decision: verdict, reason: denialOf(outcome) });
-      return;
+  // `output` is the name a read captures into, recorded as its argument.
+  async function recordAction(stepId: string, action: SurfaceAction, target: string | undefined, output: string | undefined, outcome: GatewayOutcome): Promise<void> {
+    const policy = { type: 'policy', stepId, purpose: 'step', verb: action.kind } as const;
+    switch (outcome.status) {
+      case 'denied':
+        await evidence.event({ ...policy, decision: 'deny', reason: outcome.reason });
+        return;
+      case 'landed_outside_policy':
+        await evidence.event({ ...policy, decision: 'deny', reason: describeLanding(outcome) });
+        return;
+      case 'requires_human':
+        await evidence.event({ ...policy, decision: 'requires_human', reason: outcome.reason });
+        return;
+      case 'done':
+      case 'timeout':
+      case 'error':
+        break;
+      default: {
+        const unhandled: never = outcome;
+        return unhandled;
+      }
     }
-    await evidence.event({ type: 'policy', stepId, purpose: 'step', verb: decision.verb, decision: 'allow' });
-    const argument = decision.argument ?? undefined;
+    await evidence.event({ ...policy, decision: 'allow' });
+    const argument = output ?? actionArgument(action);
     await evidence.event({
       type: 'action',
       stepId,
       purpose: 'step',
-      verb: decision.verb,
+      verb: action.kind,
       ...(target === undefined ? {} : { target }),
       ...(argument === undefined ? {} : { argument }),
       outcome: outcome.status,
@@ -306,45 +322,47 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
       if (errorName(error) !== 'ReasonerError') throw error;
       return failed('reasoner_exhausted', errorMessage(error));
     }
-    const { verb, target, argument, rationale } = decision;
-    await evidence.event({ type: 'decision', stepId, verb, target, argument, rationale, latencyMs: clock.now() - asked, reasoner: info });
+    await evidence.event({ type: 'decision', stepId, ...decisionFields(decision), rationale: decision.rationale, latencyMs: clock.now() - asked, reasoner: info });
 
-    if (verb === 'request_help') return escalate(stepId, 'help_requested', argument ?? 'the model asked for help');
-    if (verb === 'finish') {
+    if (decision.kind === 'request_help') return escalate(stepId, 'help_requested', decision.message);
+    if (decision.kind === 'finish') {
       const missing = missingOutputs(request, captured);
       if (missing.length === 0) return publish();
       await setback(stepId, { kind: 'goal_not_met', missing });
       return undefined;
     }
 
-    const node = target === null ? undefined : findNode(observation, target);
-    if (target !== null && node === undefined) {
-      await evidence.event({ type: 'grounding_rejected', stepId, target });
+    const { action } = decision;
+    const verb = action.kind;
+    const ref = actionRef(action);
+    const node = ref === undefined ? undefined : findNode(observation, ref);
+    if (ref !== undefined && node === undefined) {
+      await evidence.event({ type: 'grounding_rejected', stepId, target: ref });
       await setback(stepId, { kind: 'unknown_ref', decision });
       return undefined;
     }
-    const output = argument ?? '';
-    if (verb === 'read' && !Object.hasOwn(request.outputs, output)) {
+    const output = decision.kind === 'read' ? decision.output : undefined;
+    if (decision.kind === 'read' && !Object.hasOwn(request.outputs, decision.output)) {
       await setback(stepId, { kind: 'unknown_output', decision, outputs: Object.keys(request.outputs) });
       return undefined;
     }
 
     // Described before acting: a click may take the element away.
-    const descriptor = target === null ? undefined : redactDeep(await gateway.inspect(target), rules);
-    const outcome = await gateway.perform({ stepId, purpose: 'step', action: decision, timeoutMs: options.stepTimeoutMs });
-    const value = verb === 'read' && outcome.status === 'done' ? outcome.value : undefined;
+    const descriptor = ref === undefined ? undefined : redactDeep(await gateway.inspect(ref), rules);
+    const outcome = await gateway.perform({ stepId, purpose: 'step', action, timeoutMs: options.stepTimeoutMs });
+    const value = output !== undefined && outcome.status === 'done' ? outcome.value : undefined;
     // Before the action is recorded: the element it names may show the value.
-    if (value !== undefined && request.outputs[output].sensitivity !== 'none') {
-      evidence.protect([{ value, sensitivity: request.outputs[output].sensitivity }]);
-    }
+    const sensitivity = output === undefined ? undefined : request.outputs[output].sensitivity;
+    if (value !== undefined && sensitivity !== undefined && sensitivity !== 'none') evidence.protect([{ value, sensitivity }]);
     const described = node === undefined ? undefined : `${node.role} ${JSON.stringify(node.name === '' ? (node.label ?? '') : node.name)}`;
-    await recordAction(stepId, decision, described, outcome);
+    await recordAction(stepId, action, described, output, outcome);
     switch (outcome.status) {
       case 'denied':
-        // The action already ran and took the page outside the policy: nothing the model sees next is safe to act on.
-        if ('landedAt' in outcome) return failed('policy_denied', `${verb} ${described ?? ''} ${denialOf(outcome)}`);
         await setback(stepId, { kind: 'denied', decision, node, reason: outcome.reason });
         return undefined;
+      case 'landed_outside_policy':
+        // The action already ran and took the page outside the policy: nothing the model sees next is safe to act on.
+        return failed('policy_denied', `${verb} ${described ?? ''} ${describeLanding(outcome)}`);
       case 'requires_human':
         return escalate(stepId, 'risky_action', `${verb} ${described ?? ''} needs a human: ${outcome.reason}`);
       case 'timeout':
@@ -363,13 +381,14 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
 
     const observationAfter = await observe();
     let capturedNewValue = false;
-    if (value !== undefined) {
+    if (output !== undefined && value !== undefined) {
       capturedNewValue = captured[output] !== value;
       captured[output] = value;
       await evidence.event({ type: 'output', stepId, name: output, value });
     }
     const moved = progressed(observation, observationAfter, capturedNewValue);
     trace.push({
+      actor: 'agent',
       stepId,
       decision,
       observation,

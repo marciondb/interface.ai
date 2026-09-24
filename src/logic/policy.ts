@@ -71,11 +71,9 @@ function riskyRoute(url: string, policy: Policy): string | undefined {
 // otherwise require a human if the page, the element's frame, the destination or the control is risky (RFC-006).
 export function evaluatePolicy(request: PolicyRequest, policy: Policy): PolicyDecision {
   const { action, element, currentUrl } = request;
-  if (!policy.allowedActions.includes(action.verb)) return { decision: 'deny', reason: `action ${action.verb} is not allowed` };
-  // A key pressed on no element lands wherever the focus is, so nothing could be checked.
-  if (action.verb === 'press' && action.target === null) return { decision: 'deny', reason: 'press requires a target' };
+  if (!policy.allowedActions.includes(action.kind)) return { decision: 'deny', reason: `action ${action.kind} is not allowed` };
 
-  const destination = action.verb === 'navigate' ? (action.argument ?? undefined) : element?.destination;
+  const destination = action.kind === 'navigate' ? action.url : element?.destination;
   const checks: [string, string | undefined][] = [
     ['current page', currentUrl],
     ['element frame', element?.frameUrl],
@@ -88,7 +86,7 @@ export function evaluatePolicy(request: PolicyRequest, policy: Policy): PolicyDe
   }
 
   // Reading a value never changes the page, so it is safe everywhere.
-  if (action.verb === 'read') return { decision: 'allow' };
+  if (action.kind === 'read') return { decision: 'allow' };
   // The fixture keeps the top page at `/` and shows each screen in a frame: the element's frame is its page.
   for (const [what, url] of checks) {
     if (url === undefined) continue;
@@ -121,4 +119,8 @@ export function evaluateLanding(
     if (!isBlank(url) && riskyRoute(url, policy) !== undefined) return { reason: 'landed_on_risky_route', landedAt: url };
   }
   return undefined;
+}
+
+export function describeLanding(landing: Landing): string {
+  return `${landing.reason} at ${landing.landedAt}`;
 }

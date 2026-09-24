@@ -1,10 +1,201 @@
-# Computer-use automation for legacy back-office apps
+<h1 align="center">Computer-use automation for legacy back-office apps</h1>
 
-A language model drives a legacy web app once to reach a goal (**discovery**); the run
-becomes a typed, versioned capability artifact; the artifact is then **replayed**
-deterministically with no model in the loop, with explicit business outcomes,
-recoveries, failures and a human handoff of the live session. The design write-up is
-[`REPORT.md`](REPORT.md); the design record is [`docs/`](docs/README.md).
+<p align="center">
+  <img alt="Node 24" src="https://img.shields.io/badge/node-24-339933?style=flat-square&logo=node.js&logoColor=white" />
+  <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white" />
+  <img alt="Playwright" src="https://img.shields.io/badge/Playwright-Chromium-2EAD33?style=flat-square&logo=playwright&logoColor=white" />
+  <img alt="Local LLM" src="https://img.shields.io/badge/local%20LLM-Ollama%20%C2%B7%20qwen3%3A14b-000000?style=flat-square&logo=ollama&logoColor=white" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-323%20passing-brightgreen?style=flat-square" />
+  <img alt="Replay" src="https://img.shields.io/badge/replay-no%20model%20in%20the%20loop-b7410e?style=flat-square" />
+</p>
+
+<h3 align="center">A language model learns a legacy bank screen once.<br/>Replay runs it forever — without the model.</h3>
+
+<p align="center">
+  <img alt="Record once, replay forever: discover with an LLM, record a typed capability, replay deterministically, hand off to a human" src="assets/banner.png" width="100%" />
+</p>
+
+## The problem
+
+Banks and credit unions run back-office screens that have no API: core banking
+consoles, servicing tools, admin panels built on framesets and nested tables. An AI
+agent that needs to get work done there can reason about the screen every single time
+— slow, expensive and non-deterministic, which a regulated institution will not
+accept — or it can learn the flow **once** and execute it mechanically from then on.
+
+This system does the second.
+
+## What it does
+
+- **Discovers** a flow with a real language model driving a real browser against a
+  deliberately hostile legacy UI — **local by default** (Ollama), so observations of
+  the screen never leave the machine.
+- **Records** the successful run as a **capability artifact**: typed inputs and
+  outputs, ordered steps, robust targets, a checkpoint per step and the business
+  outcomes a caller must expect — versioned and reviewable in a pull request.
+- **Replays** the artifact deterministically with **no model in the decision loop**.
+  That guarantee is structural: the replay code cannot import the model client, and a
+  dependency rule fails the build if it ever does.
+- **Answers in one of four ways** — `succeeded`, `business_outcome`, `failed`,
+  `escalated` — so "no such member" is an answer, never a crash.
+- **Hands the same live session to a human** when a step is risky or the run is stuck,
+  verifies the result when control comes back, and records what the human did.
+- **Stays inside guardrails**: an explicit allowlist, risky actions reserved for
+  humans, and redaction of secrets and financial data before anything is written.
+
+## Highlights
+
+| | |
+|---|---|
+| **Genuine local discoveries** | Both flows were discovered live by `qwen3:14b` on a laptop: the read flow in 6 decisions (27 s) and the write flow in 13 decisions (68 s), including a risky `Confirm` performed through the human handoff. |
+| **Replay needs nothing** | No model, no key, no network: `npm run demo` replays six scenarios in seconds. |
+| **Enforced architecture** | Diplomat layering (pure domain, side effects at the edge) checked by dependency-cruiser on every `npm run verify`. |
+| **Tested against the real thing** | 323 tests, most of them driving the real target app in a real browser, with injected faults. |
+| **Documented decisions** | Every trade-off has an [ADR or RFC](docs/README.md); [`REPORT.md`](REPORT.md) is the short version. |
+
+## Quick start
+
+```bash
+nvm use                         # Node 24
+npm install
+npx playwright install chromium
+
+npm run verify                  # typecheck, lint, 323 tests, dependency rules — offline
+npm run demo                    # six replay scenarios against the target app — no model
+```
+
+```text
+PASS  success                      expected=succeeded  got=succeeded
+PASS  business outcome             expected=business_outcome:member_not_found  got=business_outcome:member_not_found
+PASS  recovered fault              expected=succeeded+recovery:interstitial  got=succeeded+recovery:interstitial
+PASS  hard failure                 expected=failed:server_error@click-member-lookup  got=failed:server_error@click-member-lookup
+PASS  handoff (scripted operator)  expected=succeeded+intervention  got=succeeded+intervention
+PASS  escalation, no operator      expected=escalated:no_operator_surface@close-account  got=escalated:no_operator_surface@close-account
+
+6/6 as expected — replay ran with no reasoner and no model env
+```
+
+To discover a flow yourself you also need the local model — see [Setup](#setup).
+
+## How it works
+
+```mermaid
+flowchart LR
+    goal(["goal + typed inputs"]) --> discovery
+
+    subgraph discovery["Discovery · runs once"]
+        direction TB
+        observe["observe<br/>accessibility tree"] --> redact["redact"]
+        redact --> llm["local LLM<br/>one constrained action"]
+        llm --> gate1{{"action gateway<br/>allowlist · risk"}}
+        gate1 --> act1["act in the browser"]
+        act1 --> observe
+    end
+
+    discovery -- "synthesize" --> artifact[("capability artifact<br/>typed · versioned")]
+    artifact --> replay
+
+    subgraph replay["Replay · every time · no model"]
+        direction TB
+        resolve["resolve target"] --> gate2{{"action gateway"}}
+        gate2 --> act2["act"]
+        act2 --> check["verify checkpoint"]
+        check --> resolve
+    end
+
+    replay --> ok["succeeded"]
+    replay --> business["business_outcome"]
+    replay --> failed["failed"]
+    replay --> human["escalated → human"]
+```
+
+The model sees a compact accessibility tree, not raw HTML, and must answer with one
+JSON action whose target is constrained — during generation — to elements that exist
+on the current screen. Every action on both paths passes through one gateway that
+enforces the allowlist. The replay side has no edge to the model at all.
+
+## Watch the model think
+
+The real decisions `qwen3:14b` made while discovering the read flow, straight from the
+committed [evidence](evidence/runs/2026-09-24T17-21-04-747Z-discovery-member.read-account-balance/run.jsonl).
+Sensitive values were redacted before they were written:
+
+| # | Action | Model's rationale | Latency |
+|---|---|---|---|
+| 1 | `click` Member Lookup | "Clicking on 'Member Lookup' will allow us to look up member [REDACTED:internal]." | 10.6 s (cold) |
+| 2 | `fill` Member ID | "Need to enter the member ID to look up the member's information." | 2.4 s |
+| 3 | `click` Search | "Clicking the search button will look up member [REDACTED:internal]." | 2.1 s |
+| 4 | `click` the member | "Clicking the link for Maria Santos will navigate to her account details, where the Savings account balance can be found." | 2.8 s |
+| 5 | `read` balance | "The balance of the Savings account is displayed in e26, which matches the goal's request." | 3.7 s |
+| 6 | `finish` | "The goal is complete as the balance has already been read." | 4.3 s |
+
+## The artifact
+
+The run above became [`capabilities/member.read-account-balance/1.0.1.json`](capabilities/member.read-account-balance/1.0.1.json).
+A caller sees a contract — typed inputs, typed outputs, declared outcomes — not a
+recording. Targets are described the way an operator would find them, never by a
+brittle selector:
+
+```json
+"content.balance": {
+  "frame": "content",
+  "candidates": [
+    {
+      "strategy": "table_cell",
+      "row": { "column": "Acct Type", "equals": "{{inputs.accountType}}" },
+      "column": "Balance"
+    }
+  ]
+}
+```
+
+```json
+{
+  "id": "read-balance",
+  "action": { "kind": "read", "target": "content.balance", "output": "balance" },
+  "risk": "safe",
+  "checkpoint": { "kind": "target_visible", "target": "content.balance" }
+}
+```
+
+The value `10001` the model typed became `{{inputs.memberId}}`, so the same artifact
+works for any member; the balance cell is found by its row, so it still works for a
+member whose Savings account is the third row. Business outcomes (`member_not_found`,
+`member_restricted`) and recoverable conditions (an interstitial page) are declared,
+never guessed. The schema is specified in [RFC-002](docs/rfcs/RFC-002-capability-artifact-schema.md).
+
+<p align="center">
+  <img alt="Every replay ends in one of four answers: succeeded, business outcome, failed, escalated" src="assets/outcomes.png" width="100%" />
+</p>
+
+| Status | Exit code | Example |
+|---|---|---|
+| `succeeded` | 0 | typed outputs: `{ "balance": "3,100.55" }` |
+| `business_outcome` | 2 | `member_not_found`, `invalid_initial_deposit` — the caller decides |
+| `failed` | 3 | `server_error` at step `click-member-lookup`, with expected, observed and a screenshot |
+| `escalated` | 4 | a human was needed and the run could not continue without one |
+
+Recoverable conditions — a slow load, an interstitial page, an expired session — are
+handled inside the run with bounded retries and reported in `recoveries[]`.
+
+<p align="center">
+  <img alt="When it's risky, a human takes the same live session: take, act, resume" src="assets/handoff.png" width="100%" />
+</p>
+
+## The target app
+
+No real bank system may be used, so the target is [`fixture/`](fixture/README.md): a
+local, deliberately hostile 2000s-era member-services console — iframe shell, nested
+tables, presentational markup, no test IDs, ASP.NET-style generated names, native
+`confirm()` dialogs, irreversible buttons, and a fault-injection endpoint that makes
+slowness, interstitials, session expiry, server errors and missing controls happen on
+demand. This is a screenshot from the committed discovery run:
+
+<p align="center">
+  <img alt="The legacy member-services console the model drives" src="evidence/runs/2026-09-24T17-21-04-747Z-discovery-member.read-account-balance/screenshots/0024-step-5.png" width="85%" />
+</p>
+
+---
 
 ## Requirements
 
@@ -67,26 +258,15 @@ npm run demo      # replays the committed capabilities in six scenarios; no mode
 ```
 
 `npm run demo` starts the fixture itself, replays against it, and prints one line per
-scenario, then `6/6 as expected` (exit 0):
-
-```text
-PASS  success                      expected=succeeded  got=succeeded  evidence=…
-PASS  business outcome             expected=business_outcome:member_not_found  got=business_outcome:member_not_found  evidence=…
-PASS  recovered fault              expected=succeeded+recovery:interstitial  got=succeeded+recovery:interstitial  evidence=…
-PASS  hard failure                 expected=failed:server_error@click-member-lookup  got=failed:server_error@click-member-lookup  evidence=…
-PASS  handoff (scripted operator)  expected=succeeded+intervention  got=succeeded+intervention  evidence=…
-PASS  escalation, no operator      expected=escalated:no_operator_surface@close-account  got=escalated:no_operator_surface@close-account  evidence=…
-```
-
-Faults are injected through the fixture's `/_fault` endpoint right before the step
-they target; the handoff scenario uses a scripted operator that types `take` and
-`resume` at the real handoff prompt and clicks in the run's own page. Evidence goes to
-a temp dir; `npm run demo -- --keep` writes it to `evidence/runs/` instead.
+scenario, then `6/6 as expected` (exit 0). Faults are injected through the fixture's
+`/_fault` endpoint right before the step they target; the handoff scenario uses a
+scripted operator that types `take` and `resume` at the real handoff prompt and clicks
+in the run's own page. Evidence goes to a temp dir; `npm run demo -- --keep` writes it
+to `evidence/runs/` instead.
 
 ## Demo path: discover, then replay
 
-Terminal 1 — the target app (a deliberately hostile legacy UI: iframe shell, nested
-tables, no test ids, ASP.NET-style names):
+Terminal 1 — the target app:
 
 ```bash
 npm run fixture                 # http://localhost:8080
@@ -192,6 +372,7 @@ fixture/                the target app
 scripts/demo.ts         the no-model demo
 tests/                  unit, integration (real fixture and browser), live (opt-in, real model)
 policy.json             the allowlist
+assets/                 README illustrations
 ```
 
 ## Design docs

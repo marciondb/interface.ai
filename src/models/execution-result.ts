@@ -25,7 +25,9 @@ export const RecoverySchema = z.strictObject({
   attempt: z.number().int().positive(),
 });
 
-export const EscalationReasonSchema = z.enum(['risky_action', 'unrecoverable', 'no_operator_surface', 'aborted', 'ttl_expired']);
+// How the human handoff ended without the run resuming (RFC-005); what triggered it is in the
+// intervention request and the message.
+export const EscalationReasonSchema = z.enum(['no_operator_surface', 'aborted', 'ttl_expired', 'surface_closed']);
 
 const base = {
   // Name of the run's evidence folder.

@@ -11,6 +11,8 @@ describe('loadConfig', () => {
       hosted: { baseUrl: undefined, model: undefined, apiKey: undefined },
       evidenceDir: 'evidence/runs',
       replayStepTimeoutMs: 5_000,
+      handoffTtlMs: 600_000,
+      operatorId: 'local-operator',
     });
   });
 
@@ -26,6 +28,8 @@ describe('loadConfig', () => {
         HOSTED_API_KEY: 'key',
         EVIDENCE_DIR: '/tmp/evidence',
         REPLAY_STEP_TIMEOUT_MS: '2000',
+        HANDOFF_TTL_MS: '30000',
+        OPERATOR_ID: 'ops-7',
       }),
     ).toEqual({
       targetUsername: 'alice',
@@ -35,6 +39,8 @@ describe('loadConfig', () => {
       hosted: { baseUrl: 'https://api.example.com/v1', model: 'gpt-x', apiKey: 'key' },
       evidenceDir: '/tmp/evidence',
       replayStepTimeoutMs: 2_000,
+      handoffTtlMs: 30_000,
+      operatorId: 'ops-7',
     });
   });
 

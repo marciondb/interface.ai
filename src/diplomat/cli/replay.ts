@@ -3,12 +3,14 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { fromPolicyFile } from '../../adapters/policy-file';
 import { toReplayRequest } from '../../adapters/replay-args';
+import { createEscalationController } from '../../controllers/escalation';
 import { replay } from '../../controllers/replay';
 import { systemClock } from '../../infrastructure/clock';
 import { loadConfig } from '../../infrastructure/config';
 import { readJsonFile } from '../../infrastructure/json-file';
 import { urlViolation } from '../../logic/policy';
 import type { ExecutionResult } from '../../models/execution-result';
+import { createCliBroker } from '../escalation/cli-broker';
 import { createFsRecorder } from '../evidence/fs-recorder';
 import { createActionGateway } from '../gateway/action-gateway';
 import { createFixtureSessionProvider } from '../session/fixture-login';
@@ -80,14 +82,22 @@ async function main(argv: string[]): Promise<number> {
   const outside = urlViolation(request.targetUrl, policy.policy);
   if (outside !== undefined) return usageError(`--target is outside the policy allowlist: ${outside}`);
 
+  // The headed window is the operator's surface for a handoff (ADR-012); prompts go to stderr.
   const driver = createPlaywrightDriver({ headless: !headed });
+  const evidence = createFsRecorder({ root: config.evidenceDir, secrets: [config.targetPassword] });
+  const broker = createCliBroker({ input: process.stdin, output: process.stderr, evidenceRoot: config.evidenceDir });
+  const escalation = createEscalationController(
+    { surface: driver, broker, evidence, clock: systemClock },
+    { ttlMs: config.handoffTtlMs, humanSurfaceAvailable: headed, operatorId: config.operatorId },
+  );
   try {
     const result = await replay(
       {
         store: createFsArtifactStore(join(ROOT, 'capabilities')),
         session: createFixtureSessionProvider({ username: config.targetUsername, password: config.targetPassword }),
-        gateway: createActionGateway({ driver, policy: policy.policy }),
-        evidence: createFsRecorder({ root: config.evidenceDir, secrets: [config.targetPassword] }),
+        gateway: createActionGateway({ driver, policy: policy.policy, controlOwner: escalation.owner }),
+        evidence,
+        escalation,
         clock: systemClock,
       },
       request,
@@ -98,6 +108,7 @@ async function main(argv: string[]): Promise<number> {
     process.stderr.write(`evidence: ${join(config.evidenceDir, result.runId)}\n`);
     return exitCode(result);
   } finally {
+    broker.close();
     await driver.close();
   }
 }

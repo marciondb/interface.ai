@@ -4,13 +4,14 @@ import { parseArgs } from 'node:util';
 import { toDiscoverArgs, type ReasonerChoice } from '../../adapters/discover-args';
 import { fromPolicyFile } from '../../adapters/policy-file';
 import { discover } from '../../controllers/discovery';
+import { createEscalationController } from '../../controllers/escalation';
 import { systemClock } from '../../infrastructure/clock';
 import { loadConfig, type Config } from '../../infrastructure/config';
 import { readJsonFile } from '../../infrastructure/json-file';
 import { checkRequest } from '../../logic/capability-request';
 import { urlViolation } from '../../logic/policy';
 import type { DiscoveryResult } from '../../models/discovery';
-import { noOperatorBroker } from '../escalation/no-operator';
+import { createCliBroker } from '../escalation/cli-broker';
 import { createFsRecorder } from '../evidence/fs-recorder';
 import type { EvidenceRecorder } from '../evidence/port';
 import { createActionGateway } from '../gateway/action-gateway';
@@ -128,16 +129,23 @@ async function main(argv: string[]): Promise<number> {
     return usageError(`--reasoner ${args.reasoner}: ${(error as Error).message}`);
   }
 
+  // The headed window is the operator's surface for a handoff (ADR-012); prompts go to stderr.
   const driver = createPlaywrightDriver({ headless: !args.headed });
+  const evidence = narrated(createFsRecorder({ root: config.evidenceDir, secrets: [config.targetPassword] }));
+  const broker = createCliBroker({ input: process.stdin, output: process.stderr, evidenceRoot: config.evidenceDir });
+  const escalation = createEscalationController(
+    { surface: driver, broker, evidence, clock: systemClock },
+    { ttlMs: config.handoffTtlMs, humanSurfaceAvailable: args.headed, operatorId: config.operatorId },
+  );
   try {
     const result = await discover(
       {
         store: createFsArtifactStore(join(ROOT, 'capabilities')),
         session: createFixtureSessionProvider({ username: config.targetUsername, password: config.targetPassword }),
-        gateway: createActionGateway({ driver, policy: policy.policy }),
+        gateway: createActionGateway({ driver, policy: policy.policy, controlOwner: escalation.owner }),
         reasoner,
-        evidence: narrated(createFsRecorder({ root: config.evidenceDir, secrets: [config.targetPassword] })),
-        escalation: noOperatorBroker,
+        evidence,
+        escalation,
         clock: systemClock,
       },
       { request: request.request, catalog: catalog.catalog, targetUrl: args.targetUrl, secrets: [config.targetPassword] },
@@ -151,6 +159,7 @@ async function main(argv: string[]): Promise<number> {
     process.stderr.write(`evidence: ${join(config.evidenceDir, result.runId)}\n`);
     return exitCode(result);
   } finally {
+    broker.close();
     await driver.close();
   }
 }

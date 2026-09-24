@@ -12,6 +12,10 @@ export type Config = {
   readonly evidenceDir: string;
   // Budget for each replay step phase: finding the target, the action, the checkpoint (RFC-004).
   readonly replayStepTimeoutMs: number;
+  // How long a human handoff may wait before the run ends escalated (RFC-005).
+  readonly handoffTtlMs: number;
+  // Who is recorded as taking and resuming a handoff.
+  readonly operatorId: string;
 };
 
 function read(env: NodeJS.ProcessEnv, key: string): string | undefined {
@@ -39,5 +43,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     },
     evidenceDir: read(env, 'EVIDENCE_DIR') ?? 'evidence/runs',
     replayStepTimeoutMs: positiveInteger(env, 'REPLAY_STEP_TIMEOUT_MS', 5_000),
+    handoffTtlMs: positiveInteger(env, 'HANDOFF_TTL_MS', 600_000),
+    operatorId: read(env, 'OPERATOR_ID') ?? 'local-operator',
   };
 }

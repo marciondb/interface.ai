@@ -30,8 +30,12 @@
 ```
 
 - Routes match exactly; a trailing `*` makes the entry a prefix match
-- Risky control text is compared as a normalized exact match
+- Risky control text is compared as a normalized exact match (trimmed, spaces
+  collapsed, case-insensitive) with the control's accessible name
+- An action is risky when its control text, its destination or the current page
+  is risky; `read` never is, since it does not change the page
 - Precedence: deny > `requires_human` > allow
+- A policy file without `risky` fails to load (fail closed)
 - Actions outside the allowlist are **denied**, not logged and executed
 - Navigation to a disallowed origin or route is denied before the driver is called
 
@@ -52,10 +56,13 @@ The artifact records each step's `risk`; replay honors it even if policy changes
   - observations are sent to the model
   - events and snapshots are written to evidence (ADR-014)
 - Patterns redacted:
-  - the target password
-  - account-number-like digit runs, keeping the last 4 digits
-  - SSN-like strings
+  - the target password, by value in any case (`[REDACTED:secret]`), plus fields
+    named like credentials (`password`, `token`, `cookie`, `secret`)
+  - account-number-like runs of 8 to 17 digits, keeping the last 4 digits
+  - SSN-like strings (`***-**-****`)
   - declared input and output values whose `sensitivity` (RFC-002) is not `none`
+    (`[REDACTED:<sensitivity>]`), from the moment they are known; values shorter
+    than 4 characters are not masked
 - Redaction is pure Logic, applied in two places: in discovery, the controller
   redacts each observation before calling the reasoner; the evidence recorder
   redacts before writing

@@ -9,7 +9,7 @@
       "surface": "web"
     }
   },
-  "goal": "Open a new {{accountType}} sub-account for member {{memberId}} with nickname {{nickname}} and an initial deposit of {{initialDeposit}}, confirm it, and read the new account number",
+  "goal": "Look up member {{memberId}} and open a new {{accountType}} sub-account for them with nickname {{nickname}} and an initial deposit of {{initialDeposit}}, confirm it, and read the new account number",
   "inputs": {
     "memberId": {
       "type": "string",

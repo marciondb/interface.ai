@@ -1,0 +1,17 @@
+{
+  "runId": "2026-09-24T21-59-55-274Z-replay-member.open-sub-account",
+  "capability": {
+    "id": "member.open-sub-account",
+    "requestedMajor": 1,
+    "version": "1.0.1"
+  },
+  "durationMs": 2453,
+  "recoveries": [],
+  "interventions": [
+    "int-1dfb1876c7cf4c8fa77ecccb566121fd"
+  ],
+  "status": "succeeded",
+  "outputs": {
+    "accountNumber": "[REDACTED:financial]"
+  }
+}

@@ -30,7 +30,7 @@ describe('committed discovery inputs', () => {
     const views = await readFile(join(ROOT, 'fixture/lib/views/subacct.js'), 'utf8');
 
     expect(checkRequest(request.request, catalog.catalog)).toEqual([]);
-    expect(request.request.capability).toMatchObject({ id: 'member.open-sub-account', version: '1.0.0' });
+    expect(request.request.capability).toMatchObject({ id: 'member.open-sub-account', version: '1.0.1' });
     for (const id of ['invalid_initial_deposit', 'invalid_deposit_amount', 'invalid_nickname']) {
       const outcome = catalog.catalog.outcomes.find((declared) => declared.id === id);
       expect(outcome).toMatchObject({ kind: 'business', when: { kind: 'text_visible', frame: 'content' } });

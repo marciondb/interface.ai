@@ -1,0 +1,13 @@
+{
+  "interventionId": "int-1dfb1876c7cf4c8fa77ecccb566121fd",
+  "runId": "2026-09-24T21-59-55-274Z-replay-member.open-sub-account",
+  "mode": "replay",
+  "capability": "member.open-sub-account@1.0.1",
+  "stepId": "click-confirm",
+  "reason": "risky_action",
+  "message": "step click-confirm is risky: click on content.confirm needs a human",
+  "screenshot": "screenshots/0050-handoff-int-1dfb1876c7cf4c8fa77ecccb566121fd-before.png",
+  "url": "http://localhost:57038/member/subacct/review",
+  "requestedAt": "2026-09-24T21:59:57.576Z",
+  "expiresAt": "2026-09-24T22:00:27.576Z"
+}

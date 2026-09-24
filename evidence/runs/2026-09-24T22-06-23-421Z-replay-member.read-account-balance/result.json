@@ -1,0 +1,19 @@
+{
+  "runId": "2026-09-24T22-06-23-421Z-replay-member.read-account-balance",
+  "capability": {
+    "id": "member.read-account-balance",
+    "requestedMajor": 1,
+    "version": "1.0.2"
+  },
+  "durationMs": 448,
+  "recoveries": [],
+  "interventions": [],
+  "status": "failed",
+  "failure": {
+    "stepId": "click-member-lookup",
+    "code": "server_error",
+    "expected": "text \"Member ID:\" visible in frame content (http://localhost:59185/member/search)",
+    "observed": "text not visible in frame content (http://localhost:59185/member/search) (the application answered with a server error)",
+    "evidence": "screenshots/0009-click-member-lookup.png"
+  }
+}

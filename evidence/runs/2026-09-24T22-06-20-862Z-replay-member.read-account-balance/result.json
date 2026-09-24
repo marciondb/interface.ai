@@ -1,0 +1,23 @@
+{
+  "runId": "2026-09-24T22-06-20-862Z-replay-member.read-account-balance",
+  "capability": {
+    "id": "member.read-account-balance",
+    "requestedMajor": 1,
+    "version": "1.0.2"
+  },
+  "durationMs": 1494,
+  "recoveries": [
+    {
+      "stepId": "click-member-lookup",
+      "condition": "outcome",
+      "outcomeId": "interstitial",
+      "response": "declared_recovery",
+      "attempt": 1
+    }
+  ],
+  "interventions": [],
+  "status": "succeeded",
+  "outputs": {
+    "balance": "[REDACTED:financial]"
+  }
+}

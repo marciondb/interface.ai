@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "capability": {
     "id": "member.open-sub-account",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Open a new sub-account for a member and read its account number; a human performs the final confirmation",
     "app": {
       "product": "legacy-member-console",

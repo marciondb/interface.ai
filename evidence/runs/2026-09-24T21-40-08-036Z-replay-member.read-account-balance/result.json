@@ -1,0 +1,16 @@
+{
+  "runId": "2026-09-24T21-40-08-036Z-replay-member.read-account-balance",
+  "capability": {
+    "id": "member.read-account-balance",
+    "requestedMajor": 1,
+    "version": "1.0.2"
+  },
+  "durationMs": 1228,
+  "recoveries": [],
+  "interventions": [],
+  "status": "business_outcome",
+  "outcome": "member_not_found",
+  "details": {
+    "stepId": "click-name"
+  }
+}

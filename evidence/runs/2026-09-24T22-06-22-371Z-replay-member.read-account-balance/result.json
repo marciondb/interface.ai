@@ -1,0 +1,25 @@
+{
+  "runId": "2026-09-24T22-06-22-371Z-replay-member.read-account-balance",
+  "capability": {
+    "id": "member.read-account-balance",
+    "requestedMajor": 1,
+    "version": "1.0.2"
+  },
+  "durationMs": 1035,
+  "recoveries": [
+    {
+      "stepId": "click-member-lookup",
+      "condition": "unexpected_dialog",
+      "response": "dismissed",
+      "dialog": {
+        "type": "alert",
+        "message": "Your password expires in 3 days."
+      }
+    }
+  ],
+  "interventions": [],
+  "status": "succeeded",
+  "outputs": {
+    "balance": "[REDACTED:financial]"
+  }
+}

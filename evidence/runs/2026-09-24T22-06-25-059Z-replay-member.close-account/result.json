@@ -1,0 +1,18 @@
+{
+  "runId": "2026-09-24T22-06-25-059Z-replay-member.close-account",
+  "capability": {
+    "id": "member.close-account",
+    "requestedMajor": 1,
+    "version": "1.0.0"
+  },
+  "durationMs": 1081,
+  "recoveries": [],
+  "interventions": [
+    "int-4c5bef6451d5488b90362c901ae549ab"
+  ],
+  "status": "escalated",
+  "interventionId": "int-4c5bef6451d5488b90362c901ae549ab",
+  "stepId": "close-account",
+  "reason": "no_operator_surface",
+  "message": "step close-account is risky: click on detail.closeAccount needs a human (handoff no_operator_surface)"
+}

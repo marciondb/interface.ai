@@ -1,0 +1,18 @@
+{
+  "runId": "2026-09-24T21-39-10-424Z-discovery-member.read-account-balance",
+  "capability": {
+    "id": "member.read-account-balance",
+    "version": "1.0.2"
+  },
+  "reasoner": {
+    "adapter": "local",
+    "model": "qwen3:14b"
+  },
+  "durationMs": 30707,
+  "steps": 6,
+  "interventions": [],
+  "status": "succeeded",
+  "outputs": {
+    "balance": "[REDACTED:financial]"
+  }
+}

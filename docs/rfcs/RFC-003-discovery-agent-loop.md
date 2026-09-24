@@ -82,6 +82,7 @@ receives an observation that is already redacted.
    answer triggers the human handoff (RFC-005). After resume, if the page
    changed, the blocked action the human performed is recorded as a step with
    `risk: risky`; if unchanged, the human declined and the model gets feedback.
+   Stalls and `request_help` hand over the same way.
 5. **Act** — the driver executes; the action, the resolved element, and the new
    observation are appended to the run trace.
 6. **Progress check** — if the new observation is unchanged, the step made no
@@ -127,6 +128,10 @@ The **artifact synthesizer** (pure Logic) turns the trace into an artifact:
   structural candidate
 - A target the model reads never uses role/name — its name is the data itself
 - The observation after each action becomes that step's checkpoint
+- A handoff in which the human made a single click on an element of the screen
+  they were handed becomes a `risky` click step, checked by what it revealed; any
+  other human activity (typing, dialogs, several clicks) makes synthesis fail,
+  with the actions kept in the evidence
 - Values equal to an input's `example` are replaced by `{{inputs.*}}`
 - Values captured with `read` become typed outputs
 - Business outcomes and recoverable conditions come from the per-app catalog

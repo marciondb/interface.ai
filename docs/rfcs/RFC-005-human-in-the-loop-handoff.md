@@ -40,7 +40,9 @@ Written to `evidence/runs/<run>/intervention.json` and printed by the CLI:
 }
 ```
 
-`mode` is `discovery` or `replay`.
+`mode` is `discovery` or `replay`; `reason` is `risky_action`, `stalled`, or
+`help_requested`. `intervention.json` holds the latest request of the run; every
+request is also a `handoff_requested` event.
 
 ## Control state machine
 
@@ -52,8 +54,9 @@ stateDiagram-v2
     Human --> Verifying: resume
     Verifying --> Automation: checkpoint holds
     Verifying --> Human: checkpoint fails
-    AwaitingHuman --> Aborted: abort / TTL / window closed
+    AwaitingHuman --> Aborted: abort / TTL / window closed / no operator window
     Human --> Aborted: abort / TTL / window closed
+    Verifying --> Aborted: window closed
     Automation --> [*]: result
     Aborted --> [*]: result (escalated)
 ```
@@ -70,14 +73,25 @@ stateDiagram-v2
 - Native dialogs raised during the handoff are answered at the terminal and
   recorded.
 - On resume, the run re-observes and verifies the current step's checkpoint before
-  continuing — the human's word is not taken on faith.
+  continuing — the human's word is not taken on faith. Discovery has no step
+  checkpoint: a changed page records what the human did, an unchanged one tells
+  the model the human declined (RFC-003).
+- A handoff that ends in Aborted ends the run as `escalated`, with `reason`
+  `aborted`, `ttl_expired`, `surface_closed`, or `no_operator_surface` (ADR-009).
 
 ## What is recorded
 
 - The intervention request
-- Human actions (clicks, inputs with values redacted, navigations) with timestamps
+- Human actions (clicks, inputs with values redacted, navigations, dialog
+  answers) with timestamps
 - Snapshots before and after the handoff
 - Who resumed or aborted, and when
+
+As `run.jsonl` events: `handoff_requested`, `handoff_taken`,
+`handoff_human_action` (one per action), `handoff_verify_failed`,
+`handoff_resumed`, `handoff_aborted`; snapshots and screenshots are named
+`handoff-<interventionId>-before|after`. The page script sends `[redacted]` in
+place of a field's value, and navigations keep only origin and path.
 
 ## Mocked in v1
 

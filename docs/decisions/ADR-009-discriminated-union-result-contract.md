@@ -27,8 +27,12 @@ type ExecutionResult =
   | { status: "escalated"; interventionId: string; stepId: string; reason: EscalationReason; message: string }
 
 type EscalationReason =
-  | "risky_action" | "unrecoverable" | "no_operator_surface" | "aborted" | "ttl_expired"
+  | "no_operator_surface" | "aborted" | "ttl_expired" | "surface_closed"
 ```
+
+An escalated run is one whose human handoff did not resume it; `reason` says how the
+handoff ended. What triggered it (`risky_action`, `stalled`, `help_requested`) is in
+the intervention request (RFC-005) and the `message`.
 
 `failure.evidence` is the path to the screenshot/snapshot captured at the failing step.
 

@@ -18,8 +18,9 @@ easy to bypass by accident. The policy also needs to be testable and configurabl
 
 ## Decision
 
-- **One gateway** wraps the surface driver. Controllers never hold a reference to
-  the raw driver
+- **One gateway** wraps the surface driver. Controllers never act through the raw
+  driver; the escalation controller only gets a view of the live window that
+  observes and captures human actions (ADR-012)
 - **Policy is pure Logic**: `evaluate(action, target, currentUrl, policy) →
   allow | deny(reason) | requires_human(reason)`
 - **Policy is a config file** (`policy.json`): allowed origins, allowed routes,

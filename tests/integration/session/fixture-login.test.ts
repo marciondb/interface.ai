@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SessionError } from '../../../src/diplomat/session/errors';
 import { createFixtureSessionProvider } from '../../../src/diplomat/session/fixture-login';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
+import { loginObservation } from '../../support/observations';
 
 async function rejection(promise: Promise<unknown>): Promise<SessionError> {
   const error: unknown = await promise.then(
@@ -61,5 +62,23 @@ describe('fixture session provider', () => {
 
     expect(error.code).toBe('unexpected_response');
     expect(error.message).toContain('500');
+  });
+
+  it('treats the sign-in screen in any frame as an expired session', () => {
+    const provider = createFixtureSessionProvider({ username: 'operator', password: 'training' });
+    const shell = {
+      ...loginObservation(),
+      url: 'http://localhost:8080/',
+      frames: [
+        { name: null, url: 'http://localhost:8080/' },
+        { name: 'content', url: 'http://localhost:8080/member/search' },
+      ],
+    };
+
+    expect(provider.isExpired(loginObservation())).toBe(true);
+    expect(provider.isExpired(shell)).toBe(false);
+    expect(
+      provider.isExpired({ ...shell, frames: [shell.frames[0], { name: 'content', url: 'http://localhost:8080/login' }] }),
+    ).toBe(true);
   });
 });

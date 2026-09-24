@@ -59,5 +59,18 @@ export function createFixtureSessionProvider(options: FixtureSessionOptions): Se
       }
       return cookies;
     },
+
+    // The app redirects any request without a live session to the login form, in whichever frame made it.
+    isExpired(observation) {
+      return observation.frames.some((frame) => pathOf(frame.url) === LOGIN_PATH);
+    },
   };
+}
+
+function pathOf(url: string): string | undefined {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return undefined;
+  }
 }

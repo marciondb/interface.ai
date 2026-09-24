@@ -3,6 +3,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ExecutionResultSchema, type ExecutionResult } from '../../../src/models/execution-result';
+import { evidenceText, readEvents as events } from '../../support/evidence';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
 import { PASSWORD, runReplay, STEP_TIMEOUT_MS, type HarnessOptions, type HarnessRun } from '../../support/replay-harness';
 
@@ -11,22 +12,6 @@ const MARIA = { memberId: '10001', accountType: 'Savings' };
 function failure(result: ExecutionResult) {
   if (result.status !== 'failed') throw new Error(`expected failed, got ${JSON.stringify(result)}`);
   return result.failure;
-}
-
-async function events(run: HarnessRun): Promise<Record<string, unknown>[]> {
-  const text = await readFile(join(run.evidenceRoot, run.result.runId, 'run.jsonl'), 'utf8');
-  return text
-    .trim()
-    .split('\n')
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
-}
-
-async function allEvidenceText(dir: string): Promise<string> {
-  const entries = await readdir(dir, { recursive: true, withFileTypes: true });
-  const texts = await Promise.all(
-    entries.filter((entry) => entry.isFile() && !entry.name.endsWith('.png')).map((entry) => readFile(join(entry.parentPath, entry.name), 'utf8')),
-  );
-  return texts.join('\n');
 }
 
 describe('replay of member.read-account-balance@1 against the fixture', { timeout: 30_000 }, () => {
@@ -126,7 +111,7 @@ describe('replay of member.read-account-balance@1 against the fixture', { timeou
     const replayRun = await run(MARIA, { arm: { stepId: 'submit-search', kind: 'session_expired', times: 2 } });
 
     expect(failure(replayRun.result)).toMatchObject({ stepId: 'submit-search', code: 'session_expired' });
-    expect(await allEvidenceText(join(replayRun.evidenceRoot, replayRun.result.runId))).not.toContain(PASSWORD);
+    expect(await evidenceText(replayRun)).not.toContain(PASSWORD);
   });
 
   it('fails on a server error page', async () => {

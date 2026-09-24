@@ -152,7 +152,7 @@ application; the reasoner client that calls a language model; the artifact store
 the evidence recorder; the escalation broker.
 
 **Rules**
-- Knows Wire, Adapter, and Controller
+- Knows Wire, Adapter, Controller, Model, and Logic
 - Contains no business rules
 - Owns all I/O
 
@@ -179,9 +179,13 @@ discovery path.
 | Controller | Model, Logic, Diplomat |
 | Wire | — |
 | Adapter | Wire, Model |
-| Diplomat | Wire, Adapter, Controller |
+| Diplomat | Wire, Adapter, Controller, Model, Logic |
 
 Any violation of these rules is considered **architectural drift**.
+
+Diplomats may depend on Model and Logic because ports are typed with models, the
+action gateway calls the pure policy logic, and the evidence recorder calls the
+pure redaction logic.
 
 ### Additional rule for this system
 
@@ -189,6 +193,14 @@ Any violation of these rules is considered **architectural drift**.
 > Diplomat.
 
 This is the structural expression of "no model in the decision loop".
+
+Two further rules:
+
+- Controllers reach Diplomats only through their `port.ts` types; concrete
+  implementations are injected by the CLI entrypoint.
+- `infrastructure/` imports no other layer.
+
+These rules are checked by dependency-cruiser in `npm run verify`.
 
 ---
 

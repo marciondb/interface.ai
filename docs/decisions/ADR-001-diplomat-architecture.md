@@ -93,10 +93,10 @@ system's headline guarantee something a reader has to take on faith.
 
 ### Enforcement
 
-The dependency rules are conventional in this repository unless and until a
-boundary linter is configured. The rule that matters most (replay ⇏ reasoner) is
-narrow enough to be checked by inspection and is called out explicitly in the
-principles document. Adding automated enforcement is a known follow-up.
+The dependency rules are checked by dependency-cruiser as part of `npm run verify`.
+This includes the rule that matters most — the replay controller cannot reach the
+reasoner Diplomat, directly or transitively — and the rule that controllers reach
+Diplomats only through their `port.ts` types.
 
 ---
 

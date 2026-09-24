@@ -28,7 +28,7 @@ export function validateInputs(capability: Capability, raw: Record<string, strin
   return { ok: true, values: { ...raw } };
 }
 
-function checkValue(spec: InputSpec, value: string): { code: InputErrorCode; message: string } | undefined {
+export function checkValue(spec: InputSpec, value: string): { code: InputErrorCode; message: string } | undefined {
   if (spec.type === 'number' && !NUMBER.test(value)) return { code: 'type', message: 'must be a number' };
   if (spec.pattern !== undefined && !new RegExp(spec.pattern).test(value)) {
     return { code: 'pattern', message: `must match ${spec.pattern}` };

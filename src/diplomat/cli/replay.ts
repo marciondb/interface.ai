@@ -8,7 +8,6 @@ import { systemClock } from '../../infrastructure/clock';
 import { loadConfig } from '../../infrastructure/config';
 import { readJsonFile } from '../../infrastructure/json-file';
 import { urlViolation } from '../../logic/policy';
-import { redactSecrets } from '../../logic/redaction';
 import type { ExecutionResult } from '../../models/execution-result';
 import { createFsRecorder } from '../evidence/fs-recorder';
 import { createActionGateway } from '../gateway/action-gateway';
@@ -88,10 +87,7 @@ async function main(argv: string[]): Promise<number> {
         store: createFsArtifactStore(join(ROOT, 'capabilities')),
         session: createFixtureSessionProvider({ username: config.targetUsername, password: config.targetPassword }),
         gateway: createActionGateway({ driver, policy: policy.policy }),
-        evidence: createFsRecorder({
-          root: config.evidenceDir,
-          redact: (record) => redactSecrets(record, [config.targetPassword]),
-        }),
+        evidence: createFsRecorder({ root: config.evidenceDir, secrets: [config.targetPassword] }),
         clock: systemClock,
       },
       request,

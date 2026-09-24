@@ -80,8 +80,3 @@ export function sensitiveValuesOf(
     });
   return [...pick(capability.inputs, inputs), ...pick(capability.outputs, outputs)];
 }
-
-// Masks every occurrence of each secret; kept for callers not yet on RedactionRules.
-export function redactSecrets<T>(value: T, secrets: readonly string[]): T {
-  return redactDeep(value, { secrets, sensitive: [] });
-}

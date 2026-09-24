@@ -10,10 +10,13 @@ import type { ActionGateway } from '../../src/diplomat/gateway/port';
 import { createFixtureSessionProvider } from '../../src/diplomat/session/fixture-login';
 import { createFsArtifactStore } from '../../src/diplomat/store/fs-store';
 import { createPlaywrightDriver } from '../../src/diplomat/surface/playwright-driver';
+import type { SurfaceDriver } from '../../src/diplomat/surface/port';
 import { systemClock } from '../../src/infrastructure/clock';
 import { readJsonFile } from '../../src/infrastructure/json-file';
-import { redactSecrets } from '../../src/logic/redaction';
+import type { Verb } from '../../src/models/action';
 import type { ExecutionResult } from '../../src/models/execution-result';
+import type { Policy } from '../../src/models/policy';
+import type { ActionPurpose } from '../../src/models/run-event';
 import type { FaultKind, FixtureHandle } from './fixture';
 
 export const PASSWORD = 'training';
@@ -44,9 +47,17 @@ export function armBefore(gateway: ActionGateway, fixture: FixtureHandle, plan: 
   };
 }
 
+// An action that reached the surface driver.
+export type DriverCall = {
+  readonly stepId: string;
+  readonly purpose: ActionPurpose;
+  readonly verb: Verb;
+};
+
 export type HarnessRun = {
   readonly result: ExecutionResult;
   readonly evidenceRoot: string;
+  readonly driverCalls: readonly DriverCall[];
 };
 
 export type HarnessOptions = {
@@ -54,6 +65,10 @@ export type HarnessOptions = {
   readonly capability?: string;
   readonly major?: number;
   readonly stepTimeoutMs?: number;
+  // Artifact store root (default: the committed capabilities/).
+  readonly capabilitiesDir?: string;
+  // Adjusts the committed policy.json (its origin already points at the fixture).
+  readonly policy?: (policy: Policy) => Policy;
 };
 
 // The real replay stack against a running fixture, with evidence in a fresh temp dir.
@@ -64,17 +79,36 @@ export async function runReplay(
 ): Promise<HarnessRun> {
   const policyFile = fromPolicyFile(await readJsonFile(join(ROOT, 'policy.json')));
   if (!policyFile.ok) throw new Error(policyFile.issues.join('; '));
-  const policy = { ...policyFile.policy, allowedOrigins: [new URL(fixture.baseUrl).origin] };
+  const basePolicy = { ...policyFile.policy, allowedOrigins: [new URL(fixture.baseUrl).origin] };
+  const policy = options.policy === undefined ? basePolicy : options.policy(basePolicy);
   const evidenceRoot = await mkdtemp(join(tmpdir(), 'replay-evidence-'));
+
   const driver = createPlaywrightDriver();
-  const gateway = createActionGateway({ driver, policy });
+  const driverCalls: DriverCall[] = [];
+  let current: Omit<DriverCall, 'verb'> = { stepId: '', purpose: 'step' };
+  const spiedDriver: SurfaceDriver = {
+    ...driver,
+    perform(action, performOptions) {
+      driverCalls.push({ ...current, verb: action.verb });
+      return driver.perform(action, performOptions);
+    },
+  };
+  const policed = createActionGateway({ driver: spiedDriver, policy });
+  const gateway: ActionGateway = {
+    ...policed,
+    perform(request) {
+      current = { stepId: request.stepId, purpose: request.purpose };
+      return policed.perform(request);
+    },
+  };
+
   try {
     const result = await replay(
       {
-        store: createFsArtifactStore(join(ROOT, 'capabilities')),
+        store: createFsArtifactStore(options.capabilitiesDir ?? join(ROOT, 'capabilities')),
         session: createFixtureSessionProvider({ username: 'operator', password: PASSWORD }),
         gateway: options.arm === undefined ? gateway : armBefore(gateway, fixture, options.arm),
-        evidence: createFsRecorder({ root: evidenceRoot, redact: (record) => redactSecrets(record, [PASSWORD]) }),
+        evidence: createFsRecorder({ root: evidenceRoot, secrets: [PASSWORD] }),
         clock: systemClock,
       },
       {
@@ -85,7 +119,7 @@ export async function runReplay(
       },
       { stepTimeoutMs: options.stepTimeoutMs ?? STEP_TIMEOUT_MS },
     );
-    return { result, evidenceRoot };
+    return { result, evidenceRoot, driverCalls };
   } finally {
     await driver.close();
   }

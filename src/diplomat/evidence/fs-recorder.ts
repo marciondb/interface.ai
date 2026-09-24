@@ -1,13 +1,14 @@
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { toEvidenceRecord } from '../../adapters/evidence-record';
+import { redactDeep, type SensitiveValue } from '../../logic/redaction';
 import type { CapturePaths, EvidenceRecorder, EvidenceRun } from './port';
 
 export type FsRecorderOptions = {
   // Evidence root; each run gets <root>/<timestamp>-<mode>-<capability-id>/.
   readonly root: string;
-  // Applied to every record before it is written (RFC-006); identity by default.
-  readonly redact?: (record: unknown) => unknown;
+  // Masked wherever they appear, e.g. the target password (ADR-013).
+  readonly secrets?: readonly string[];
   readonly now?: () => Date;
 };
 
@@ -16,7 +17,9 @@ function isAlreadyExists(error: unknown): boolean {
 }
 
 export function createFsRecorder(options: FsRecorderOptions): EvidenceRecorder {
-  const redact = options.redact ?? ((record: unknown) => record);
+  const secrets = options.secrets ?? [];
+  const sensitive: SensitiveValue[] = [];
+  const redact = (record: unknown) => redactDeep(record, { secrets, sensitive });
   const now = options.now ?? (() => new Date());
   let run: EvidenceRun | undefined;
   let seq = 0;
@@ -47,6 +50,10 @@ export function createFsRecorder(options: FsRecorderOptions): EvidenceRecorder {
         run = { runId, dir };
         return run;
       }
+    },
+
+    protect(values) {
+      sensitive.push(...values);
     },
 
     async event(event) {

@@ -15,16 +15,14 @@ async function tempRoot(): Promise<string> {
 describe('filesystem evidence recorder', () => {
   it('writes one redacted run folder with events, captures and the result', async () => {
     const root = await tempRoot();
-    const recorder = createFsRecorder({
-      root,
-      now: () => NOW,
-      redact: (record) => JSON.parse(JSON.stringify(record).replaceAll('hunter2', '[REDACTED]')) as unknown,
-    });
+    const recorder = createFsRecorder({ root, now: () => NOW, secrets: ['hunter2'] });
 
     const run = await recorder.startRun({ mode: 'replay', capabilityId: 'member.read-account-balance' });
     await recorder.event({ type: 'session', event: 'established' });
-    await recorder.event({ type: 'checkpoint', stepId: 'enter-member-id', holds: false, expected: 'hunter2', observed: 'x' });
-    const paths = await recorder.failureCapture('enter-member-id', { screenshot: new Uint8Array([137, 80, 78, 71]), snapshot: loginObservation() });
+    await recorder.event({ type: 'checkpoint', stepId: 'enter-member-id', holds: false, expected: 'hunter2', observed: 'value 4,812.37' });
+    recorder.protect([{ value: '4,812.37', sensitivity: 'financial' }]);
+    const snapshot = { ...loginObservation(), url: 'http://localhost:8080/?note=4,812.37' };
+    const paths = await recorder.failureCapture('enter-member-id', { screenshot: new Uint8Array([137, 80, 78, 71]), snapshot });
     const result: ExecutionResult = {
       runId: run.runId,
       capability: { id: 'member.read-account-balance', version: '1.0.0' },
@@ -32,7 +30,7 @@ describe('filesystem evidence recorder', () => {
       recoveries: [],
       interventions: [],
       status: 'succeeded',
-      outputs: { balance: 'hunter2' },
+      outputs: { balance: '4,812.37' },
     };
     await recorder.finish(result);
 
@@ -51,16 +49,21 @@ describe('filesystem evidence recorder', () => {
         stepId: 'enter-member-id',
         type: 'checkpoint',
         holds: false,
-        expected: '[REDACTED]',
-        observed: 'x',
+        expected: '[REDACTED:secret]',
+        // Written before protect(): only values known at write time are masked.
+        observed: 'value 4,812.37',
       },
     ]);
     expect(paths).toEqual({
       screenshot: join(run.dir, 'screenshots', '0002-enter-member-id.png'),
       snapshot: join(run.dir, 'snapshots', '0002-enter-member-id.json'),
     });
-    expect(JSON.parse(await readFile(paths.snapshot ?? '', 'utf8'))).toEqual(loginObservation());
-    expect(JSON.parse(await readFile(join(run.dir, 'result.json'), 'utf8'))).toMatchObject({ outputs: { balance: '[REDACTED]' } });
+    expect(JSON.parse(await readFile(paths.snapshot ?? '', 'utf8'))).toEqual({
+      ...loginObservation(),
+      url: 'http://localhost:8080/?note=[REDACTED:financial]',
+    });
+    expect(JSON.parse(await readFile(join(run.dir, 'result.json'), 'utf8'))).toMatchObject({ outputs: { balance: '[REDACTED:financial]' } });
+    expect(result.outputs.balance).toBe('4,812.37');
   });
 
   it('keeps runs that start in the same millisecond apart', async () => {

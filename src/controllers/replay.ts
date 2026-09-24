@@ -8,6 +8,7 @@ import { bindInputs, validateInputs } from '../logic/capability-inputs';
 import { describeCounts, evaluateCheckpoint, factsNeeded, type Facts, type TargetFact } from '../logic/checkpoint';
 import { classify, describeClassification, isDefinitive } from '../logic/outcome-classifier';
 import { nextMove, type Move } from '../logic/recovery';
+import { sensitiveValuesOf } from '../logic/redaction';
 import { toSurfaceAction } from '../logic/step-action';
 import type { Action } from '../models/action';
 import { actionTarget, type Capability, type Predicate, type Step } from '../models/capability';
@@ -330,6 +331,10 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
       case 'done':
         serverError = outcome.navigations.some((navigation) => navigation.status >= 500);
         value = outcome.value;
+        // Before the checkpoint, whose evidence may quote the value.
+        if (step.action.kind === 'read' && value !== undefined) {
+          evidence.protect(sensitiveValuesOf(capability, {}, { [step.action.output]: value }));
+        }
         break;
       default: {
         const unhandled: never = outcome;
@@ -473,6 +478,8 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
     );
   }
   capabilityRef = { id: loaded.capability.capability.id, version: loaded.capability.capability.version };
+  // Raw values, so they are masked even when validation rejects them.
+  evidence.protect(sensitiveValuesOf(loaded.capability, request.inputs, {}));
 
   const validation = validateInputs(loaded.capability, request.inputs);
   if (!validation.ok) {

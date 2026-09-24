@@ -80,15 +80,19 @@ describe('stopCheck', () => {
   const limits = DEFAULT_DISCOVERY_LIMITS;
 
   it('continues within the budgets', () => {
-    expect(stopCheck({ steps: 5, stalls: 2, startedAt: 0 }, limits, 1_000)).toEqual({ kind: 'continue' });
+    expect(stopCheck({ steps: 5, stalls: 2, startedAt: 0, handoffMs: 0 }, limits, 1_000)).toEqual({ kind: 'continue' });
   });
 
   it('escalates after three stalls in a row', () => {
-    expect(stopCheck({ steps: 5, stalls: 3, startedAt: 0 }, limits, 1_000)).toMatchObject({ kind: 'escalate', reason: 'stalled' });
+    expect(stopCheck({ steps: 5, stalls: 3, startedAt: 0, handoffMs: 0 }, limits, 1_000)).toMatchObject({ kind: 'escalate', reason: 'stalled' });
   });
 
   it('fails on the step budget and on the wall-clock timeout', () => {
-    expect(stopCheck({ steps: 25, stalls: 0, startedAt: 0 }, limits, 1_000)).toMatchObject({ kind: 'fail', reason: 'step_budget' });
-    expect(stopCheck({ steps: 1, stalls: 0, startedAt: 0 }, limits, 600_000)).toMatchObject({ kind: 'fail', reason: 'timeout' });
+    expect(stopCheck({ steps: 25, stalls: 0, startedAt: 0, handoffMs: 0 }, limits, 1_000)).toMatchObject({ kind: 'fail', reason: 'step_budget' });
+    expect(stopCheck({ steps: 1, stalls: 0, startedAt: 0, handoffMs: 0 }, limits, 600_000)).toMatchObject({ kind: 'fail', reason: 'timeout' });
+  });
+
+  it('does not charge the time a human spent in a handoff to the time budget', () => {
+    expect(stopCheck({ steps: 1, stalls: 0, startedAt: 0, handoffMs: 590_000 }, limits, 600_000)).toEqual({ kind: 'continue' });
   });
 });

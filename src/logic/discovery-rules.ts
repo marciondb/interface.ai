@@ -93,6 +93,8 @@ export type LoopState = {
   readonly steps: number;
   readonly stalls: number;
   readonly startedAt: number;
+  // Spent waiting on a human during handoffs; not charged to the time budget.
+  readonly handoffMs: number;
 };
 
 export type StopDecision =
@@ -108,7 +110,7 @@ export function stopCheck(state: LoopState, limits: DiscoveryLimits, now: number
   if (state.steps >= limits.maxSteps) {
     return { kind: 'fail', reason: 'step_budget', message: `the goal was not met within ${String(limits.maxSteps)} steps` };
   }
-  if (now - state.startedAt >= limits.timeoutMs) {
+  if (now - state.startedAt - state.handoffMs >= limits.timeoutMs) {
     return { kind: 'fail', reason: 'timeout', message: `the goal was not met within ${String(limits.timeoutMs)} ms` };
   }
   return { kind: 'continue' };

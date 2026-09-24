@@ -93,6 +93,7 @@ type DiscoveryContext = {
   // What humans did during handoffs, as told to the model.
   readonly byHuman: string[];
   readonly interventions: string[];
+  handoffMs: number;
   // Model turns taken.
   steps: number;
   stalls: number;
@@ -206,6 +207,7 @@ async function escalate(ctx: DiscoveryContext, stepId: string, reason: Intervent
   const { escalation, clock } = ctx.deps;
   const before = await observe(ctx);
   let after: Observation | undefined;
+  const handedOffAt = clock.now();
   const outcome = await escalation.handOff({
     run: ctx.evidenceRun,
     mode: 'discovery',
@@ -232,6 +234,7 @@ async function escalate(ctx: DiscoveryContext, stepId: string, reason: Intervent
     },
   });
   ctx.interventions.push(outcome.interventionId);
+  ctx.handoffMs += clock.now() - handedOffAt;
   if (outcome.status === 'aborted') {
     return { status: 'escalated', interventionId: outcome.interventionId, reason: outcome.cause, stepId, message: `${message} (handoff ${outcome.cause})` };
   }
@@ -436,7 +439,7 @@ async function explore(ctx: DiscoveryContext): Promise<Ending> {
   if (refusal !== undefined) return openFailed(ctx.run.targetUrl, refusal);
   ctx.surfaceOpened = true;
   for (;;) {
-    const stop = stopCheck({ steps: ctx.steps, stalls: ctx.stalls, startedAt: ctx.startedAt }, ctx.limits, ctx.deps.clock.now());
+    const stop = stopCheck({ steps: ctx.steps, stalls: ctx.stalls, startedAt: ctx.startedAt, handoffMs: ctx.handoffMs }, ctx.limits, ctx.deps.clock.now());
     if (stop.kind === 'fail') return failed(stop.reason, stop.message);
     if (stop.kind === 'escalate') {
       const ended = await escalate(ctx, `step-${String(ctx.steps)}`, stop.reason, stop.message);
@@ -490,6 +493,7 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
     trace: [],
     byHuman: [],
     interventions: [],
+    handoffMs: 0,
     steps: 0,
     stalls: 0,
     feedback: undefined,

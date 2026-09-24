@@ -55,6 +55,7 @@ export type ProviderMeta =
 
 export type DiscoveryLimits = {
   readonly maxSteps: number;
+  // Time the loop may run, not counting time spent waiting on a human in a handoff.
   readonly timeoutMs: number;
   // Consecutive steps without progress (unchanged page, rejected ref, denial) before escalating.
   readonly maxStalls: number;

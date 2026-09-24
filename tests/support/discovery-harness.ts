@@ -27,8 +27,11 @@ import { OPERATOR_ID, PASSWORD } from './replay-harness';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 export const READ_REQUEST = join(ROOT, 'discovery/requests/member.read-account-balance.json');
+export const SUB_ACCOUNT_REQUEST = join(ROOT, 'discovery/requests/member.open-sub-account.json');
 
 export type DiscoveryHarnessOptions = Partial<DiscoveryOptions> & {
+  // Request file (default: the read-balance request).
+  readonly requestPath?: string;
   readonly request?: (request: CapabilityRequest) => CapabilityRequest;
   readonly policy?: (policy: Policy) => Policy;
   // The operator of a handoff; without one there is no operator surface.
@@ -51,7 +54,7 @@ export type DiscoveryHarnessRun = {
 // The real discovery stack against a running fixture with the given reasoner; evidence and
 // the artifact go to temp dirs.
 export async function runDiscovery(fixture: FixtureHandle, reasoner: Reasoner, options: DiscoveryHarnessOptions = {}): Promise<DiscoveryHarnessRun> {
-  const loaded = await loadRequest(READ_REQUEST);
+  const loaded = await loadRequest(options.requestPath ?? READ_REQUEST);
   if (!loaded.ok) throw new Error(loaded.issues.join('; '));
   const request = options.request === undefined ? loaded.request : options.request(loaded.request);
   const catalog = await loadCatalog(join(ROOT, 'discovery/catalogs'), request.capability.app.product);

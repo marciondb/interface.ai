@@ -65,3 +65,21 @@ export const READ_FLOW: readonly ScriptedStep[] = [
   { verb: 'read', find: { role: 'cell', name: '4,812.37' }, argument: 'balance' },
   { verb: 'finish', argument: 'read the Savings balance' },
 ];
+
+// The write flow up to the review, where the model asks to click Confirm (a human does it).
+export const WRITE_FLOW_TO_CONFIRM: readonly ScriptedStep[] = [
+  ...READ_FLOW.slice(0, 4),
+  { verb: 'click', find: { role: 'button', name: 'Open Sub-Account' } },
+  { verb: 'select', find: { role: 'combobox', label: 'Account Type' }, argument: 'Money Market' },
+  { verb: 'fill', find: { role: 'textbox', label: 'Nickname' }, argument: 'Rainy Day' },
+  { verb: 'fill', find: { role: 'textbox', label: '$' }, argument: '250.00' },
+  { verb: 'click', find: { role: 'button', name: 'Continue' } },
+  { verb: 'click', find: { role: 'button', name: 'Confirm' } },
+];
+
+// The whole write flow for member 10001, once the human has confirmed.
+export const WRITE_FLOW: readonly ScriptedStep[] = [
+  ...WRITE_FLOW_TO_CONFIRM,
+  { verb: 'read', find: { role: 'cell', name: '10001MMRAIN025000' }, argument: 'accountNumber' },
+  { verb: 'finish', argument: 'opened the sub-account' },
+];

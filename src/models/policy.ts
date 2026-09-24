@@ -1,7 +1,7 @@
 import type { Action, Verb } from './action';
 import type { ElementInfo } from './resolution';
 
-// RFC-006 allowlist. Routes match exactly; a trailing `*` makes the entry a prefix.
+// RFC-006 allowlist. Routes match exactly; a trailing `/*` matches the route and everything under it.
 export type Policy = {
   readonly allowedOrigins: readonly string[];
   readonly allowedRoutes: readonly string[];
@@ -26,3 +26,10 @@ export type PolicyDecision =
   | { readonly decision: 'allow' }
   | { readonly decision: 'deny'; readonly reason: string }
   | { readonly decision: 'requires_human'; readonly reason: string };
+
+// Where an action took the page when that is outside the policy; the driver has already acted,
+// so it is a hard stop rather than feedback (ADR-011).
+export type Landing = {
+  readonly reason: 'landed_outside_allowlist' | 'landed_on_risky_route';
+  readonly landedAt: string;
+};

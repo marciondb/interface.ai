@@ -1,5 +1,5 @@
 import type { EvidenceRecorder } from '../diplomat/evidence/port';
-import type { ActionGateway, GatewayOutcome } from '../diplomat/gateway/port';
+import type { ActionGateway, GatewayOutcome, OpenDecision } from '../diplomat/gateway/port';
 import type { SessionCookie, SessionProvider } from '../diplomat/session/port';
 import type { ArtifactStore } from '../diplomat/store/port';
 import type { Clock } from '../infrastructure/clock';
@@ -78,6 +78,10 @@ function errorName(error: unknown): string | undefined {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message.split('\n')[0] : String(error);
+}
+
+function denialOf(denied: { readonly reason: string; readonly landedAt?: string }): string {
+  return denied.landedAt === undefined ? denied.reason : `${denied.reason} at ${denied.landedAt}`;
 }
 
 // Executes a capability without a model (RFC-004): every step is resolved, performed through
@@ -202,7 +206,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
     const outcome = await gateway.perform({ stepId, purpose, action, timeoutMs: stepTimeoutMs });
     if (outcome.status === 'denied' || outcome.status === 'requires_human') {
       const decision = outcome.status === 'denied' ? 'deny' : 'requires_human';
-      await evidence.event({ type: 'policy', stepId, purpose, verb: action.verb, decision, reason: outcome.reason });
+      await evidence.event({ type: 'policy', stepId, purpose, verb: action.verb, decision, reason: denialOf(outcome) });
       return outcome;
     }
     if (purpose === 'checkpoint') return outcome;
@@ -336,14 +340,32 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
 
     const action = toSurfaceAction(step.id, step.action, ref, request.targetUrl);
     const what = name === undefined ? action.verb : `${action.verb} on ${name}`;
-    // The artifact's risk holds even if policy.json changes (RFC-006), so the gateway is not asked.
-    if (step.risk === 'risky') return { kind: 'requires_human', message: `step ${step.id} is risky: ${what} needs a human` };
+    // The artifact's risk holds even if policy.json changes (RFC-006): the gateway is only asked
+    // whether the policy denies the step, since deny wins over handing it to a human.
+    if (step.risk === 'risky') {
+      const decision = await gateway.check(action);
+      if (decision.decision === 'deny') {
+        await evidence.event({ type: 'policy', stepId: step.id, purpose: 'step', verb: action.verb, decision: 'deny', reason: decision.reason });
+        return { kind: 'failed', code: 'policy_denied', expected: `${what} allowed by policy`, observed: decision.reason };
+      }
+      return { kind: 'requires_human', message: `step ${step.id} is risky: ${what} needs a human` };
+    }
     const outcome = await perform(step.id, 'step', action, name);
     let serverError = false;
     let value: string | undefined;
     switch (outcome.status) {
-      case 'denied':
+      case 'denied': {
+        if ('landedAt' in outcome) {
+          // The sign-in page is the one place off the allowlist a run recovers from: the session
+          // provider owns it (ADR-013), so an expired session is still reauthenticated.
+          const { observation, classification } = await classifyNow(capability, step.id, 'checkpoint_not_met', false);
+          if (classification.kind === 'session_expired') {
+            return { kind: 'problem', trigger: 'checkpoint_not_met', classification, expected: `${what} to keep the session`, observed: denialOf(outcome), observation };
+          }
+          return { kind: 'failed', code: 'policy_denied', expected: `${what} to stay within the policy`, observed: denialOf(outcome) };
+        }
         return { kind: 'failed', code: 'policy_denied', expected: `${what} allowed by policy`, observed: outcome.reason };
+      }
       case 'requires_human':
         return { kind: 'requires_human', message: `${what} needs a human: ${outcome.reason}` };
       case 'error':
@@ -393,7 +415,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
     }
     const click = toSurfaceAction(stepId, move.recover, resolution.ref, request.targetUrl);
     const outcome = await perform(stepId, 'recovery', click, name);
-    if (outcome.status === 'denied') return failed(stepId, 'policy_denied', `click on ${name} allowed by policy`, outcome.reason);
+    if (outcome.status === 'denied') return failed(stepId, 'policy_denied', `click on ${name} allowed by policy`, denialOf(outcome));
     if (outcome.status === 'requires_human') {
       const condition = capability.outcomes.find((declared) => declared.id === move.outcomeId)?.when;
       return handOff(stepId, `click on ${name} needs a human: ${outcome.reason}`, async () => {
@@ -469,9 +491,27 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
     return end({ status: 'succeeded', outputs });
   }
 
-  // Signs in (ADR-013) and loads the target through the gateway.
+  // Nothing is open yet, so there is no session to hand over for requires_human.
+  async function refused(decision: OpenDecision): Promise<Ending | undefined> {
+    switch (decision.decision) {
+      case 'allow':
+        return undefined;
+      case 'deny':
+        return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed by policy`, denialOf(decision));
+      case 'requires_human':
+        return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed for automation`, `needs a human: ${decision.reason}`);
+      default: {
+        const unhandled: never = decision;
+        return unhandled;
+      }
+    }
+  }
+
+  // Checks the target, signs in (ADR-013) and loads the target through the gateway.
   async function openSurface(capability: Capability, reauthenticating: boolean): Promise<Ending | undefined> {
     currentStepId = 'preconditions';
+    const notAllowed = await refused(gateway.checkOpen(request.targetUrl));
+    if (notAllowed !== undefined) return notAllowed;
     let cookies: readonly SessionCookie[] = [];
     if (capability.preconditions.map((precondition) => precondition.kind).includes('authenticated_session')) {
       try {
@@ -482,20 +522,8 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
       }
       await evidence.event({ type: 'session', event: reauthenticating ? 'reauthenticated' : 'established' });
     }
-    const decision = await gateway.open(request.targetUrl, cookies);
-    switch (decision.decision) {
-      case 'allow':
-        break;
-      case 'deny':
-        return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed by policy`, decision.reason);
-      // Nothing is open yet, so there is no session to hand over.
-      case 'requires_human':
-        return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed for automation`, `needs a human: ${decision.reason}`);
-      default: {
-        const unhandled: never = decision;
-        return unhandled;
-      }
-    }
+    const notOpened = await refused(await gateway.open(request.targetUrl, cookies));
+    if (notOpened !== undefined) return notOpened;
     surfaceOpened = true;
     await evidence.event({ type: 'session', event: 'opened' });
     return undefined;

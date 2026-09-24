@@ -30,6 +30,11 @@ export type SurfaceDriver = {
   // The element's attributes, adjacent label and table position, for building locators (discovery).
   inspect(ref: string): Promise<ElementDescriptor>;
   currentUrl(): string;
+  // The page URL, then the URL of every frame in it.
+  frameUrls(): readonly string[];
+  // From now on, navigations of the page or any frame to a URL `allows` rejects are aborted
+  // before the request is sent, whoever starts them. Popups are always closed.
+  setNavigationGuard(allows: (url: string) => boolean): void;
   // PNG of the full page.
   screenshot(): Promise<Uint8Array>;
   close(): Promise<void>;
@@ -48,8 +53,9 @@ export type HumanSurface = {
   observe(): Promise<Observation>;
   screenshot(): Promise<Uint8Array>;
   currentUrl(): string;
-  // Until stopHumanCapture(), what happens on the page is reported as human. Outside a capture,
-  // dialogs are dismissed and shown in the next observation.
+  // Until stopHumanCapture(), what happens on the page is reported as human, up to a cap per
+  // capture (page scripts can post reports too). Outside a capture, dialogs are dismissed and
+  // shown in the next observation.
   startHumanCapture(listener: HumanCaptureListener): void;
   stopHumanCapture(): void;
   // Called once when the window is closed or the browser goes away; returns an unsubscribe.

@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ExecutionResult } from '../../../src/models/execution-result';
 import { readEvents, readSnapshots, runDir } from '../../support/evidence';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
-import { runReplay, type HarnessOptions, type HarnessRun } from '../../support/replay-harness';
+import { referenceCapabilities, runReplay, type HarnessOptions, type HarnessRun } from '../../support/replay-harness';
 
 const MARIA = { memberId: '10001', accountType: 'Savings' };
 
@@ -58,6 +58,11 @@ async function writeTestCapabilities(root: string): Promise<void> {
   }
 }
 
+function failureOf(result: ExecutionResult) {
+  if (result.status !== 'failed') throw new Error(`expected failed, got ${JSON.stringify(result)}`);
+  return result.failure;
+}
+
 function escalation(result: ExecutionResult) {
   if (result.status !== 'escalated') throw new Error(`expected escalated, got ${JSON.stringify(result)}`);
   return result;
@@ -93,7 +98,7 @@ describe('replay guardrails against the fixture', { timeout: 30_000 }, () => {
     expect(snapshot.frames.map((frame) => frame.url).filter((url) => url.includes('/login'))).toEqual([]);
   });
 
-  it('escalates a step marked risky in the artifact before the gateway is asked', async () => {
+  it('escalates a step marked risky in the artifact without the gateway acting', async () => {
     const replayRun = await run('test.close-account', MARIA);
 
     const escalated = escalation(replayRun.result);
@@ -126,6 +131,58 @@ describe('replay guardrails against the fixture', { timeout: 30_000 }, () => {
     expect(replayRun.driverCalls.filter((call) => call.stepId === 'close-account')).toEqual([]);
     const policy = (await readEvents(replayRun)).find((event) => event.type === 'policy' && event.stepId === 'close-account');
     expect(policy).toMatchObject({ decision: 'requires_human', reason: 'destination: route /member/danger/close is risky' });
+  });
+
+  it('fails a step whose action landed outside the allowlist, though its destination was allowed', async () => {
+    // The search form posts to /member/search, which redirects to /member/results.
+    const replayRun = await run('member.read-account-balance', MARIA, {
+      capabilitiesDir: await referenceCapabilities(),
+      policy: (policy) => ({ ...policy, allowedRoutes: ['/', '/welcome', '/member/search', '/member/detail'] }),
+    });
+
+    expect(replayRun.result).toMatchObject({
+      status: 'failed',
+      failure: { stepId: 'submit-search', code: 'policy_denied', expected: 'click on lookup.search to stay within the policy' },
+    });
+    expect(failureOf(replayRun.result).observed).toMatch(/^landed_outside_allowlist at http:\/\/[^ ]+\/member\/results/);
+    const policy = (await readEvents(replayRun)).find((event) => event.type === 'policy' && event.stepId === 'submit-search' && event.decision === 'deny');
+    expect(policy?.reason).toMatch(/^landed_outside_allowlist at /);
+    expect(replayRun.driverCalls.filter((call) => call.stepId === 'open-member-detail')).toEqual([]);
+  });
+
+  it('fails a step whose action landed on a risky route', async () => {
+    const replayRun = await run('member.read-account-balance', MARIA, {
+      capabilitiesDir: await referenceCapabilities(),
+      policy: (policy) => ({ ...policy, risky: { ...policy.risky, routes: [...policy.risky.routes, '/member/results'] } }),
+    });
+
+    expect(replayRun.result).toMatchObject({ status: 'failed', failure: { stepId: 'submit-search', code: 'policy_denied' } });
+    expect(failureOf(replayRun.result).observed).toMatch(/^landed_on_risky_route at /);
+  });
+
+  it('fails, rather than escalating, a risky step the policy denies', async () => {
+    const replayRun = await run('test.close-account', MARIA, {
+      policy: (policy) => ({ ...policy, allowedRoutes: ['/', '/welcome', '/member/search', '/member/results', '/member/detail'] }),
+    });
+
+    expect(replayRun.result).toMatchObject({
+      status: 'failed',
+      interventions: [],
+      failure: { stepId: 'close-account', code: 'policy_denied', observed: 'destination: route /member/danger/close is not allowed' },
+    });
+    const events = await readEvents(replayRun);
+    expect(events.some((event) => event.type === 'handoff_requested')).toBe(false);
+    expect(events.find((event) => event.type === 'policy' && event.stepId === 'close-account')).toMatchObject({ decision: 'deny' });
+  });
+
+  it('refuses a target the policy denies before signing in', async () => {
+    const replayRun = await run('member.read-account-balance', MARIA, {
+      capabilitiesDir: await referenceCapabilities(),
+      policy: (policy) => ({ ...policy, allowedRoutes: ['/member/*'] }),
+    });
+
+    expect(replayRun.result).toMatchObject({ status: 'failed', failure: { stepId: 'preconditions', code: 'policy_denied' } });
+    expect(replayRun.sessionsEstablished).toBe(0);
   });
 
   it('honors the artifact risk even when the policy has no risky rules', async () => {

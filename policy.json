@@ -3,7 +3,7 @@
   "allowedRoutes": ["/", "/welcome", "/member/*"],
   "allowedActions": ["click", "fill", "select", "navigate", "read"],
   "risky": {
-    "routes": ["/member/danger/*"],
+    "routes": ["/member/danger/*", "/member/subacct/confirm", "/member/subacct/approve"],
     "controlText": ["Close Account", "Post Adjustment", "Confirm"]
   }
 }

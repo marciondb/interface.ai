@@ -1,8 +1,9 @@
-import { evaluatePolicy } from '../../logic/policy';
+import { evaluateLanding, evaluatePolicy, urlViolation } from '../../logic/policy';
+import type { Action } from '../../models/action';
 import type { ControlOwner } from '../../models/control';
-import type { Policy } from '../../models/policy';
+import type { Policy, PolicyDecision } from '../../models/policy';
 import type { SurfaceDriver } from '../surface/port';
-import type { ActionGateway } from './port';
+import type { ActionGateway, GatewayOutcome } from './port';
 
 const CONTROL_OWNED_BY_HUMAN = 'control_owned_by_human';
 
@@ -13,16 +14,30 @@ export type ActionGatewayOptions = {
   readonly controlOwner: () => ControlOwner;
 };
 
+// Also installs a navigation guard on the driver, so redirects the page starts by itself
+// (scripts, popups, handoffs) cannot leave the allowlist either.
 export function createActionGateway({ driver, policy, controlOwner }: ActionGatewayOptions): ActionGateway {
+  driver.setNavigationGuard((url) => urlViolation(url, policy) === undefined);
+
+  function checkOpen(url: string): PolicyDecision {
+    if (controlOwner() !== 'automation') return { decision: 'deny', reason: CONTROL_OWNED_BY_HUMAN };
+    return evaluatePolicy({ action: { verb: 'navigate', target: null, argument: url, rationale: 'open the target' }, currentUrl: url }, policy);
+  }
+
+  async function check(action: Action): Promise<PolicyDecision> {
+    const element = action.target === null ? undefined : await driver.describe(action.target);
+    return evaluatePolicy({ action, element, currentUrl: driver.currentUrl() }, policy);
+  }
+
   return {
+    checkOpen,
+
     async open(url, session) {
-      if (controlOwner() !== 'automation') return { decision: 'deny', reason: CONTROL_OWNED_BY_HUMAN };
-      const decision = evaluatePolicy(
-        { action: { verb: 'navigate', target: null, argument: url, rationale: 'open the target' }, currentUrl: url },
-        policy,
-      );
-      if (decision.decision === 'allow') await driver.open(url, session);
-      return decision;
+      const decision = checkOpen(url);
+      if (decision.decision !== 'allow') return decision;
+      await driver.open(url, session);
+      const landing = evaluateLanding({ loaded: [], frames: driver.frameUrls(), before: [] }, policy);
+      return landing === undefined ? decision : { decision: 'deny', ...landing };
     },
 
     observe: () => driver.observe(),
@@ -31,14 +46,15 @@ export function createActionGateway({ driver, policy, controlOwner }: ActionGate
 
     inspect: (ref) => driver.inspect(ref),
 
-    async perform({ action, timeoutMs }) {
+    check,
+
+    async perform({ action, timeoutMs }): Promise<GatewayOutcome> {
       // Reading changes nothing, so a checkpoint can still be verified while a human holds control.
       if (action.verb !== 'read' && controlOwner() !== 'automation') return { status: 'denied', reason: CONTROL_OWNED_BY_HUMAN };
-      const element = action.target === null ? undefined : await driver.describe(action.target);
-      const decision = evaluatePolicy({ action, element, currentUrl: driver.currentUrl() }, policy);
+      const decision = await check(action);
       switch (decision.decision) {
         case 'allow':
-          return driver.perform(action, { timeoutMs });
+          break;
         case 'deny':
           return { status: 'denied', reason: decision.reason };
         case 'requires_human':
@@ -48,6 +64,12 @@ export function createActionGateway({ driver, policy, controlOwner }: ActionGate
           return unhandled;
         }
       }
+      if (action.verb === 'read') return driver.perform(action, { timeoutMs });
+      const before = driver.frameUrls();
+      const outcome = await driver.perform(action, { timeoutMs });
+      const loaded = outcome.status === 'done' ? outcome.navigations.map((navigation) => navigation.url) : [];
+      const landing = evaluateLanding({ loaded, frames: driver.frameUrls(), before }, policy);
+      return landing === undefined ? outcome : { status: 'denied', ...landing };
     },
 
     screenshot: () => driver.screenshot(),

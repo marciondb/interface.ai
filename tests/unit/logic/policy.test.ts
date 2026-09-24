@@ -1,5 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { evaluatePolicy, urlViolation } from '../../../src/logic/policy';
+import { evaluateLanding, evaluatePolicy, urlViolation } from '../../../src/logic/policy';
 import type { Action } from '../../../src/models/action';
 import type { Policy } from '../../../src/models/policy';
 import type { ElementInfo } from '../../../src/models/resolution';
@@ -126,6 +127,71 @@ describe('evaluatePolicy', () => {
     expect(evaluatePolicy({ action: read, element: button('Close Account'), currentUrl: SHELL }, POLICY)).toEqual({ decision: 'allow' });
   });
 
+  it('requires a human when the element sits in a frame showing a risky page, though the top page is not', () => {
+    const element = { role: 'link', name: 'Return to Member Detail', frameUrl: 'http://localhost:8080/member/danger/close' };
+
+    expect(evaluatePolicy({ action: click(), element, currentUrl: SHELL }, POLICY)).toEqual({
+      decision: 'requires_human',
+      reason: 'element frame: route /member/danger/close is risky',
+    });
+  });
+
+  it.each(['Yes, confirm', 'Confirm ›', 'Con\u200bfirm', 'ＣＯＮＦＩＲＭ', 'close\u00a0account now'])('requires a human for %j, which mentions a risky control', (name) => {
+    expect(evaluatePolicy({ action: click(), element: button(name), currentUrl: SHELL }, POLICY)).toMatchObject({ decision: 'requires_human' });
+  });
+
+  it('looks for risky control text in every label the element shows, not only its name', () => {
+    const imageOnly: ElementInfo = { role: 'button', name: '', texts: ['Confirm'], frameUrl: DETAIL_FRAME };
+    const titled: ElementInfo = { role: 'button', name: 'Next', texts: ['Next', 'Close Account'], frameUrl: DETAIL_FRAME };
+
+    expect(evaluatePolicy({ action: click(), element: imageOnly, currentUrl: SHELL }, POLICY)).toEqual({
+      decision: 'requires_human',
+      reason: 'control "Confirm" is risky',
+    });
+    expect(evaluatePolicy({ action: click(), element: titled, currentUrl: SHELL }, POLICY)).toMatchObject({ decision: 'requires_human' });
+  });
+
+  it('denies a key press without a target and checks a press on a control like a click', () => {
+    const withPress: Policy = { ...POLICY, allowedActions: [...POLICY.allowedActions, 'press'] };
+    const pressOn = (target: string | null): Action => ({ verb: 'press', target, argument: 'Enter', rationale: 'test' });
+
+    expect(evaluatePolicy({ action: pressOn(null), currentUrl: SHELL }, withPress)).toEqual({ decision: 'deny', reason: 'press requires a target' });
+    expect(evaluatePolicy({ action: pressOn('e1'), element: button('Confirm'), currentUrl: SHELL }, withPress)).toMatchObject({
+      decision: 'requires_human',
+    });
+    expect(evaluatePolicy({ action: pressOn('e1'), element: button('Go', 'http://localhost:8080/member/danger/close'), currentUrl: SHELL }, withPress)).toMatchObject({
+      decision: 'requires_human',
+    });
+  });
+
+  it.each([
+    'http://localhost:8080/member/danger',
+    'http://localhost:8080/member//danger/close',
+    'http://localhost:8080/member/Danger/close',
+    'http://localhost:8080/member/%64anger/close',
+    'http://localhost:8080/member/danger;x/close',
+  ])('recognizes the risky route behind %s', (url) => {
+    expect(evaluatePolicy({ action: navigate(url), currentUrl: SHELL }, POLICY)).toMatchObject({ decision: 'requires_human' });
+  });
+
+  it.each(['http://localhost:8080/member/..%2flogout', 'http://localhost:8080/member/%2e%2e%5clogout', 'http://localhost:8080/member/%2fdanger/close'])(
+    'denies %s, whose segments decode to separators or dot segments',
+    (url) => {
+      expect(evaluatePolicy({ action: navigate(url), currentUrl: SHELL }, POLICY)).toMatchObject({ decision: 'deny' });
+    },
+  );
+
+  it('denies URLs carrying credentials', () => {
+    const withUserAndPassword = new URL('http://localhost:8080/');
+    withUserAndPassword.username = `user-${randomUUID()}`;
+    withUserAndPassword.password = randomUUID();
+    const withUserOnly = new URL('http://localhost:8080/member/search');
+    withUserOnly.username = `user-${randomUUID()}`;
+
+    expect(urlViolation(withUserAndPassword.href, POLICY)).toBe('credentials in the URL are not allowed');
+    expect(urlViolation(withUserOnly.href, POLICY)).toBe('credentials in the URL are not allowed');
+  });
+
   it('matches routes exactly unless they end with *', () => {
     expect(urlViolation('http://localhost:8080/', POLICY)).toBeUndefined();
     expect(urlViolation('http://localhost:8080/welcome', POLICY)).toBeUndefined();
@@ -134,5 +200,30 @@ describe('evaluatePolicy', () => {
     expect(urlViolation('http://localhost:8080/welcome/more', POLICY)).toBe('route /welcome/more is not allowed');
     expect(urlViolation('http://localhost:8080/members', POLICY)).toBe('route /members is not allowed');
     expect(urlViolation('not a url', POLICY)).toBe('not a url is not a valid URL');
+    expect(urlViolation('http://localhost:8080/member', POLICY)).toBeUndefined();
+  });
+});
+
+describe('evaluateLanding', () => {
+  const DANGER = 'http://localhost:8080/member/danger/close?memberId=1';
+
+  it('accepts a landing inside the allowlist, empty frames included', () => {
+    expect(evaluateLanding({ loaded: [DETAIL_FRAME], frames: [SHELL, DETAIL_FRAME, 'about:blank'], before: [SHELL] }, POLICY)).toBeUndefined();
+  });
+
+  it('rejects any loaded URL or frame outside the allowlist', () => {
+    expect(evaluateLanding({ loaded: ['http://localhost:8080/logout', DETAIL_FRAME], frames: [SHELL], before: [SHELL] }, POLICY)).toEqual({
+      reason: 'landed_outside_allowlist',
+      landedAt: 'http://localhost:8080/logout',
+    });
+    expect(evaluateLanding({ loaded: [], frames: [SHELL, 'chrome-error://chromewebdata/'], before: [SHELL] }, POLICY)).toMatchObject({
+      reason: 'landed_outside_allowlist',
+    });
+  });
+
+  it('rejects a risky route the action loaded or moved a frame to, but not one a frame was already on', () => {
+    expect(evaluateLanding({ loaded: [DANGER], frames: [SHELL], before: [SHELL] }, POLICY)).toEqual({ reason: 'landed_on_risky_route', landedAt: DANGER });
+    expect(evaluateLanding({ loaded: [], frames: [SHELL, DANGER], before: [SHELL, DETAIL_FRAME] }, POLICY)).toMatchObject({ reason: 'landed_on_risky_route' });
+    expect(evaluateLanding({ loaded: [], frames: [SHELL, DANGER], before: [SHELL, DANGER] }, POLICY)).toBeUndefined();
   });
 });

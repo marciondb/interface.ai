@@ -92,12 +92,9 @@ describe('discovery controller against the fixture', { timeout: 60_000 }, () => 
       expect(await readdir(runFolder(discovery))).toEqual(expect.arrayContaining(['artifact.json', 'result.json', 'run.jsonl', 'screenshots', 'snapshots']));
       expect(text).not.toContain(PASSWORD);
       expect(text).not.toContain('10001');
-      // Masked from the read on (RFC-006); what was written before shows the screen as it was.
-      const read = log.find((event) => event.type === 'action' && event.verb === 'read');
-      const fromRead = log.filter((event) => typeof read?.seq === 'number' && typeof event.seq === 'number' && event.seq >= read.seq);
-      expect(fromRead.length).toBeGreaterThan(0);
-      expect(JSON.stringify(fromRead)).not.toContain('4,812.37');
-      expect(await readFile(join(runFolder(discovery), 'result.json'), 'utf8')).not.toContain('4,812.37');
+      // Read at the last step, yet masked in every file, including the snapshots written before (RFC-006).
+      expect(text).not.toContain('4,812.37');
+      expect(text).toContain('[REDACTED:financial]');
       expect(log.find((event) => event.type === 'output')).toMatchObject({ name: 'balance', value: '[REDACTED:financial]' });
     });
 
@@ -143,6 +140,27 @@ describe('discovery controller against the fixture', { timeout: 60_000 }, () => 
     expect(expectStatus(run.result, 'failed')).toMatchObject({ reason: 'reasoner_exhausted' });
     expect(run.driverCalls).toHaveLength(0);
     expect(reasoner.inputs[1]?.feedback).toMatch(/^your previous navigate was denied: destination: origin https:\/\/example.com is not allowed$/);
+  });
+
+  it('ends the run when an action lands outside the allowlist, without showing that page to the model', async () => {
+    // The search form posts to /member/search, which redirects to /member/results.
+    const reasoner = createScriptedReasoner([...afterLookup(READ_FLOW[2]), ...READ_FLOW.slice(3)]);
+
+    const run = await discover(reasoner, { policy: (policy) => ({ ...policy, allowedRoutes: ['/', '/welcome', '/member/search', '/member/detail'] }) });
+
+    expect(expectStatus(run.result, 'failed')).toMatchObject({ reason: 'policy_denied', steps: 3 });
+    expect(run.result.status === 'failed' && run.result.message).toMatch(/^click button "Search" landed_outside_allowlist at http:\/\/[^ ]+\/member\/results/);
+    expect(reasoner.inputs).toHaveLength(3);
+  });
+
+  it('refuses a target the policy denies before signing in', async () => {
+    const reasoner = createScriptedReasoner(READ_FLOW);
+
+    const run = await discover(reasoner, { policy: (policy) => ({ ...policy, allowedRoutes: ['/member/*'] }) });
+
+    expect(expectStatus(run.result, 'failed')).toMatchObject({ reason: 'policy_denied', steps: 0 });
+    expect((await events(run)).some((event) => event.type === 'session')).toBe(false);
+    expect(reasoner.inputs).toHaveLength(0);
   });
 
   it('escalates after three actions that change nothing', async () => {

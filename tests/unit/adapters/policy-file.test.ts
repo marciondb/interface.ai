@@ -21,7 +21,10 @@ describe('fromPolicyFile', () => {
         allowedOrigins: ['http://localhost:8080'],
         allowedRoutes: ['/', '/welcome', '/member/*'],
         allowedActions: ['click', 'fill', 'select', 'navigate', 'read'],
-        risky: { routes: ['/member/danger/*'], controlText: ['Close Account', 'Post Adjustment', 'Confirm'] },
+        risky: {
+          routes: ['/member/danger/*', '/member/subacct/confirm', '/member/subacct/approve'],
+          controlText: ['Close Account', 'Post Adjustment', 'Confirm'],
+        },
       },
     });
   });

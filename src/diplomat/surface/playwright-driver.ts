@@ -18,6 +18,8 @@ const ACTION_TIMEOUT_MS = 5_000;
 // (covers the gap between a redirect response and the request it causes).
 const QUIET_MS = 150;
 const SETTLE_POLL_MS = 25;
+// Human reports kept per capture; the rest are dropped.
+const MAX_HUMAN_EVENTS = 200;
 
 export type PlaywrightDriverOptions = {
   readonly headless?: boolean;
@@ -32,16 +34,20 @@ type Surface = {
   readonly page: Page;
 };
 
+type TextNode = { readonly textContent: string | null };
+
 // The few DOM members read inside the page; the project compiles without DOM types.
 type DomElement = {
   readonly tagName: string;
   readonly textContent: string | null;
-  readonly ownerDocument: { readonly location: { readonly href: string } };
+  readonly ownerDocument: { readonly location: { readonly href: string }; getElementById(id: string): TextNode | null };
   readonly href?: string;
   readonly formAction?: string;
   readonly form?: { readonly action: string } | null;
   readonly value?: string;
+  readonly labels?: ArrayLike<TextNode> | null;
   getAttribute(name: string): string | null;
+  querySelectorAll(selectors: string): ArrayLike<{ getAttribute(name: string): string | null }>;
 };
 
 async function launch(headless: boolean, prepare: (context: BrowserContext) => Promise<void>): Promise<Surface> {
@@ -128,13 +134,29 @@ function elementInfo(element: DomElement): ElementInfo {
     element.getAttribute('role') ??
     (buttonLike ? 'button' : tag === 'input' ? (['checkbox', 'radio'].includes(type) ? type : 'textbox') : (implicit[tag] ?? tag));
   const text = buttonLike && tag === 'input' ? (element.value ?? '') : (element.textContent ?? '');
-  const name = (element.getAttribute('aria-label') ?? text).replace(/\s+/g, ' ').trim().slice(0, 200);
+  const ownerDocument = element.ownerDocument;
+  // In accessible-name order, so the first non-empty one is the name.
+  const texts = [
+    element.getAttribute('aria-label') ?? '',
+    (element.getAttribute('aria-labelledby') ?? '')
+      .split(/\s+/)
+      .map((id) => (id === '' ? '' : (ownerDocument.getElementById(id)?.textContent ?? '')))
+      .join(' '),
+    text,
+    element.getAttribute('alt') ?? '',
+    Array.from(element.querySelectorAll('img[alt]'), (image) => image.getAttribute('alt') ?? '').join(' '),
+    Array.from(element.labels ?? [], (label) => label.textContent ?? '').join(' '),
+    element.getAttribute('title') ?? '',
+  ]
+    .map((candidate) => candidate.replace(/\s+/g, ' ').trim().slice(0, 200))
+    .filter((candidate) => candidate !== '');
+  const name = texts[0] ?? '';
   let destination: string | undefined;
   if (tag === 'a' && element.getAttribute('href') !== null) destination = element.href;
   else if (buttonLike && type !== 'reset' && type !== 'button' && element.form) {
     destination = element.getAttribute('formaction') === null ? element.form.action : element.formAction;
   }
-  const info: ElementInfo = { role, name, frameUrl: element.ownerDocument.location.href };
+  const info: ElementInfo = { role, name, texts, frameUrl: ownerDocument.location.href };
   return destination === undefined ? info : { ...info, destination };
 }
 
@@ -227,17 +249,27 @@ export function createPlaywrightDriver(options: PlaywrightDriverOptions = {}): P
   let resolvedTargets = new Map<string, Locator>();
   let observations = 0;
   let capture: HumanCaptureListener | undefined;
+  let humanEvents = 0;
+  let navigationGuard: ((url: string) => boolean) | undefined;
   // A dialog automation dismissed, shown in the next observation.
   let dismissedDialog: Dialog | undefined;
   let closed = false;
   const closedCallbacks = new Set<() => void>();
 
   function report(payload: unknown): void {
+    if (capture === undefined || humanEvents >= MAX_HUMAN_EVENTS) return;
     const parsed = HumanActionSchema.safeParse(payload);
-    if (parsed.success) capture?.onAction(parsed.data);
+    if (!parsed.success) return;
+    humanEvents += 1;
+    capture.onAction(parsed.data);
   }
 
   async function prepare(context: BrowserContext): Promise<void> {
+    await context.route('**/*', (route, request) =>
+      request.isNavigationRequest() && navigationGuard !== undefined && !navigationGuard(request.url())
+        ? route.abort('blockedbyclient')
+        : route.continue(),
+    );
     await context.exposeBinding(HUMAN_EVENT_BINDING, ({ frame }, payload: unknown) => {
       if (capture === undefined || typeof payload !== 'object' || payload === null) return;
       const event = payload as { target?: object };
@@ -263,7 +295,11 @@ export function createPlaywrightDriver(options: PlaywrightDriverOptions = {}): P
     closedCallbacks.clear();
   }
 
-  function watch({ browser, page }: Surface): void {
+  function watch({ browser, context, page }: Surface): void {
+    // One page per run: a popup would be a second page outside what is observed and policed.
+    context.on('page', (popup) => {
+      if (popup !== page) void popup.close().catch(() => undefined);
+    });
     page.on('dialog', (dialog) => void answer(dialog));
     page.on('framenavigated', (frame) => {
       if (capture !== undefined) report({ kind: 'navigation', frame: frameName(frame), url: withoutQuery(frame.url()), at: new Date().toISOString() });
@@ -422,12 +458,22 @@ export function createPlaywrightDriver(options: PlaywrightDriverOptions = {}): P
       return current().page.url();
     },
 
+    frameUrls() {
+      const { page } = current();
+      return [page.url(), ...page.frames().filter((frame) => frame !== page.mainFrame()).map((frame) => frame.url())];
+    },
+
+    setNavigationGuard(allows) {
+      navigationGuard = allows;
+    },
+
     async screenshot() {
       return current().page.screenshot({ fullPage: true, timeout: ACTION_TIMEOUT_MS });
     },
 
     startHumanCapture(listener) {
       capture = listener;
+      humanEvents = 0;
     },
 
     stopHumanCapture() {

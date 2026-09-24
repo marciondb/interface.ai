@@ -16,6 +16,9 @@ export type Resolution =
 export type ElementInfo = {
   readonly role: string;
   readonly name: string;
+  // Every other text a person may read as the control's label: text, value, alt, title,
+  // aria-labelledby, image alts. Risky control text is looked for in these too.
+  readonly texts?: readonly string[];
   readonly frameUrl: string;
   // Link href or submit form action, as an absolute URL.
   readonly destination?: string;

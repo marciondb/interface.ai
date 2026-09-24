@@ -1,5 +1,5 @@
 import type { EvidenceRecorder } from '../diplomat/evidence/port';
-import type { ActionGateway, GatewayOutcome } from '../diplomat/gateway/port';
+import type { ActionGateway, GatewayOutcome, OpenDecision } from '../diplomat/gateway/port';
 import type { Reasoner, ReasonerAdapter } from '../diplomat/reasoner/port';
 import type { SessionCookie, SessionProvider } from '../diplomat/session/port';
 import type { ArtifactStore } from '../diplomat/store/port';
@@ -100,6 +100,26 @@ function descriptorOf(target: HumanTarget): ElementDescriptor {
 
 function failed(reason: DiscoveryFailureReason, message: string): Ending {
   return { status: 'failed', reason, message };
+}
+
+function denialOf(denied: { readonly reason: string; readonly landedAt?: string }): string {
+  return denied.landedAt === undefined ? denied.reason : `${denied.reason} at ${denied.landedAt}`;
+}
+
+// Why opening targetUrl is refused, or undefined when it is allowed.
+function openRefused(targetUrl: string, decision: OpenDecision): Ending | undefined {
+  switch (decision.decision) {
+    case 'allow':
+      return undefined;
+    case 'deny':
+      return failed('policy_denied', `opening ${targetUrl}: ${denialOf(decision)}`);
+    case 'requires_human':
+      return failed('policy_denied', `opening ${targetUrl} needs a human: ${decision.reason}`);
+    default: {
+      const unhandled: never = decision;
+      return unhandled;
+    }
+  }
 }
 
 // Accomplishes the request's goal on the live surface with the model (RFC-003) and, when the
@@ -224,7 +244,7 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
   async function recordAction(stepId: string, decision: AgentDecision, target: string | undefined, outcome: GatewayOutcome): Promise<void> {
     if (outcome.status === 'denied' || outcome.status === 'requires_human') {
       const verdict = outcome.status === 'denied' ? 'deny' : 'requires_human';
-      await evidence.event({ type: 'policy', stepId, purpose: 'step', verb: decision.verb, decision: verdict, reason: outcome.reason });
+      await evidence.event({ type: 'policy', stepId, purpose: 'step', verb: decision.verb, decision: verdict, reason: denialOf(outcome) });
       return;
     }
     await evidence.event({ type: 'policy', stepId, purpose: 'step', verb: decision.verb, decision: 'allow' });
@@ -321,6 +341,8 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
     await recordAction(stepId, decision, described, outcome);
     switch (outcome.status) {
       case 'denied':
+        // The action already ran and took the page outside the policy: nothing the model sees next is safe to act on.
+        if ('landedAt' in outcome) return failed('policy_denied', `${verb} ${described ?? ''} ${denialOf(outcome)}`);
         await setback(stepId, { kind: 'denied', decision, node, reason: outcome.reason });
         return undefined;
       case 'requires_human':
@@ -367,6 +389,9 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
   }
 
   async function loop(): Promise<Ending> {
+    // Before signing in: credentials are never sent for a target the policy refuses.
+    const notAllowed = openRefused(targetUrl, gateway.checkOpen(targetUrl));
+    if (notAllowed !== undefined) return notAllowed;
     let cookies: readonly SessionCookie[];
     try {
       cookies = await session.establish(targetUrl);
@@ -375,19 +400,8 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
       return failed('precondition_failed', errorMessage(error));
     }
     await evidence.event({ type: 'session', event: 'established' });
-    const opened = await gateway.open(targetUrl, cookies);
-    switch (opened.decision) {
-      case 'allow':
-        break;
-      case 'deny':
-        return failed('policy_denied', `opening ${targetUrl}: ${opened.reason}`);
-      case 'requires_human':
-        return failed('policy_denied', `opening ${targetUrl} needs a human: ${opened.reason}`);
-      default: {
-        const unhandled: never = opened;
-        return unhandled;
-      }
-    }
+    const notOpened = openRefused(targetUrl, await gateway.open(targetUrl, cookies));
+    if (notOpened !== undefined) return notOpened;
     surfaceOpened = true;
     await evidence.event({ type: 'session', event: 'opened' });
 

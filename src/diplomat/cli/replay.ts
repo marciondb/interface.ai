@@ -5,6 +5,7 @@ import { fromPolicyFile } from '../../adapters/policy-file';
 import { toReplayRequest } from '../../adapters/replay-args';
 import { createEscalationController } from '../../controllers/escalation';
 import { replay } from '../../controllers/replay';
+import { errorMessage } from '../../infrastructure/errors';
 import { systemClock } from '../../infrastructure/clock';
 import { loadConfig } from '../../infrastructure/config';
 import { readJsonFile } from '../../infrastructure/json-file';
@@ -58,7 +59,7 @@ async function main(argv: string[]): Promise<number> {
       allowPositionals: false,
     }).values;
   } catch (error) {
-    return usageError((error as Error).message);
+    return usageError(errorMessage(error));
   }
   const args = toReplayRequest(values);
   if (!args.ok) return usageError(...args.issues);
@@ -68,14 +69,14 @@ async function main(argv: string[]): Promise<number> {
   try {
     config = loadConfig();
   } catch (error) {
-    return usageError(`config: ${(error as Error).message}`);
+    return usageError(`config: ${errorMessage(error)}`);
   }
 
   let policyFile: unknown;
   try {
     policyFile = await readJsonFile(join(ROOT, 'policy.json'));
   } catch (error) {
-    return usageError(`policy.json: ${(error as Error).message}`);
+    return usageError(`policy.json: ${errorMessage(error)}`);
   }
   const policy = fromPolicyFile(policyFile);
   if (!policy.ok) return usageError(...policy.issues.map((issue) => `policy.json: ${issue}`));

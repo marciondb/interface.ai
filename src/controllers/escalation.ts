@@ -2,6 +2,7 @@ import type { EscalationBroker, OperatorCommand } from '../diplomat/escalation/p
 import type { EvidenceRecorder, EvidenceRun } from '../diplomat/evidence/port';
 import type { HumanSurface } from '../diplomat/surface/port';
 import type { Clock } from '../infrastructure/clock';
+import { errorMessage } from '../infrastructure/errors';
 import { newId } from '../infrastructure/ids';
 import { ownerOf, transition } from '../logic/control';
 import type { ControlEvent, ControlOwner, ControlState } from '../models/control';
@@ -52,10 +53,6 @@ const ABORT_EVENTS: Record<EscalationReason, ControlEvent> = {
   surface_closed: 'surface_closed',
   no_operator_surface: 'no_operator_surface',
 };
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message.split('\n')[0] : String(error);
-}
 
 // The innermost document is what the operator is looking at (the fixture keeps its top URL fixed).
 function visibleUrl(observation: Observation | undefined, fallback: string): string {

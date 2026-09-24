@@ -2,7 +2,8 @@ import type { EvidenceRecorder } from '../diplomat/evidence/port';
 import type { ActionGateway, GatewayOutcome, OpenDecision } from '../diplomat/gateway/port';
 import type { SessionCookie, SessionProvider } from '../diplomat/session/port';
 import type { ArtifactStore } from '../diplomat/store/port';
-import type { Clock } from '../infrastructure/clock';
+import { DEFAULT_POLL_INTERVAL_MS, type Clock } from '../infrastructure/clock';
+import { errorMessage } from '../infrastructure/errors';
 import { bindInputs, validateInputs } from '../logic/capability-inputs';
 import { describeCounts, evaluatePredicate, factsNeeded, type Facts, type TargetFact } from '../logic/checkpoint';
 import { classify, describeClassification, isDefinitive } from '../logic/outcome-classifier';
@@ -34,8 +35,6 @@ export type ReplayOptions = {
   readonly stepTimeoutMs: number;
   readonly pollIntervalMs?: number;
 };
-
-const POLL_INTERVAL_MS = 250;
 
 type Ending =
   | { readonly status: 'succeeded'; readonly outputs: Record<string, string> }
@@ -77,16 +76,12 @@ function errorName(error: unknown): string | undefined {
   return error instanceof Error ? error.name : undefined;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message.split('\n')[0] : String(error);
-}
-
 // Executes a capability without a model (RFC-004): every step is resolved, performed through
 // the gateway and verified; anything else is classified against the artifact's declared outcomes.
 export async function replay(deps: ReplayDeps, request: ReplayRequest, options: ReplayOptions): Promise<ExecutionResult> {
   const { store, session, gateway, evidence, escalation, clock } = deps;
   const { stepTimeoutMs } = options;
-  const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
+  const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const startedAt = clock.now();
   const run = await evidence.startRun({ mode: 'replay', capabilityId: request.capabilityId });
   const recoveries: Recovery[] = [];

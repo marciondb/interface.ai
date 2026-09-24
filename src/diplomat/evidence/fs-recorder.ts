@@ -2,6 +2,7 @@ import { appendFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promise
 import { join } from 'node:path';
 import { toCapabilityFile } from '../../adapters/capability-file';
 import { toEvidenceRecord } from '../../adapters/evidence-record';
+import { errnoCode } from '../../infrastructure/errors';
 import { redactDeep, type SensitiveValue } from '../../logic/redaction';
 import type { CapturePaths, EvidenceRecorder, EvidenceRun } from './port';
 
@@ -12,10 +13,6 @@ export type FsRecorderOptions = {
   readonly secrets?: readonly string[];
   readonly now?: () => Date;
 };
-
-function isAlreadyExists(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException | null)?.code === 'EEXIST';
-}
 
 export function createFsRecorder(options: FsRecorderOptions): EvidenceRecorder {
   const secrets = options.secrets ?? [];
@@ -58,7 +55,7 @@ export function createFsRecorder(options: FsRecorderOptions): EvidenceRecorder {
         try {
           await mkdir(dir);
         } catch (error) {
-          if (isAlreadyExists(error)) continue;
+          if (errnoCode(error) === 'EEXIST') continue;
           throw error;
         }
         run = { runId, dir };

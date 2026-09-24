@@ -1,5 +1,6 @@
 import { chromium, errors, type Browser, type BrowserContext, type Dialog as PageDialog, type Frame, type Locator, type Page, type Request } from 'playwright';
 import { toObservation } from '../../adapters/aria-snapshot';
+import { errorMessage } from '../../infrastructure/errors';
 import type { PageAction } from '../../models/action';
 import type { ElementDescriptor } from '../../models/element-descriptor';
 import { HumanActionSchema, type DialogDecision } from '../../models/intervention';
@@ -239,7 +240,7 @@ function isTimeout(error: unknown): boolean {
 
 function failure(error: unknown): PerformOutcome {
   if (isTimeout(error)) return { status: 'timeout' };
-  return { status: 'error', message: error instanceof Error ? error.message.split('\n')[0] : String(error) };
+  return { status: 'error', message: errorMessage(error) };
 }
 
 export function createPlaywrightDriver(options: PlaywrightDriverOptions = {}): PlaywrightDriver {

@@ -3,7 +3,8 @@ import type { ActionGateway, GatewayOutcome, OpenDecision } from '../diplomat/ga
 import type { Reasoner, ReasonerAdapter } from '../diplomat/reasoner/port';
 import type { SessionCookie, SessionProvider } from '../diplomat/session/port';
 import type { ArtifactStore } from '../diplomat/store/port';
-import type { Clock } from '../infrastructure/clock';
+import { DEFAULT_POLL_INTERVAL_MS, type Clock } from '../infrastructure/clock';
+import { errorMessage } from '../infrastructure/errors';
 import { synthesizeArtifact } from '../logic/artifact-synthesis';
 import { renderGoal } from '../logic/capability-request';
 import { decisionFields, feedbackFor, missingOutputs, progressed, stopCheck, type Setback } from '../logic/discovery-rules';
@@ -57,8 +58,6 @@ export type DiscoveryOptions = {
   readonly pollIntervalMs?: number;
 };
 
-const POLL_INTERVAL_MS = 250;
-
 type Ending =
   | { readonly status: 'succeeded'; readonly outputs: Record<string, string> }
   | { readonly status: 'failed'; readonly reason: DiscoveryFailureReason; readonly message: string }
@@ -85,10 +84,6 @@ function reasonerKind(adapter: ReasonerAdapter): ReasonerInfo['adapter'] {
 
 function errorName(error: unknown): string | undefined {
   return error instanceof Error ? error.name : undefined;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message.split('\n')[0] : String(error);
 }
 
 function descriptorOf(target: HumanTarget): ElementDescriptor {
@@ -128,7 +123,7 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
   const { store, session, gateway, reasoner, evidence, escalation, clock } = deps;
   const { request, catalog, targetUrl } = run;
   const limits = options.limits ?? DEFAULT_DISCOVERY_LIMITS;
-  const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
+  const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const rules: RedactionRules = { secrets: run.secrets, sensitive: [] };
   const info: ReasonerInfo = { adapter: reasonerKind(reasoner.adapter), model: reasoner.model };
   const capability = { id: request.capability.id, version: request.capability.version };

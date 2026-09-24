@@ -5,6 +5,7 @@ import { toDiscoverArgs, type ReasonerChoice } from '../../adapters/discover-arg
 import { fromPolicyFile } from '../../adapters/policy-file';
 import { discover } from '../../controllers/discovery';
 import { createEscalationController } from '../../controllers/escalation';
+import { errorMessage } from '../../infrastructure/errors';
 import { systemClock } from '../../infrastructure/clock';
 import { loadConfig, type Config } from '../../infrastructure/config';
 import { readJsonFile } from '../../infrastructure/json-file';
@@ -76,7 +77,7 @@ async function main(argv: string[]): Promise<number> {
       allowPositionals: false,
     }).values;
   } catch (error) {
-    return usageError((error as Error).message);
+    return usageError(errorMessage(error));
   }
   const parsed = toDiscoverArgs(values);
   if (!parsed.ok) return usageError(...parsed.issues);
@@ -86,7 +87,7 @@ async function main(argv: string[]): Promise<number> {
   try {
     config = loadConfig();
   } catch (error) {
-    return usageError(`config: ${(error as Error).message}`);
+    return usageError(`config: ${errorMessage(error)}`);
   }
 
   const request = await loadRequest(args.requestPath);
@@ -100,7 +101,7 @@ async function main(argv: string[]): Promise<number> {
   try {
     policyFile = await readJsonFile(join(ROOT, 'policy.json'));
   } catch (error) {
-    return usageError(`policy.json: ${(error as Error).message}`);
+    return usageError(`policy.json: ${errorMessage(error)}`);
   }
   const policy = fromPolicyFile(policyFile);
   if (!policy.ok) return usageError(...policy.issues.map((issue) => `policy.json: ${issue}`));
@@ -111,7 +112,7 @@ async function main(argv: string[]): Promise<number> {
   try {
     reasoner = createReasoner(args.reasoner, config);
   } catch (error) {
-    return usageError(`--reasoner ${args.reasoner}: ${(error as Error).message}`);
+    return usageError(`--reasoner ${args.reasoner}: ${errorMessage(error)}`);
   }
 
   // The headed window is the operator's surface for a handoff (ADR-012); prompts go to stderr.

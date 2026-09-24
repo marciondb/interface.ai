@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fromCapabilityFile, toCapabilityFile } from '../../adapters/capability-file';
+import { errnoCode, errorMessage } from '../../infrastructure/errors';
 import { CapabilityIdSchema, SemverSchema, type Capability } from '../../models/capability';
 import type { ArtifactStore, LoadResult, SaveResult } from './port';
 
@@ -18,7 +19,7 @@ export function createFsArtifactStore(rootDir: string): ArtifactStore {
     try {
       text = await readFile(path, 'utf8');
     } catch (error) {
-      if (isNotFound(error)) return { ok: false, code: 'not_found', path, issues: [`no artifact at ${path}`] };
+      if (errnoCode(error) === 'ENOENT') return { ok: false, code: 'not_found', path, issues: [`no artifact at ${path}`] };
       throw error;
     }
 
@@ -26,7 +27,7 @@ export function createFsArtifactStore(rootDir: string): ArtifactStore {
     try {
       raw = JSON.parse(text);
     } catch (error) {
-      return { ok: false, code: 'invalid', path, issues: [`(file): ${(error as Error).message}`] };
+      return { ok: false, code: 'invalid', path, issues: [`(file): ${errorMessage(error)}`] };
     }
 
     const parsed = fromCapabilityFile(raw);
@@ -48,7 +49,7 @@ export function createFsArtifactStore(rootDir: string): ArtifactStore {
     try {
       files = await readdir(dir);
     } catch (error) {
-      if (isNotFound(error)) return { ok: false, code: 'not_found', path: dir, issues: [`no artifacts for ${id}`] };
+      if (errnoCode(error) === 'ENOENT') return { ok: false, code: 'not_found', path: dir, issues: [`no artifacts for ${id}`] };
       throw error;
     }
 
@@ -76,7 +77,7 @@ export function createFsArtifactStore(rootDir: string): ArtifactStore {
     try {
       await writeFile(path, `${JSON.stringify(file, null, 2)}\n`, { encoding: 'utf8', flag: 'wx' });
     } catch (error) {
-      if (isAlreadyExists(error)) {
+      if (errnoCode(error) === 'EEXIST') {
         return { ok: false, code: 'exists', path, issues: [`${id}@${version} is already published`] };
       }
       throw error;
@@ -93,12 +94,4 @@ function checkReference(id: string, version: string): string[] {
   if (!CapabilityIdSchema.safeParse(id).success) issues.push(`capability id ${JSON.stringify(id)} is malformed`);
   if (!SemverSchema.safeParse(version).success) issues.push(`version ${JSON.stringify(version)} is malformed`);
   return issues;
-}
-
-function isNotFound(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException | null)?.code === 'ENOENT';
-}
-
-function isAlreadyExists(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException | null)?.code === 'EEXIST';
 }

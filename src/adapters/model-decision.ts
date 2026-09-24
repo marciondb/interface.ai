@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { truncate } from '../infrastructure/errors';
 import { ModelStepSchema, type AgentDecision, type ModelStep } from '../models/action';
 
 export type ModelDecisionResult =
@@ -8,8 +9,7 @@ export type ModelDecisionResult =
 const MAX_REASON_LENGTH = 200;
 
 function reject(reason: string): ModelDecisionResult {
-  const line = reason.replace(/\s*\n\s*/g, '; ');
-  return { ok: false, reason: line.length > MAX_REASON_LENGTH ? `${line.slice(0, MAX_REASON_LENGTH - 3)}...` : line };
+  return { ok: false, reason: truncate(reason.replace(/\s*\n\s*/g, '; '), MAX_REASON_LENGTH) };
 }
 
 type Field = 'target' | 'argument';

@@ -1,0 +1,15 @@
+{
+  "runId": "2026-09-24T18-27-06-416Z-replay-member.open-sub-account",
+  "capability": {
+    "id": "member.open-sub-account",
+    "version": "1.0.0"
+  },
+  "durationMs": 2362,
+  "recoveries": [],
+  "interventions": [],
+  "status": "business_outcome",
+  "outcome": "invalid_initial_deposit",
+  "details": {
+    "stepId": "click-continue"
+  }
+}

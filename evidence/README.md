@@ -2,10 +2,16 @@
 
 Curated sample runs (ADR-014), one per case. Each folder under `runs/` is one run:
 `run.jsonl` (one event per line), `result.json`, and, where the run captured them,
-`artifact.json`, `intervention.json`, `screenshots/` and `snapshots/`. Everything is
-redacted before it is written (RFC-006): the target password never appears, and
-declared-sensitive values show as `[REDACTED:<sensitivity>]` from the moment they are
-known.
+`artifact.json`, `intervention.json`, `screenshots/` and `snapshots/`. The JSON files
+are redacted (RFC-006): the target password never appears, and declared-sensitive
+inputs and outputs show as `[REDACTED:<sensitivity>]` in every JSON file of the run.
+Page data that is not declared (the member's name, other balances) and the
+screenshots are not masked; all data is synthetic.
+
+These runs were recorded before the recorder re-redacted a run folder at the end of
+the run; their snapshots were redacted again afterwards with the same rule and the
+runs' declared values (the Savings balance of member 10001 is also masked in the
+runs where it is only page data).
 
 **Saved example artifact:** the `artifact.json` of the two discovery runs, identical to
 [`member.read-account-balance@1.0.1`](../capabilities/member.read-account-balance/1.0.1.json)
@@ -36,12 +42,15 @@ free port, hence the different ports in the URLs.
   (`verb`, `target`, `rationale`, `latencyMs`, `reasoner`).
 - **Guardrails:** every action is preceded by a `policy` event; the write-flow
   discovery has `"decision":"requires_human"` at `step-11`.
-- **Redaction:** member ids, deposits, balances and account numbers appear as
-  `[REDACTED:internal]` / `[REDACTED:financial]` in events, snapshots, URLs and
-  `result.json`; a value typed by a human during a handoff is captured as
-  `[redacted]`. Screenshots are not masked (a known v1 limit, synthetic data only);
-  the sign-in page is never captured because sign-in happens over HTTP before the
-  browser opens (ADR-013).
+- **Redaction:** the declared member ids, deposits, read balances and new account
+  numbers appear as `[REDACTED:internal]` / `[REDACTED:financial]` in events,
+  snapshots, URLs and `result.json`; other account numbers keep only their last 4
+  digits; a value typed by a human during a handoff is captured as `[redacted]`.
+  Undeclared page data is not masked: snapshots still show the member's name and
+  balances that were not read (e.g. the Checking balance in the handoff `before`
+  snapshots). Screenshots are not masked either (a known v1 limit, synthetic data
+  only); the sign-in page is never captured because sign-in happens over HTTP
+  before the browser opens (ADR-013).
 - **Handoff:** `intervention.json` plus the `handoff_requested`, `handoff_taken`,
   `handoff_human_action`, `handoff_resumed` events and the
   `handoff-<interventionId>-before|after` screenshots and snapshots.

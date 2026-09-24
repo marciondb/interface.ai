@@ -72,9 +72,9 @@ curl -X POST http://localhost:8080/_fault \
 | `interstitial` | Maintenance notice with Continue |
 | `server_error` | HTTP 500 app error page |
 | `element_missing` | Remove primary submit button |
-| `session_expired` | Invalidate session (login on next request; may appear inside the iframe) |
+| `session_expired` | Invalidate session and redirect to login (may appear inside the iframe) |
 
-All kinds except `session_expired` are single-fire and then clear.
+Every kind is single-fire: it affects exactly one response and then clears.
 
 ## Smoke test
 

@@ -91,6 +91,8 @@ export function createCliBroker(options: CliBrokerOptions): EscalationBroker {
 
   return {
     publish(request) {
+      // Lines typed for an earlier handoff (a late abort, say) never act on this one.
+      pending.length = 0;
       const screenshot =
         request.screenshot === null ? '(none)' : options.evidenceRoot === undefined ? request.screenshot : join(options.evidenceRoot, request.runId, request.screenshot);
       // Page and model text is printed without terminal control sequences; a help request's message is the model's own words.

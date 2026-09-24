@@ -98,6 +98,22 @@ describe('CLI escalation broker', () => {
     await expect(cli.nextCommand(['resume', 'abort'], open())).resolves.toBe('abort');
   });
 
+  it('drops lines typed for an earlier handoff when a new one is published', async () => {
+    const { broker: cli, input } = terminal();
+
+    const first = cli.nextCommand(['take'], open());
+    input.write('take\n');
+    await expect(first).resolves.toBe('take');
+    const read = once(input, 'data');
+    input.write('abort\n');
+    await read;
+
+    cli.publish({ ...REQUEST, interventionId: 'int-2' });
+    const next = cli.nextCommand(['take', 'abort'], open());
+    input.write('take\n');
+    await expect(next).resolves.toBe('take');
+  });
+
   it('times out at the deadline and when the wait is cancelled', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     const { broker: cli } = terminal();

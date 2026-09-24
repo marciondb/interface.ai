@@ -7,7 +7,7 @@ describe('loadConfig', () => {
       targetUsername: 'operator',
       targetPassword: 'training',
       ollamaBaseUrl: 'http://localhost:11434',
-      reasonerModel: 'qwen3:8b',
+      reasonerModel: 'qwen3:14b',
       hosted: { baseUrl: undefined, model: undefined, apiKey: undefined },
     });
   });
@@ -40,7 +40,7 @@ describe('loadConfig', () => {
       HOSTED_API_KEY: '',
     });
     expect(config.targetUsername).toBe('operator');
-    expect(config.reasonerModel).toBe('qwen3:8b');
+    expect(config.reasonerModel).toBe('qwen3:14b');
     expect(config.hosted.baseUrl).toBeUndefined();
     expect(config.hosted.apiKey).toBeUndefined();
   });

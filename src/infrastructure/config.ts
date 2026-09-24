@@ -20,7 +20,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     targetUsername: read(env, 'TARGET_USERNAME') ?? 'operator',
     targetPassword: read(env, 'TARGET_PASSWORD') ?? 'training',
     ollamaBaseUrl: read(env, 'OLLAMA_BASE_URL') ?? 'http://localhost:11434',
-    reasonerModel: read(env, 'REASONER_MODEL') ?? 'qwen3:8b',
+    reasonerModel: read(env, 'REASONER_MODEL') ?? 'qwen3:14b',
     hosted: {
       baseUrl: read(env, 'HOSTED_BASE_URL'),
       model: read(env, 'HOSTED_MODEL'),

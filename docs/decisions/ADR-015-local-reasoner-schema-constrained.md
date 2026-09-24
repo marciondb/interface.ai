@@ -33,9 +33,17 @@ decision the model faces as small and as constrained as possible.
 | Setting | Value |
 |---|---|
 | Endpoint | Ollama native chat API, `http://localhost:11434` (configurable) |
-| Model | `qwen3:8b` by default, configurable via `REASONER_MODEL` |
+| Model | `qwen3:14b` by default, configurable via `REASONER_MODEL` |
 | Output | `format` set to the step's JSON Schema — constrained decoding, not parsing |
 | Sampling | `temperature: 0`, `think: false`, `stream: false` |
+
+**Why 14B.** On the first live check (the Member Lookup screen of the fixture,
+goal "look up member 10001…"), `qwen3:8b` gave the same wrong answer on all three
+runs: it clicked the menu link for the screen it was already on. `qwen3:14b`, same
+family and the same `format`/`think` support, filled the member ID correctly on
+all three, at about 2.6 s per warm call on an Apple M4 Pro with 24 GB. The 8B
+model can still be selected through `REASONER_MODEL` on machines with less
+memory, at lower accuracy.
 
 **Constrained output, built per step.** The schema is generated from the domain
 `Action` schema for each observation, with `target` narrowed to an `enum` of the
@@ -74,7 +82,8 @@ evidence of every discovery run and in the artifact's `provenance`.
 - Slower per step than a hosted model, especially on a laptop
 - Smaller models navigate multi-frame pages less reliably; a run may exhaust its
   budget where a frontier model would succeed
-- Requires installing Ollama and pulling a model of several gigabytes
+- Requires installing Ollama and pulling a model of about 9 GB, with roughly 10 GB
+  of free memory to run it
 
 **Mitigation.** Compact observations (ADR-005), the reference `enum`, the
 no-progress note, and the step budget exist largely to make a small model

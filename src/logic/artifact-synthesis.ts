@@ -1,11 +1,18 @@
 import type { Candidate, Capability, Outcome, Predicate, Provenance, Step, StepAction, TargetSpec } from '../models/capability';
 import { CapabilitySchema, PLACEHOLDER } from '../models/capability';
 import type { CapabilityRequest } from '../models/capability-request';
-import type { TraceStep } from '../models/discovery';
+import type { AgentTraceStep, HumanTraceStep, TraceStep } from '../models/discovery';
 import { outcomeTargets, type OutcomeCatalog } from '../models/outcome-catalog';
 import type { Observation, ObservationNode } from '../models/observation';
 
-export type SynthesisErrorCode = 'no_steps' | 'untargetable_element' | 'no_checkpoint' | 'output_not_read' | 'input_not_used' | 'invalid_artifact';
+export type SynthesisErrorCode =
+  | 'no_steps'
+  | 'untargetable_element'
+  | 'no_checkpoint'
+  | 'output_not_read'
+  | 'input_not_used'
+  | 'unsupported_human_steps'
+  | 'invalid_artifact';
 
 export type SynthesisError = {
   readonly code: SynthesisErrorCode;
@@ -73,7 +80,7 @@ function strings(candidate: Candidate): string[] {
 
 // The chain for one element (ADR-008). In a table row that holds an input's value, the
 // element's own text is record data, so only its column in that row locates it.
-function candidatesFor(element: NonNullable<TraceStep['element']>, read: boolean, parameterize: (text: string) => string): Candidate[] {
+function candidatesFor(element: NonNullable<AgentTraceStep['element']>, read: boolean, parameterize: (text: string) => string): Candidate[] {
   const { node, descriptor } = element;
   const { cell } = descriptor;
   const key = cell === undefined ? undefined : Object.entries(cell.row).find(([header, text]) => header !== cell.column && parameterize(text) !== text);
@@ -107,7 +114,7 @@ function candidatesFor(element: NonNullable<TraceStep['element']>, read: boolean
   });
 }
 
-function nameWords(element: NonNullable<TraceStep['element']>, spec: TargetSpec): string[] {
+function nameWords(element: NonNullable<AgentTraceStep['element']>, spec: TargetSpec): string[] {
   const first = spec.candidates[0];
   if (first.strategy === 'table_cell') return words(first.column);
   const { node, descriptor } = element;
@@ -146,7 +153,8 @@ function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog:
 
   function targetFor(step: TraceStep, read: boolean): string {
     const { element } = step;
-    if (element === undefined) return fail('untargetable_element', `${step.decision.verb} has no element to locate`, step.stepId);
+    const verb = step.actor === 'human' ? `the human's ${step.action.kind}` : step.decision.verb;
+    if (element === undefined) return fail('untargetable_element', `${verb} has no element to locate`, step.stepId);
     const candidates = candidatesFor(element, read, parameterize);
     if (candidates.length === 0) {
       return fail('untargetable_element', `no locator candidate for ${element.node.role} ${JSON.stringify(element.node.name)}`, step.stepId);
@@ -172,7 +180,31 @@ function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog:
     return node.frame === null ? { kind: 'text_visible', text } : { kind: 'text_visible', text, frame: node.frame };
   }
 
-  for (const step of trace.filter((candidate) => candidate.progressed)) {
+  // A handoff becomes a step only when the human did one thing automation can repeat: a single
+  // click on an element of the screen they were handed. The step is risky, so replay hands
+  // it to a human again; what it clicks is only located, never performed, by automation.
+  function humanStep(handoff: readonly HumanTraceStep[]): void {
+    const clicks = handoff.filter((step) => step.action.kind === 'click');
+    const others = handoff.filter((step) => step.action.kind === 'input' || step.action.kind === 'dialog').map((step) => step.action.kind);
+    if (clicks.length !== 1 || others.length > 0) {
+      const did = [`${String(clicks.length)} click(s)`, ...others].join(', ');
+      fail('unsupported_human_steps', `the human did ${did} during the handoff; only a single click can become a step`, handoff[0].stepId);
+    }
+    const [click] = clicks;
+    const target = targetFor(click, false);
+    const id = unique(kebab(['click', ...words(target.split('.').at(-1) ?? target)]), new Set(steps.map((existing) => existing.id)), '-');
+    steps.push({ id, action: { kind: 'click', target }, risk: 'risky', checkpoint: revealed(click) });
+  }
+
+  const handoffs = new Set<string>();
+  for (const step of trace) {
+    if (step.actor === 'human') {
+      if (handoffs.has(step.interventionId)) continue;
+      handoffs.add(step.interventionId);
+      humanStep(trace.filter((other): other is HumanTraceStep => other.actor === 'human' && other.interventionId === step.interventionId));
+      continue;
+    }
+    if (!step.progressed) continue;
     const { decision } = step;
     const argument = decision.argument ?? '';
     let action: StepAction;

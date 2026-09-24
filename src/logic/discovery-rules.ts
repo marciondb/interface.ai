@@ -31,7 +31,9 @@ export type Setback =
   | { readonly kind: 'action_failed'; readonly decision: AgentDecision; readonly node?: ObservationNode; readonly detail: string }
   | { readonly kind: 'unknown_output'; readonly decision: AgentDecision; readonly outputs: readonly string[] }
   | { readonly kind: 'goal_not_met'; readonly missing: readonly string[] }
-  | { readonly kind: 'no_elements' };
+  | { readonly kind: 'no_elements' }
+  // A human took over and handed back the page as it was (RFC-003).
+  | { readonly kind: 'human_declined' };
 
 // Refs change with every observation, so the element is named by what it shows.
 function describeAction(decision: AgentDecision, node: ObservationNode | undefined): string {
@@ -57,6 +59,8 @@ export function feedbackFor(setback: Setback): string {
       return `the goal is not complete: not read yet: ${setback.missing.join(', ')}`;
     case 'no_elements':
       return 'the screen had no elements to act on';
+    case 'human_declined':
+      return 'a human took over and handed the screen back unchanged, declining what was asked; choose another way';
     default: {
       const unhandled: never = setback;
       return unhandled;

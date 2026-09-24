@@ -3,7 +3,7 @@ import { synthesizeArtifact, type Synthesis } from '../../../src/logic/artifact-
 import type { AgentDecision } from '../../../src/models/action';
 import type { Capability, Provenance } from '../../../src/models/capability';
 import type { CapabilityRequest } from '../../../src/models/capability-request';
-import type { TraceStep } from '../../../src/models/discovery';
+import type { AgentTraceStep, HumanTraceStep, TraceStep } from '../../../src/models/discovery';
 import type { ElementDescriptor } from '../../../src/models/element-descriptor';
 import type { Observation, ObservationNode } from '../../../src/models/observation';
 import type { OutcomeCatalog } from '../../../src/models/outcome-catalog';
@@ -93,8 +93,8 @@ function step(
   descriptor: ElementDescriptor,
   observation: Observation,
   observationAfter: Observation,
-  extra: Partial<TraceStep> = {},
-): TraceStep {
+  extra: Partial<AgentTraceStep> = {},
+): AgentTraceStep {
   return {
     stepId,
     decision,
@@ -109,7 +109,7 @@ function step(
 const ASPNET = { name: 'ctl00$ContentPlaceHolder1$txtMemberId', id: 'ctl00_ContentPlaceHolder1_txtMemberId' };
 const BALANCE_ROW = { column: 'Balance', row: { 'Acct Type': 'Savings', 'Acct Number': '*****2201', Balance: '4,812.37' } };
 
-function readFlow(): TraceStep[] {
+function readFlow(): AgentTraceStep[] {
   return [
     step('step-1', decide('click', MENU), MENU, { attributes: {} }, WELCOME, lookup('')),
     step('step-2', decide('click', MAIN_MENU), MAIN_MENU, { attributes: {} }, lookup(''), lookup(''), { progressed: false }),
@@ -232,5 +232,40 @@ describe('synthesizeArtifact', () => {
     trace[3] = { ...trace[3], observationAfter: screen([MENU, { role: 'text', name: '10001', frame: 'content' }]) };
 
     expect(errorOf(synthesizeArtifact(trace, REQUEST, CATALOG, PROVENANCE))).toMatchObject({ code: 'no_checkpoint', stepId: 'step-4' });
+  });
+
+  it('turns a handoff with a single click into a risky step checked by what it revealed', () => {
+    const closeButton: ObservationNode = { ref: 'e14', role: 'button', name: 'Close Account', frame: 'content' };
+    const before = screen([...DETAIL.nodes, closeButton]);
+    const after = screen([MENU, { role: 'text', name: 'Return to Member Detail', frame: 'content' }]);
+    const target = { frame: 'content', tag: 'input', role: 'button', name: 'Close Account' };
+    const at = '2026-09-24T12:00:00.000Z';
+    const human = (action: HumanTraceStep['action'], element?: HumanTraceStep['element']): HumanTraceStep => ({
+      actor: 'human',
+      stepId: 'step-7',
+      interventionId: 'int-1',
+      action,
+      ...(element === undefined ? {} : { element }),
+      observation: before,
+      observationAfter: after,
+    });
+    const trace: TraceStep[] = [
+      ...readFlow(),
+      human({ kind: 'click', target, at }, { node: closeButton, descriptor: { attributes: {} } }),
+      human({ kind: 'navigation', frame: 'content', url: 'http://localhost:8080/member/danger/close', at }),
+    ];
+
+    const { steps, targets } = artifact(synthesizeArtifact(trace, REQUEST, CATALOG, PROVENANCE));
+
+    expect(steps.at(-1)).toEqual({
+      id: 'click-close-account',
+      action: { kind: 'click', target: 'content.closeAccount' },
+      risk: 'risky',
+      checkpoint: { kind: 'text_visible', text: 'Return to Member Detail', frame: 'content' },
+    });
+    expect(targets['content.closeAccount']).toEqual({ frame: 'content', candidates: [{ strategy: 'role', role: 'button', name: 'Close Account' }] });
+
+    const typed = [...trace, human({ kind: 'input', target: { frame: 'content', tag: 'input' }, value: '[redacted]', at })];
+    expect(errorOf(synthesizeArtifact(typed, REQUEST, CATALOG, PROVENANCE))).toMatchObject({ code: 'unsupported_human_steps', stepId: 'step-7' });
   });
 });

@@ -1,29 +1,31 @@
-import type { EscalationBroker } from '../diplomat/escalation/port';
 import type { EvidenceRecorder } from '../diplomat/evidence/port';
 import type { ActionGateway, GatewayOutcome } from '../diplomat/gateway/port';
 import type { Reasoner, ReasonerAdapter } from '../diplomat/reasoner/port';
 import type { SessionCookie, SessionProvider } from '../diplomat/session/port';
 import type { ArtifactStore } from '../diplomat/store/port';
 import type { Clock } from '../infrastructure/clock';
-import { newId } from '../infrastructure/ids';
 import { synthesizeArtifact } from '../logic/artifact-synthesis';
 import { renderGoal } from '../logic/capability-request';
 import { feedbackFor, missingOutputs, progressed, stopCheck, type Setback } from '../logic/discovery-rules';
 import { findNode, observationRefs } from '../logic/grounding';
+import { matchHumanTarget } from '../logic/human-trace';
 import { redactDeep, redactObservation, type RedactionRules, type SensitiveValue } from '../logic/redaction';
 import type { AgentDecision } from '../models/action';
 import type { CapabilityRequest } from '../models/capability-request';
 import {
   DEFAULT_DISCOVERY_LIMITS,
-  type DiscoveryEscalationReason,
   type DiscoveryFailureReason,
   type DiscoveryLimits,
   type DiscoveryResult,
   type TraceStep,
 } from '../models/discovery';
+import type { ElementDescriptor } from '../models/element-descriptor';
+import type { EscalationReason } from '../models/execution-result';
+import type { HumanTarget, InterventionReason } from '../models/intervention';
 import type { Observation } from '../models/observation';
 import type { OutcomeCatalog } from '../models/outcome-catalog';
 import type { ReasonerInfo } from '../models/run-event';
+import type { Escalation } from './escalation';
 
 export type DiscoveryDeps = {
   readonly store: ArtifactStore;
@@ -31,7 +33,8 @@ export type DiscoveryDeps = {
   readonly gateway: ActionGateway;
   readonly reasoner: Reasoner;
   readonly evidence: EvidenceRecorder;
-  readonly escalation: EscalationBroker;
+  // Hands the live session to a human when the loop cannot go on safely (RFC-005).
+  readonly escalation: Escalation;
   readonly clock: Clock;
 };
 
@@ -57,7 +60,13 @@ const POLL_INTERVAL_MS = 250;
 type Ending =
   | { readonly status: 'succeeded'; readonly outputs: Record<string, string> }
   | { readonly status: 'failed'; readonly reason: DiscoveryFailureReason; readonly message: string }
-  | { readonly status: 'escalated'; readonly reason: DiscoveryEscalationReason; readonly stepId: string; readonly message: string };
+  | {
+      readonly status: 'escalated';
+      readonly interventionId: string;
+      readonly reason: EscalationReason;
+      readonly stepId: string;
+      readonly message: string;
+    };
 
 function reasonerKind(adapter: ReasonerAdapter): ReasonerInfo['adapter'] {
   switch (adapter) {
@@ -80,6 +89,15 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message.split('\n')[0] : String(error);
 }
 
+function descriptorOf(target: HumanTarget): ElementDescriptor {
+  return {
+    attributes: {
+      ...(target.nameAttr === undefined ? {} : { name: target.nameAttr }),
+      ...(target.id === undefined ? {} : { id: target.id }),
+    },
+  };
+}
+
 function failed(reason: DiscoveryFailureReason, message: string): Ending {
   return { status: 'failed', reason, message };
 }
@@ -98,13 +116,14 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
   const evidenceRun = await evidence.startRun({ mode: 'discovery', capabilityId: capability.id });
   const captured: Record<string, string> = {};
   const trace: TraceStep[] = [];
+  const interventions: string[] = [];
   let steps = 0;
   let stalls = 0;
   let feedback: string | undefined;
   let surfaceOpened = false;
 
   async function finish(ending: Ending): Promise<DiscoveryResult> {
-    const base = { runId: evidenceRun.runId, capability, reasoner: info, durationMs: clock.now() - startedAt, steps };
+    const base = { runId: evidenceRun.runId, capability, reasoner: info, durationMs: clock.now() - startedAt, steps, interventions };
     let result: DiscoveryResult;
     switch (ending.status) {
       case 'succeeded':
@@ -149,14 +168,56 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
     await evidence.event({ type: 'feedback', stepId, feedback, stalls });
   }
 
-  // undefined when an operator resumed the run.
-  async function escalate(stepId: string, reason: DiscoveryEscalationReason, message: string): Promise<Ending | undefined> {
-    if (surfaceOpened) await screenshot(stepId, await observe());
-    await evidence.event({ type: 'escalation', stepId, interventionId: newId('int'), reason, message });
-    const decision = await escalation.escalate({ runId: evidenceRun.runId, stepId, reason, message });
-    if (decision === 'aborted') return { status: 'escalated', reason, stepId, message };
+  // Hands the same session to a human (RFC-005). After resume, a changed page puts what they
+  // did in the trace as theirs; an unchanged one means they declined, told to the model (RFC-003).
+  // undefined when the run goes on.
+  async function escalate(stepId: string, reason: InterventionReason, message: string): Promise<Ending | undefined> {
+    const before = await observe();
+    let after: Observation | undefined;
+    const outcome = await escalation.handOff({
+      run: evidenceRun,
+      mode: 'discovery',
+      capability: `${capability.id}@${capability.version}`,
+      goal: renderGoal(request, Object.keys(captured)),
+      stepId,
+      reason,
+      message,
+      // Discovery has no step checkpoint: the fresh observation, once what the human started
+      // has loaded, decides what the resume means.
+      async verify() {
+        const deadline = clock.now() + options.stepTimeoutMs;
+        after = await observe();
+        while (!progressed(before, after, false) && clock.now() < deadline) {
+          await clock.sleep(pollIntervalMs);
+          after = await observe();
+        }
+        return { held: true };
+      },
+    });
+    interventions.push(outcome.interventionId);
+    if (outcome.status === 'aborted') {
+      return { status: 'escalated', interventionId: outcome.interventionId, reason: outcome.cause, stepId, message: `${message} (handoff ${outcome.cause})` };
+    }
+    const observationAfter = after ?? (await observe());
     stalls = 0;
     feedback = undefined;
+    if (!progressed(before, observationAfter, false)) {
+      await setback(stepId, { kind: 'human_declined' });
+      return undefined;
+    }
+    for (const action of outcome.actions) {
+      const target = action.kind === 'click' ? redactDeep(action.target, rules) : undefined;
+      const node = target === undefined ? undefined : matchHumanTarget(target, before);
+      trace.push({
+        actor: 'human',
+        stepId,
+        interventionId: outcome.interventionId,
+        action,
+        ...(target === undefined || node === undefined ? {} : { element: { node, descriptor: descriptorOf(target) } }),
+        observation: before,
+        observationAfter,
+      });
+    }
     return undefined;
   }
 

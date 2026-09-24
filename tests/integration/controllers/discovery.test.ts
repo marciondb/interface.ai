@@ -150,15 +150,19 @@ describe('discovery controller against the fixture', { timeout: 60_000 }, () => 
 
     const run = await discover(createScriptedReasoner([noop, noop, noop, noop]));
 
-    expect(expectStatus(run.result, 'escalated')).toMatchObject({ reason: 'stalled', stepId: 'step-3' });
-    expect(run.escalations).toHaveLength(1);
+    expect(expectStatus(run.result, 'escalated')).toMatchObject({ reason: 'no_operator_surface', stepId: 'step-3' });
+    expect(run.escalations).toMatchObject([{ reason: 'stalled', stepId: 'step-3', mode: 'discovery' }]);
     expect(run.driverCalls).toHaveLength(3);
   });
 
   it('escalates when the model asks for help', async () => {
     const run = await discover(createScriptedReasoner([{ verb: 'request_help', argument: 'I cannot find the member' }]));
 
-    expect(expectStatus(run.result, 'escalated')).toMatchObject({ reason: 'help_requested', message: 'I cannot find the member' });
+    expect(expectStatus(run.result, 'escalated')).toMatchObject({
+      reason: 'no_operator_surface',
+      message: 'I cannot find the member (handoff no_operator_surface)',
+    });
+    expect(run.escalations).toMatchObject([{ reason: 'help_requested', message: 'I cannot find the member' }]);
   });
 
   it('escalates instead of performing a risky action', async () => {
@@ -168,7 +172,8 @@ describe('discovery controller against the fixture', { timeout: 60_000 }, () => 
       ),
     );
 
-    expect(expectStatus(run.result, 'escalated')).toMatchObject({ reason: 'risky_action', stepId: 'step-5' });
+    expect(expectStatus(run.result, 'escalated')).toMatchObject({ reason: 'no_operator_surface', stepId: 'step-5' });
+    expect(run.escalations).toMatchObject([{ reason: 'risky_action', stepId: 'step-5' }]);
     expect(run.driverCalls.map((action) => action.verb)).toEqual(['click', 'fill', 'click', 'click']);
   });
 

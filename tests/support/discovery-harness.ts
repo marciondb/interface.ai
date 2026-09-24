@@ -1,11 +1,12 @@
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { fromPolicyFile } from '../../src/adapters/policy-file';
 import { discover, type DiscoveryOptions } from '../../src/controllers/discovery';
-import { noOperatorBroker } from '../../src/diplomat/escalation/no-operator';
-import type { EscalationBroker, EscalationRequest } from '../../src/diplomat/escalation/port';
+import { createEscalationController, type HandoffRequest } from '../../src/controllers/escalation';
+import { createCliBroker } from '../../src/diplomat/escalation/cli-broker';
 import { createFsRecorder } from '../../src/diplomat/evidence/fs-recorder';
 import { createActionGateway } from '../../src/diplomat/gateway/action-gateway';
 import type { Reasoner } from '../../src/diplomat/reasoner/port';
@@ -21,7 +22,8 @@ import type { CapabilityRequest } from '../../src/models/capability-request';
 import type { DiscoveryResult } from '../../src/models/discovery';
 import type { Policy } from '../../src/models/policy';
 import type { FixtureHandle } from './fixture';
-import { PASSWORD } from './replay-harness';
+import type { HumanActor } from './human-actor';
+import { OPERATOR_ID, PASSWORD } from './replay-harness';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 export const READ_REQUEST = join(ROOT, 'discovery/requests/member.read-account-balance.json');
@@ -29,7 +31,9 @@ export const READ_REQUEST = join(ROOT, 'discovery/requests/member.read-account-b
 export type DiscoveryHarnessOptions = Partial<DiscoveryOptions> & {
   readonly request?: (request: CapabilityRequest) => CapabilityRequest;
   readonly policy?: (policy: Policy) => Policy;
-  readonly escalation?: EscalationBroker;
+  // The operator of a handoff; without one there is no operator surface.
+  readonly operator?: HumanActor;
+  readonly handoffTtlMs?: number;
   readonly clock?: Clock;
   // Artifact store root (default: a fresh temp dir).
   readonly capabilitiesDir?: string;
@@ -41,7 +45,7 @@ export type DiscoveryHarnessRun = {
   readonly capabilitiesDir: string;
   // Actions that reached the surface driver.
   readonly driverCalls: readonly Action[];
-  readonly escalations: readonly EscalationRequest[];
+  readonly escalations: readonly HandoffRequest[];
 };
 
 // The real discovery stack against a running fixture with the given reasoner; evidence and
@@ -60,6 +64,13 @@ export async function runDiscovery(fixture: FixtureHandle, reasoner: Reasoner, o
   const capabilitiesDir = options.capabilitiesDir ?? (await mkdtemp(join(tmpdir(), 'discovery-capabilities-')));
 
   const driver = createPlaywrightDriver();
+  const clock = options.clock ?? systemClock;
+  const evidence = createFsRecorder({ root: evidenceRoot, secrets: [PASSWORD] });
+  const broker = options.operator?.broker ?? createCliBroker({ input: new PassThrough(), output: new PassThrough() });
+  const escalation = createEscalationController(
+    { surface: driver, broker, evidence, clock },
+    { ttlMs: options.handoffTtlMs ?? 30_000, humanSurfaceAvailable: options.operator !== undefined, operatorId: OPERATOR_ID },
+  );
   const driverCalls: Action[] = [];
   const spiedDriver: SurfaceDriver = {
     ...driver,
@@ -68,30 +79,39 @@ export async function runDiscovery(fixture: FixtureHandle, reasoner: Reasoner, o
       return driver.perform(action, performOptions);
     },
   };
-  const escalations: EscalationRequest[] = [];
-  const broker = options.escalation ?? noOperatorBroker;
+  const escalations: HandoffRequest[] = [];
+  const gateway = createActionGateway({ driver: spiedDriver, policy, controlOwner: escalation.owner });
+  options.operator?.attach({
+    // The page exists once the run opens the target.
+    get page() {
+      return driver.page();
+    },
+    gateway,
+  });
 
   try {
     const result = await discover(
       {
         store: createFsArtifactStore(capabilitiesDir),
         session: createFixtureSessionProvider({ username: 'operator', password: PASSWORD }),
-        gateway: createActionGateway({ driver: spiedDriver, policy }),
+        gateway,
         reasoner,
-        evidence: createFsRecorder({ root: evidenceRoot, secrets: [PASSWORD] }),
+        evidence,
         escalation: {
-          escalate(escalation) {
-            escalations.push(escalation);
-            return broker.escalate(escalation);
+          ...escalation,
+          handOff(request) {
+            escalations.push(request);
+            return escalation.handOff(request);
           },
         },
-        clock: options.clock ?? systemClock,
+        clock,
       },
       { request, catalog: catalog.catalog, targetUrl: `${fixture.baseUrl}/`, secrets: [PASSWORD] },
       { stepTimeoutMs: options.stepTimeoutMs ?? 2_000, ...(options.limits === undefined ? {} : { limits: options.limits }) },
     );
     return { result, evidenceRoot, capabilitiesDir, driverCalls, escalations };
   } finally {
+    broker.close();
     await driver.close();
   }
 }

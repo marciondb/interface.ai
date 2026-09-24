@@ -1,11 +1,14 @@
 import { z } from 'zod';
 import type { AgentDecision } from './action';
 import type { ElementDescriptor } from './element-descriptor';
+import { EscalationReasonSchema } from './execution-result';
+import type { HumanAction } from './intervention';
 import type { Observation, ObservationNode } from './observation';
 
-// One action discovery performed on the surface. Observations are the redacted ones the
-// model saw (RFC-006); the synthesizer builds the artifact from these alone.
-export type TraceStep = {
+// One action the model had performed on the surface. Observations are the redacted ones the
+// model saw (RFC-006); the synthesizer builds the artifact from the trace alone.
+export type AgentTraceStep = {
+  readonly actor?: 'agent';
   readonly stepId: string;
   readonly decision: AgentDecision;
   readonly observation: Observation;
@@ -16,6 +19,20 @@ export type TraceStep = {
   readonly observationAfter: Observation;
   readonly progressed: boolean;
 };
+
+// One action a human performed during a handoff; the observations are those around the handoff.
+export type HumanTraceStep = {
+  readonly actor: 'human';
+  readonly stepId: string;
+  readonly interventionId: string;
+  readonly action: HumanAction;
+  // The element of `observation` the human clicked, when it could be matched.
+  readonly element?: { readonly node: ObservationNode; readonly descriptor: ElementDescriptor };
+  readonly observation: Observation;
+  readonly observationAfter: Observation;
+};
+
+export type TraceStep = AgentTraceStep | HumanTraceStep;
 
 export type DiscoveryLimits = {
   readonly maxSteps: number;
@@ -39,8 +56,6 @@ export const DISCOVERY_FAILURE_REASONS = [
   'driver_error',
 ] as const;
 
-export const DISCOVERY_ESCALATION_REASONS = ['stalled', 'help_requested', 'risky_action'] as const;
-
 const base = {
   // Name of the run's evidence folder.
   runId: z.string(),
@@ -49,6 +64,8 @@ const base = {
   durationMs: z.number().nonnegative(),
   // Model turns taken.
   steps: z.number().int().nonnegative(),
+  // Ids of the human handoffs of the run.
+  interventions: z.array(z.string()),
 };
 
 export const DiscoveryResultSchema = z.discriminatedUnion('status', [
@@ -63,12 +80,12 @@ export const DiscoveryResultSchema = z.discriminatedUnion('status', [
   z.strictObject({
     ...base,
     status: z.literal('escalated'),
-    reason: z.enum(DISCOVERY_ESCALATION_REASONS),
+    interventionId: z.string(),
+    reason: EscalationReasonSchema,
     stepId: z.string(),
     message: z.string(),
   }),
 ]);
 
 export type DiscoveryFailureReason = (typeof DISCOVERY_FAILURE_REASONS)[number];
-export type DiscoveryEscalationReason = (typeof DISCOVERY_ESCALATION_REASONS)[number];
 export type DiscoveryResult = z.infer<typeof DiscoveryResultSchema>;

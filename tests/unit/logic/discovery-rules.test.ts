@@ -60,6 +60,10 @@ describe('feedbackFor', () => {
     );
     expect(feedbackFor({ kind: 'goal_not_met', missing: ['balance'] })).toBe('the goal is not complete: not read yet: balance');
   });
+
+  it('tells the model a human declined when they handed the screen back unchanged', () => {
+    expect(feedbackFor({ kind: 'human_declined' })).toMatch(/^a human took over and handed the screen back unchanged/);
+  });
 });
 
 describe('stopCheck', () => {

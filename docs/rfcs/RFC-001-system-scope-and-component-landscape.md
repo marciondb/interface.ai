@@ -197,19 +197,21 @@ passes through it. There is no route to the surface that bypasses policy.
 
 ### Discovery
 
-1. The CLI accepts a goal in natural language and a target entry point.
+1. The CLI accepts a capability request (a request file, or a goal in natural
+   language with its inputs and outputs) and a target entry point.
 2. The discovery controller obtains an observation of the current state from the
    surface driver.
 3. The observation is sent to the reasoner client, which returns a proposed
    action.
 4. The proposed action is submitted to the action gateway. If policy rejects it,
-   the rejection is fed back as an observation rather than terminating the run.
+   the rejection is fed back to the model rather than terminating the run.
 5. Permitted actions are executed by the surface driver, producing a new
    observation.
 6. The loop continues until the goal's success condition holds, or a stopping
    condition fires: a step budget, a wall-clock timeout, or a dead end.
 7. On success, the artifact synthesizer converts the run trace into a capability
-   artifact, and the artifact store persists it.
+   artifact, and the artifact store persists it as a new, immutable version with
+   status `draft`, to be approved by a reviewer.
 8. The evidence recorder captures the full trace, including the reasoning behind
    each action.
 
@@ -219,8 +221,8 @@ contract, decoupled from the model transcript that produced it.
 ### Replay
 
 1. The CLI accepts a capability reference and its typed input parameters.
-2. The artifact store loads the artifact. Because it comes from disk, it is
-   untrusted input and is validated before use.
+2. The artifact store loads the latest approved version of the requested major.
+   Because it comes from disk, it is untrusted input and is validated before use.
 3. Input parameters are validated against the artifact's declared input contract.
 4. Each step is executed in order through the action gateway.
 5. After each step, the checkpoint evaluator verifies that the expected state was
@@ -238,8 +240,9 @@ could.
 
 Escalation is available on both paths, triggered when the system cannot proceed
 safely: discovery has stalled or the model asked for help, or a step has been
-classified as risky and requires a human decision. In v1 a replay condition it
-cannot recover from ends the run as `failed` rather than escalating (RFC-004).
+classified as risky and requires a human decision. In replay, a failure a person
+may get past (a target not found, a checkpoint not met) is handed to a human once
+when an operator window exists; without one the run ends as `failed` (RFC-004).
 
 The run suspends, an intervention request carrying enough context to act on is
 published, and the **same live session** is exposed for manual control. When the

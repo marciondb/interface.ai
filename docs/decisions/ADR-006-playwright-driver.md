@@ -19,8 +19,9 @@ take over mid-run.
 
 ## Decision
 
-Use **Playwright** (Chromium) behind the surface driver port. It is a Diplomat; no
-Playwright type crosses into the Domain.
+Use **Playwright** (Chromium) behind the surface driver port. It is a Diplomat
+(`src/diplomat/surface/`); no Playwright type crosses into the Domain, and
+dependency-cruiser forbids importing Playwright anywhere else in `src/`.
 
 ## Consequences
 

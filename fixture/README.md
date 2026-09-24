@@ -14,6 +14,8 @@ This is **not** a product. It is a controlled target application: ugly IDs, nest
 node server.js
 ```
 
+(or `npm run fixture` from the repository root)
+
 Open [http://localhost:8080/login](http://localhost:8080/login). The server listens on
 `127.0.0.1` only: it has no real authentication and `POST /_fault` is open to anyone who can
 reach it.
@@ -91,8 +93,10 @@ node smoke.js
 
 ```
 fixture/
-  server.js          HTTP server (no dependencies)
-  tenants.js         Tenant configuration
+  server.js          Entry point: binds 127.0.0.1 and starts the app (no dependencies)
+  lib/               App: config, routes, session, faults, HTTP helpers, templates
+  lib/views/*.js     Member and sub-account screen rendering
+  tenants.js         Tenant configuration (only banktest is defined)
   smoke.js           Smoke test
   data/members.json  Seeded members / accounts
   pages/*.html       Screen templates

@@ -64,7 +64,7 @@ runs are indexed in [`evidence/README.md`](../evidence/README.md).
 | [RFC-004](rfcs/RFC-004-deterministic-replay.md) | Deterministic Replay & Execution Result Contract | ACCEPTED |
 | [RFC-005](rfcs/RFC-005-human-in-the-loop-handoff.md) | Human-in-the-Loop Escalation & Session Handoff | ACCEPTED |
 | [RFC-006](rfcs/RFC-006-safety-guardrails.md) | Safety, Guardrails & Regulated Data Handling | ACCEPTED |
-| [RFC-007](rfcs/RFC-007-surface-abstraction-and-multi-tenant.md) | Surface Abstraction & Multi-Tenant Capability Reuse | ACCEPTED |
+| [RFC-007](rfcs/RFC-007-surface-abstraction-and-multi-tenant.md) | Surface Abstraction & Multi-Tenant Capability Reuse (design only) | ACCEPTED |
 
 ---
 

@@ -93,10 +93,12 @@ system's headline guarantee something a reader has to take on faith.
 
 ### Enforcement
 
-The dependency rules are checked by dependency-cruiser as part of `npm run verify`.
-This includes the rule that matters most — the replay controller cannot reach the
-reasoner Diplomat, directly or transitively — and the rule that controllers reach
-Diplomats only through their `port.ts` types.
+The dependency rules are checked by dependency-cruiser (`.dependency-cruiser.cjs`,
+`npm run depcruise`) as part of `npm run verify`. This includes the rule that
+matters most — the replay controller, the replay CLI, the replay composition, and
+the demo script cannot reach the reasoner Diplomat, directly or transitively — the
+rule that controllers reach Diplomats only through their `port.ts` types, and the
+rule that only the surface Diplomat imports Playwright.
 
 ---
 

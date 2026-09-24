@@ -21,8 +21,8 @@ most common mistake in this kind of system.
 
 ```ts
 type ExecutionResult =
-  | { status: "succeeded"; outputs: Record<string, unknown> }
-  | { status: "business_outcome"; outcome: string; details?: Record<string, unknown> }
+  | { status: "succeeded"; outputs: Record<string, string> }
+  | { status: "business_outcome"; outcome: string; details: { stepId: string } }
   | { status: "failed"; failure: { stepId: string; code: FailureCode; expected: string; observed: string; evidence: string } }
   | { status: "escalated"; interventionId: string; stepId: string; reason: EscalationReason; message: string }
 
@@ -31,28 +31,30 @@ type EscalationReason =
 ```
 
 An escalated run is one whose human handoff did not resume it; `reason` says how the
-handoff ended. What triggered it (`risky_action`, `stalled`, `help_requested`) is in
-the intervention request (RFC-005) and the `message`.
+handoff ended. What triggered it (`risky_action`, `stalled`, `help_requested`,
+`unrecoverable`) is in the intervention request (RFC-005) and the `message`.
 
-`failure.evidence` is the path to the screenshot/snapshot captured at the failing step.
+`failure.evidence` is the path, relative to the run's evidence folder, of the
+screenshot captured at the failing step, else its snapshot, else `.` (the folder).
 
 Every result also carries `runId`, `capability`, `durationMs`, `recoveries[]` —
 the recoverable conditions handled along the way (interstitial dismissed, slow load
-retried) — and `interventions: string[]`, the ids of handoffs that happened during
-the run:
+retried, unexpected dialog dismissed) — and `interventions: string[]`, the ids of
+handoffs that happened during the run:
 
 ```ts
 capability: { id: string; requestedMajor: number; version?: string }  // version: the loaded artifact's
 
-type Recovery = { stepId: string; attempt: number } & (
-  | { condition: "outcome"; outcomeId: string; response: "declared_recovery" | "retry" }
-  | { condition: "timeout"; response: "retry" }
-  | { condition: "session_expired"; response: "reauthenticate" }
-)
+type Recovery =
+  | { stepId: string; attempt: number; condition: "outcome"; outcomeId: string; response: "declared_recovery" | "retry" }
+  | { stepId: string; attempt: number; condition: "timeout"; response: "retry" }
+  | { stepId: string; attempt: number; condition: "session_expired"; response: "reauthenticate" }
+  | { stepId: string; condition: "unexpected_dialog"; response: "dismissed"; dialog: { type: string; message: string } }
 ```
 
 The CLI maps `status` to exit codes: `0` succeeded, `2` business_outcome, `3`
-failed, `4` escalated; `1` is a usage/config error.
+failed, `4` escalated; `1` is a usage/config error and `5` an internal error (a
+crash, not a result of the run).
 
 Rules:
 - Business outcomes are **declared in the artifact**; an undeclared state is never

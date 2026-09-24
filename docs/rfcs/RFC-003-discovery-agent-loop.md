@@ -25,11 +25,15 @@ the shape of its answer is constrained during generation.
 ## Input
 
 ```bash
-discover --request discovery/requests/<id>.json --reasoner local|hosted [--target <url>] [--headed]
+discover --request discovery/requests/<id>.json [--version x.y.z] [--reasoner local|hosted] [--target <url>] [--headed]
+discover --goal <text> --capability <id> [--input name=example[:sensitivity]]... --output name[:sensitivity]... [--outcome <catalog id>]... [--version x.y.z] [...]
 ```
 
-The capability request file declares:
+The `--goal` form builds the same request from flags (string fields, every
+catalog outcome unless `--outcome` is given, sensitivity `internal` unless
+suffixed). The capability request file declares:
 
+- the capability identity (`id`, `version`, `description`, `app`)
 - a goal template with `{{param}}` placeholders
   ("look up member {{memberId}} and read their {{accountType}} balance")
 - typed inputs, each with an `example` value used during the run
@@ -43,21 +47,26 @@ artifact, so parameterization is deterministic rather than guessed.
 ## Reasoner port
 
 ```ts
-interface Reasoner {
+type Reasoner = {
+  adapter: 'ollama' | 'openai-compatible'
+  model: string
   propose(input: {
     goal: string
     observation: Observation      // redacted, with observation-scoped element refs
-    validRefs: string[]           // refs present in this observation
+    validRefs: readonly string[]  // refs present in this observation
     feedback?: string             // why the previous action did not advance the run
-  }): Promise<AgentDecision>      // validated, or throws — never best-effort
+  }): Promise<Proposal>           // { decision: AgentDecision, meta?: ProviderMeta }; validated, or throws — never best-effort
 }
 ```
 
 Stateless per call. The controller owns the history; the only part it passes on is
-in the goal, which lists the declared outputs already read, so the model knows when
-to answer `finish`. Adapters: local (Ollama) and
-hosted (OpenAI-compatible), selected per run. The reasoner does not redact; it
-receives an observation that is already redacted.
+in the goal, which lists the declared outputs already read and what a person did
+during a handoff, so the model knows when to answer `finish` and what not to
+repeat. Adapters: local (Ollama, default model `qwen3:14b`, `think: false`) and
+hosted (OpenAI-compatible, strict `json_schema`), selected per run; both call the
+model at temperature 0. The reasoner does not redact; it receives an observation
+that is already redacted. Each decision is logged with the provider's metadata
+(`providerMeta`: model, token counts, durations) when the provider returns it.
 
 ## Loop
 
@@ -65,7 +74,9 @@ receives an observation that is already redacted.
    current URL, and dialog state (ADR-005). Each addressable element gets a short
    ref (`e12`) valid **only for this observation**. The controller redacts the
    observation right after `observe()` and before `propose`, so the model and
-   the trace see the same redacted observation (RFC-006).
+   the trace see the same redacted observation (RFC-006): secrets and every
+   sensitive output read so far are masked; declared inputs stay visible, since
+   the model has to type them.
 2. **Decide** — the controller calls the reasoner, which builds this step's JSON
    Schema from the flat `ModelStep` schema with `target` narrowed to `validRefs`.
    The answer is one flat object:
@@ -121,15 +132,18 @@ If an observation has no addressable elements, the model is not called.
 | Model answers `request_help` | Escalate |
 
 - **Goal check:** every declared output has been captured with `read`.
-- **Stall counter:** a single counter summing unchanged-page steps, rejected refs,
-  and gateway denials; reset whenever a step makes progress.
+- **Stall counter:** a single counter of turns that did not advance the run
+  (unchanged page, rejected ref or output name, gateway denial, failed action,
+  `finish` before the goal holds, a declined handoff); reset whenever a step makes
+  progress.
 
 ## Prompt
 
 One generic system prompt: what each verb does, answer with one JSON object, target
 only listed refs, use `read` to capture requested values and `finish` when the goal
-is met. The prompt names no app, flow, or domain; the same prompt must discover
-both the read flow and the write flow.
+is met, never repeat what the goal says a person already did. The prompt names no
+app, flow, or domain; the same prompt must discover both the read flow and the
+write flow.
 
 ## From trace to artifact
 
@@ -137,7 +151,8 @@ The **artifact synthesizer** (pure Logic) turns the trace into an artifact:
 
 - Each executed action becomes a step. Refs are ephemeral and never persisted;
   each resolved element becomes a target with a candidate chain built from what
-  was observed (role/name, label, attributes)
+  was observed (role/name, label, attributes) and `notes` explaining why the
+  chain is ordered as it is
 - An element in a table row that contains an input value gets a `table_cell`
   structural candidate
 - A target the model reads never uses role/name — its name is the data itself —
@@ -158,8 +173,10 @@ The **artifact synthesizer** (pure Logic) turns the trace into an artifact:
   ids listed in the request, not guessed
 - `provenance` records reasoner adapter, model, and discovery run id
 
-The artifact is written as a draft: a new version file, reviewed in the diff
-before it is committed. There is no status field.
+The artifact is written as a new version file with `status: "draft"`. A reviewer
+sets it to `approved` before committing it; until then replay skips it unless run
+with `--allow-draft`. A version that already exists is never overwritten: the run
+fails with `artifact_exists` before opening the surface.
 
 ## Non-Goals
 

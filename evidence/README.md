@@ -7,8 +7,9 @@ run (`failure.evidence`, `intervention.json`'s `screenshot`) are relative to its
 
 Everything is redacted (RFC-006): the target password never appears; declared-sensitive
 inputs and outputs show as `[REDACTED:<sensitivity>]` in every JSON file of the run and
-are covered by a solid box in every screenshot; account numbers keep only their last 4
-digits in JSON and are boxed in screenshots. Page data the capability does not declare
+are covered by a solid box in every screenshot. Account numbers keep only their last 4
+digits in JSON; in these screenshots they are boxed too, because the fixture's account
+numbers contain the declared member ID. Other page data the capability does not declare
 (the member's name, balances that were not read) stays visible. All data is synthetic.
 
 **Saved example artifacts:** the `artifact.json` of the two discovery runs is what

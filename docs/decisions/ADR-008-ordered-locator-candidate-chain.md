@@ -20,13 +20,16 @@ No single locator strategy is reliable everywhere, but replay must be determinis
 
 A target declares an ordered chain of candidates, most semantic first:
 
-1. **role + accessible name** — e.g. `textbox "Member ID"`
-2. **label text** — the visible text adjacent to the control, or to a displayed
-   value (the cell right after the label cell)
-3. **stable attribute** — `name` or `id`
-4. **text content** — for links and buttons
-5. **structural** — e.g. "the cell in the row where column `Acct Type` equals
+1. **`role`** — role + accessible name, e.g. `textbox "Member ID"`
+2. **`label`** — the control's associated label (exact match); failing that, in
+   table layouts, the control or displayed value in the cell right after the cell
+   whose text is exactly the label
+3. **`attribute`** — a stable attribute, e.g. `name` or `id`
+4. **`text`** — exact text content, for links and buttons
+5. **`table_cell`** — e.g. "the cell in the row where column `Acct Type` equals
    `Savings`, column `Balance`"
+
+A target may also name the frame it lives in and carry reviewer-facing `notes`.
 
 Resolution rules:
 
@@ -41,7 +44,8 @@ candidate, same element.
 ## Consequences
 
 **Positive**
-- Survives single-attribute changes, including per-tenant id differences
+- Survives single-attribute changes, including per-tenant id differences (by
+  design; the fixture defines a single tenant)
 - Ambiguity is a failure, never a guess
 - Falling back to a lower candidate is a drift signal operators can monitor
 

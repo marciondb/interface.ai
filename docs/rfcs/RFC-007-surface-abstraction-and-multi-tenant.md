@@ -22,17 +22,20 @@ type SurfaceDriver = {
   open(url: string, session: readonly SessionCookie[]): Promise<void>   // one browser/page per run
   observe(): Promise<Observation>          // accessibility tree per frame/window
   resolve(target: TargetSpec): Promise<Resolution>   // candidate chain → ref (ADR-008)
-  perform(action: Action, options?: { timeoutMs?: number }): Promise<PerformOutcome>   // done | timeout | error
+  perform(action: SurfaceAction, options?: { timeoutMs?: number }): Promise<PerformOutcome>   // done | timeout | error
   describe(ref: string): Promise<ElementInfo>
   inspect(ref: string): Promise<ElementDescriptor>   // observation ref → how to find it again
   currentUrl(): string
-  screenshot(): Promise<Uint8Array>
+  frameUrls(): readonly string[]           // page URL, then every frame's
+  setNavigationGuard(allows: (url: string) => boolean): void   // aborts navigations outside the allowlist
+  screenshot(options?: { maskTexts?: readonly string[] }): Promise<Uint8Array>   // sensitive values boxed
   close(): Promise<void>
 }
 ```
 
-A handoff also needs the driver's `HumanSurface` side (observe, screenshot, and
-capture of what a human does in the live window); it offers no way to act.
+A handoff also needs the driver's `HumanSurface` side (observe, screenshot,
+current URL, a window-closed notice, and capture of what a human does in the live
+window); it offers no way to act.
 
 An `ElementDescriptor` carries what the observation node does not — identifying
 attributes, the adjacent label, and for table cells the column header and row
@@ -50,7 +53,7 @@ relations — so the same schema works across surfaces:
 | No accessibility at all (Citrix, canvas) | Screenshot + vision locator | Last-resort `strategy: "visual"` candidate |
 
 Adding a surface is a new Diplomat. Artifacts, replay, policy, and classification
-do not change.
+do not change, beyond admitting a new `app.surface` value (v1 accepts only `web`).
 
 ## Multi-tenant reuse
 
@@ -67,7 +70,8 @@ tenants/<tenant>/<id>.overlay.json        # overrides: targets, outcome texts, r
 - An overlay can replace **targets** and **outcome detectors** only — never steps,
   inputs, or outputs. The contract stays identical across tenants
 - Resolution: `base + overlay → effective artifact`, validated like any artifact
-- Tenant config (`product`, `productVersion`) selects the base
+- Tenant config (`product`, `productVersion`) selects the base. The artifact
+  already carries an optional `app.productVersion`; nothing selects by it yet
 
 **Drift detection:**
 
@@ -75,16 +79,21 @@ tenants/<tenant>/<id>.overlay.json        # overrides: targets, outcome texts, r
   consistently falls back to lower candidates is drifting
 - A checkpoint failure concentrated in one tenant after a vendor upgrade flags a
   product-version split, which becomes a new base version
-- Canonicalization at synthesis (`/member/10001` → `/member/:id`, tenant-specific
-  ids → role/label candidates first) keeps base artifacts tenant-neutral
+- Canonicalization at synthesis keeps base artifacts tenant-neutral. Synthesis
+  already orders role/label candidates before tenant-specific ids and turns
+  values equal to an input's example into placeholders; route canonicalization
+  (`/member/10001` → `/member/:id`) is not built
 
-The target application demonstrates the need: its tenant config changes ids,
-labels, and column order.
+The target application shows where tenants differ: its tenant config sets ids,
+labels, column order and the route base. Only one tenant is defined, so every
+artifact in the repository is recorded against it.
 
 ## Not implemented
 
 - Desktop drivers
 - Overlay resolution and tenant registry
+- A second tenant, and selecting a base by `productVersion`
+- Route canonicalization at synthesis
 - Drift dashboards
 
 ## Related

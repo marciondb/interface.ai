@@ -192,15 +192,20 @@ pure redaction logic.
 > The replay controller must not depend, directly or transitively, on the reasoner
 > Diplomat.
 
-This is the structural expression of "no model in the decision loop".
+This is the structural expression of "no model in the decision loop". The check
+also covers the replay CLI, the replay composition, and the demo script.
 
-Two further rules:
+Further rules:
 
 - Controllers reach Diplomats only through their `port.ts` types; concrete
-  implementations are injected by the CLI entrypoint.
+  implementations are wired in one composition root (`src/diplomat/composition/`)
+  shared by both CLIs, the test harnesses, and the demo script.
 - `infrastructure/` imports no other layer.
+- Models and Logic import no Node built-ins and no npm package other than Zod.
+- Only the surface Diplomat (`src/diplomat/surface/`) imports Playwright.
 
-These rules are checked by dependency-cruiser in `npm run verify`.
+These rules are checked by dependency-cruiser (`npm run depcruise`, part of
+`npm run verify`).
 
 ---
 
@@ -272,11 +277,13 @@ src/
     in/
     out/
   diplomat/
+    cli/ composition/ escalation/ evidence/ gateway/
+    reasoner/ session/ store/ surface/
   infrastructure/
 ```
 
-`infrastructure/` holds cross-cutting technical concerns — configuration,
-logging, correlation — usable by any layer.
+`infrastructure/` holds cross-cutting technical concerns — clock, configuration,
+error helpers, ids, JSON file reading — usable by any layer.
 
 ---
 

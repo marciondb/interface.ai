@@ -28,13 +28,16 @@ inside every artifact and tie each capability to one tenant's login flow.
 - Session expiry during replay is a **recoverable condition**: re-authenticate
   once and restart the capability from its first step (a fresh login lands on the
   home screen, so re-running only the current step is not possible); a second
-  expiry is a hard failure
+  expiry is a hard failure, and so is an expiry after a risky step has completed,
+  since the restart would repeat it
+- The sign-in page is never screenshotted
 
 ## Consequences
 
 **Positive**
 - No secret can leak through an artifact
-- Capabilities are reusable across tenants with different login methods (form, SSO)
+- Capabilities stay independent of each tenant's login method (form, SSO); only the
+  fixture's form login is implemented
 - Login is written once per app, not once per capability
 
 **Negative**

@@ -43,7 +43,7 @@ The system runs as a **single Node process** with a **command-line entry point**
 | Artifact storage | Filesystem, one versioned JSON file per capability |
 | Evidence storage | Filesystem, one directory per run |
 | Run state | In-memory for the duration of a run |
-| Composition | Explicit wiring in a composition root; no dependency-injection container |
+| Composition | Explicit wiring in one composition root (`src/diplomat/composition/`), shared by both CLIs, the test harnesses, and the demo script; no dependency-injection container |
 
 There is no HTTP server, no message broker, no database, and no worker pool.
 Because run state lives in that single process, handoff is controlled from the

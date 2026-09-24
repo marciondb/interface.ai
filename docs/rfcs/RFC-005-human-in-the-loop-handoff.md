@@ -18,8 +18,9 @@
 - Discovery stall or `request_help` (RFC-003)
 - A replay step marked `risky` in the artifact, or any action the gateway answers
   with `requires_human`, in discovery or replay (ADR-011)
-- Not in v1: escalating an unrecoverable replay condition instead of failing
-  (RFC-004)
+- A replay step that failed in a way a person may get past (`target_not_found`,
+  `target_ambiguous`, `checkpoint_failed`, `recovery_exhausted`), once per step
+  and only when an operator window exists; without one the run fails (RFC-004)
 
 ## Intervention request
 
@@ -41,9 +42,10 @@ Written to `evidence/runs/<run>/intervention.json` and printed by the CLI:
 }
 ```
 
-`mode` is `discovery` (which adds the rendered, redacted `goal`) or `replay`; `reason` is `risky_action`, `stalled`, or
-`help_requested`. `intervention.json` holds the latest request of the run; every
-request is also a `handoff_requested` event.
+`mode` is `discovery` (which adds the rendered, redacted `goal`) or `replay`; `reason` is `risky_action`, `stalled`,
+`help_requested`, or `unrecoverable`; `screenshot` is relative to the run folder,
+or `null` when the page could not be photographed. `intervention.json` holds the
+latest request of the run; every request is also a `handoff_requested` event.
 
 ## Control state machine
 
@@ -64,17 +66,18 @@ stateDiagram-v2
 
 - The operator types `take`, `resume`, or `abort` at the stdin prompt of the
   running process.
-- The run moves to Aborted on `abort`, on TTL expiry (default 10 min), or when
-  the browser window is closed.
+- The run moves to Aborted on `abort`, on TTL expiry (`HANDOFF_TTL_MS`, default
+  10 min), or when the browser window is closed.
 - One owner at a time (ADR-012). The gateway rejects automation actions unless the
-  owner is `automation`. While Verifying, automation only observes.
+  owner is `automation`. While Verifying, automation only observes and reads.
 - The operator works in the same headed browser window. Without `--headed` there
   is no operator surface, and the run ends immediately as `escalated`
   (`no_operator_surface`).
-- Native dialogs raised during the handoff are answered at the terminal and
-  recorded.
+- Native dialogs raised during the handoff are answered at the terminal
+  (dismissed if the TTL runs out) and recorded.
 - On resume, the run re-observes and verifies the current step's checkpoint before
-  continuing — the human's word is not taken on faith. Discovery has no step
+  continuing — the human's word is not taken on faith; for a recovery control, it
+  verifies the condition is gone. Discovery has no step
   checkpoint: a changed page records what the human did, an unchanged one tells
   the model the human declined (RFC-003).
 - A handoff that ends in Aborted ends the run as `escalated`, with `reason`
@@ -91,8 +94,9 @@ stateDiagram-v2
 As `run.jsonl` events: `handoff_requested`, `handoff_taken`,
 `handoff_human_action` (one per action), `handoff_verify_failed`,
 `handoff_resumed`, `handoff_aborted`; snapshots and screenshots are named
-`handoff-<interventionId>-before|after`. The page script sends `[redacted]` in
-place of a field's value, and navigations keep only origin and path.
+`<seq>-handoff-<interventionId>-before|after`, and screenshots cover the run's
+sensitive values (RFC-006). The page script sends `[redacted]` in place of a
+field's value, and navigations keep only origin and path.
 
 ## Mocked in v1
 

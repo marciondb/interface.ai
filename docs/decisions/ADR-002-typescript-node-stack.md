@@ -39,9 +39,9 @@ Beyond that, the system needs:
 
 | Concern | Choice |
 |---|---|
-| Language | TypeScript (strict) |
-| Runtime | Node LTS |
-| Schema & validation | Zod |
+| Language | TypeScript (strict, `noUncheckedIndexedAccess`) |
+| Runtime | Node 24 (LTS) |
+| Schema & validation | Zod v4 |
 | Package manager | npm |
 
 ### Rationale
@@ -64,7 +64,8 @@ synthesizer is literally the type consumed by the replay engine.
 
 **Low setup friction.** `npm install` followed by a documented command is a
 familiar path for a reviewer, and the toolchain needs no system-level
-dependencies beyond Node and a browser download.
+dependencies beyond Node and a browser download (discovery also needs a local
+model, ADR-015; replay does not).
 
 ---
 

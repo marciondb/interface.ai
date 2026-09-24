@@ -24,20 +24,26 @@ evidence/runs/<timestamp>-<mode>-<capability-id>/
 ├── result.json        # the ExecutionResult (ADR-009)
 ├── artifact.json      # discovery only: the produced capability
 ├── intervention.json  # only when the run had a handoff
-├── screenshots/       # per step on discovery, on failure and handoff on replay
+├── screenshots/       # masked; per step on discovery, on failure and handoff (both modes)
 └── snapshots/         # accessibility snapshots, redacted
 ```
 
 - The evidence root is configurable via `EVIDENCE_DIR` (default `evidence/runs`,
   git-ignored except for the curated runs)
 - Every event has `runId`, `seq`, `timestamp`, and `stepId` where applicable
-- Discovery events include the model's `rationale`
+- Discovery decision events include the model's `rationale`, latency, and provider
+  metadata
+- Paths written inside a run (`failure.evidence`, the handoff screenshot) are
+  relative to the run folder
 - Redaction runs **before** writing, inside the recorder; when the run finishes,
   the recorder redacts every JSON file of the run again with the final set of
   values, so a value learned late is masked in earlier snapshots too
-- Declared-sensitive outputs are masked in evidence (`[REDACTED:<sensitivity>]`)
-  while still being returned unmasked to the caller
-- Curated sample runs are committed under `/evidence/` and indexed in
+- Declared-sensitive inputs and outputs are masked in evidence
+  (`[REDACTED:<sensitivity>]`) while outputs are still returned unmasked to the
+  caller; account-number-like digit runs keep only their last 4 digits
+- Screenshots cover every element showing a declared-sensitive value with a solid
+  box; the sign-in page is never screenshotted
+- Curated sample runs are committed under `evidence/runs/` and indexed in
   `evidence/README.md`
 
 ## Consequences
@@ -48,9 +54,9 @@ evidence/runs/<timestamp>-<mode>-<capability-id>/
 - Redaction has a single enforcement point
 
 **Negative**
-- Screenshots can show sensitive values, and snapshots show undeclared page data
+- Screenshots and snapshots still show page data the capability does not declare
   (other balances, names); mitigated by capturing only on the fixture with
-  synthetic data, and noted as a production gap (masking at capture time)
+  synthetic data, and noted as a production gap
 - No retention or indexing beyond the filesystem
 
 ## Alternatives

@@ -26,6 +26,7 @@ Illustrative; the Zod schema in code is canonical (ADR-007).
 ```json
 {
   "schemaVersion": 1,
+  "status": "approved",
   "capability": {
     "id": "member.read-account-balance",
     "version": "1.0.0",
@@ -95,40 +96,51 @@ The Member ID input has no accessible name in the target, so its chain starts at
 
 | Section | Purpose |
 |---|---|
-| `capability` | Identity, semver, human description, which app and surface |
+| `status` | Optional review state, `draft` \| `approved`; absent means `approved`. Discovery writes `draft`; replay skips drafts unless run with `--allow-draft` |
+| `capability` | Identity, semver, human description, which app and surface (`app.product`, `app.surface`, optional `app.productVersion`) |
 | `preconditions` | What must hold before running (ADR-013) |
-| `inputs` / `outputs` | Typed contract for the caller (`string` \| `number`, a `description`, a `sensitivity` class used by redaction); string inputs may add `pattern` and `enum`. All inputs are required |
-| `targets` | Named controls with an optional `frame` (absent = top-level document) and ordered locator candidates (ADR-008). Steps refer to targets by name |
-| `steps` | Ordered actions, each with a `risk` class and a `checkpoint` |
-| `outcomes` | Declared business outcomes and recoverable conditions, each with a detector; a recoverable condition may declare a `recover` click |
-| `provenance` | How the artifact was made: `method` (`discovered` \| `hand_written`), `createdAt`, optional `runId` linking to the discovery run evidence, optional `reasoner` (`adapter`, `model`) |
+| `inputs` / `outputs` | Typed contract for the caller (`string` \| `number`, a `description`, a `sensitivity` class used by redaction: `none` \| `internal` \| `pii` \| `financial`); string inputs may add `pattern` and `enum`. All inputs are required |
+| `targets` | Named controls with an optional `frame` (absent = top-level document), ordered locator candidates (ADR-008) and optional `notes` (discovery writes why the chain is robust). Steps refer to targets by name |
+| `steps` | Ordered actions, each with a `risk` class (`safe` \| `risky`), a `checkpoint` and optional `notes` |
+| `outcomes` | Declared business outcomes and recoverable conditions, each with an optional `description` and a detector; a recoverable condition may declare a `recover` click |
+| `provenance` | How the artifact was made: `method` (`discovered` \| `hand_written`), `createdAt`, and for `discovered` a `runId` linking to the discovery run evidence and a `reasoner` (`adapter` `local` \| `hosted`, `model`) |
 | `notes` | Optional free-text notes for reviewers |
 
 Vocabulary:
 
-- **Locator strategies:** `role`, `label`, `attribute`, `text`, `table_cell`
-  (the cell in column Y of the row where column X equals a value)
+- **Locator strategies:** `role`, `label` (the control associated with that
+  label, else the value in the table cell right after the label's cell),
+  `attribute`, `text`, `table_cell` (the cell in column Y of the row where column
+  X equals a value; with an optional `role`, the element of that role inside it).
+  A candidate counts only when it matches exactly one element
 - **Checkpoint and detector kinds:** `text_visible`, `target_visible`,
   `value_equals`, `value_matches`
-- **Step actions:** `click`, `fill`, `select`, `press`, `navigate`, `read`
+- **Step actions:** `click`, `fill`, `select`, `press`, `navigate` (a `path`
+  relative to the target's origin), `read`
 
 Beyond the schema, the artifact is validated for internal consistency: every
 referenced target exists, every placeholder names a declared input, each output
 is produced by exactly one `read`, step and outcome ids are unique, and unknown
-keys are rejected. `discovered` provenance requires `runId` and `reasoner`.
+keys are rejected. `discovered` provenance requires `runId` and `reasoner`. The
+store also checks that a file's id and version match its path
+(`capabilities/<id>/<version>.json`).
 Placeholders are only `{{inputs.<name>}}`; they may appear in targets, steps and
 outcomes and are bound to the caller's validated inputs before replay.
 
 ## Design notes
 
 - **Targets are separate from steps** so the same control is described once, and
-  per-tenant overrides replace targets without touching steps (RFC-007).
+  per-tenant overrides could replace targets without touching steps (RFC-007,
+  design only).
+- **Published versions are immutable.** The store refuses to overwrite an
+  existing version; a change is a new version.
 - **Every step has a checkpoint.** Replay never assumes an action worked.
 - **Outcomes are declared, not inferred.** Replay reports a business outcome only if
   it is listed here (ADR-009).
 - **Concrete values become parameters.** Discovery values like `10001` are replaced
   by `{{inputs.memberId}}` during synthesis.
-- **No secrets, ever.** Inputs with sensitivity `secret` are rejected by the schema.
+- **No secrets, ever.** Inputs and outputs with sensitivity `secret` are rejected
+  by the schema.
 
 ## Non-Goals
 

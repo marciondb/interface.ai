@@ -5,7 +5,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white" />
   <img alt="Playwright" src="https://img.shields.io/badge/Playwright-Chromium-2EAD33?style=flat-square&logo=playwright&logoColor=white" />
   <img alt="Local LLM" src="https://img.shields.io/badge/local%20LLM-Ollama%20%C2%B7%20qwen3%3A14b-000000?style=flat-square&logo=ollama&logoColor=white" />
-  <img alt="Tests" src="https://img.shields.io/badge/tests-323%20passing-brightgreen?style=flat-square" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-513%20passing-brightgreen?style=flat-square" />
   <img alt="Replay" src="https://img.shields.io/badge/replay-no%20model%20in%20the%20loop-b7410e?style=flat-square" />
 </p>
 
@@ -47,10 +47,10 @@ This system does the second.
 
 | | |
 |---|---|
-| **Genuine local discoveries** | Both flows were discovered live by `qwen3:14b` on a laptop: the read flow in 6 decisions (27 s) and the write flow in 13 decisions (68 s), including a risky `Confirm` performed through the human handoff. |
-| **Replay needs nothing** | No model, no key, no network: `npm run demo` replays six scenarios in seconds. |
+| **Genuine local discoveries** | Both flows were discovered live by `qwen3:14b` on a laptop: the read flow in 6 decisions (31 s) and the write flow in 13 decisions (45 s), including a risky `Confirm` performed through the human handoff. |
+| **Replay needs nothing** | No model, no key, no network: `npm run demo` replays eight scenarios in seconds. |
 | **Enforced architecture** | Diplomat layering (pure domain, side effects at the edge) checked by dependency-cruiser on every `npm run verify`. |
-| **Tested against the real thing** | 323 tests, most of them driving the real target app in a real browser, with injected faults. |
+| **Tested against the real thing** | 513 tests (293 unit, 220 integration), many of them driving the real target app in a real Chromium, with injected faults. |
 | **Documented decisions** | Every trade-off has an [ADR or RFC](docs/README.md); [`REPORT.md`](REPORT.md) is the short version. |
 
 ## Quick start
@@ -60,19 +60,23 @@ nvm use                         # Node 24
 npm install
 npx playwright install chromium
 
-npm run verify                  # typecheck, lint, 323 tests, dependency rules — offline
-npm run demo                    # six replay scenarios against the target app — no model
+npm run verify                  # typecheck, lint, 513 tests, dependency rules — offline
+npm run demo                    # eight replay scenarios against the target app — no model
 ```
+
+The demo's output, trimmed (each line also names the run's evidence folder):
 
 ```text
 PASS  success                      expected=succeeded  got=succeeded
 PASS  business outcome             expected=business_outcome:member_not_found  got=business_outcome:member_not_found
+PASS  permission denied            expected=business_outcome:member_restricted  got=business_outcome:member_restricted
 PASS  recovered fault              expected=succeeded+recovery:interstitial  got=succeeded+recovery:interstitial
+PASS  unexpected dialog            expected=succeeded+recovery:unexpected_dialog  got=succeeded+recovery:unexpected_dialog
 PASS  hard failure                 expected=failed:server_error@click-member-lookup  got=failed:server_error@click-member-lookup
 PASS  handoff (scripted operator)  expected=succeeded+intervention  got=succeeded+intervention
 PASS  escalation, no operator      expected=escalated:no_operator_surface@close-account  got=escalated:no_operator_surface@close-account
 
-6/6 as expected — replay ran with no reasoner and no model env
+8/8 as expected — replay ran with no reasoner and no model env
 ```
 
 To discover a flow yourself you also need the local model — see [Setup](#setup).
@@ -109,32 +113,38 @@ flowchart LR
     replay --> human["escalated → human"]
 ```
 
-The model sees a compact accessibility tree, not raw HTML, and must answer with one
-JSON action whose target is constrained — during generation — to elements that exist
-on the current screen. Every action on both paths passes through one gateway that
-enforces the allowlist. The replay side has no edge to the model at all.
+The model sees a compact accessibility tree, not raw HTML, with credentials and every
+sensitive output already read masked (inputs stay visible: it has to type them). It
+must answer with one JSON action whose target is constrained — during generation — to
+elements that exist on the current screen. The model is stateless, so its goal line
+says which outputs are already read and what a person did during a handoff. Every
+action on both paths passes through one gateway that enforces the allowlist. The
+replay side has no edge to the model at all.
 
 ## Watch the model think
 
 The real decisions `qwen3:14b` made while discovering the read flow, straight from the
-committed [evidence](evidence/runs/2026-09-24T17-21-04-747Z-discovery-member.read-account-balance/run.jsonl).
+committed [evidence](evidence/runs/2026-09-24T21-39-10-424Z-discovery-member.read-account-balance/run.jsonl).
 Sensitive values were redacted before they were written:
 
 | # | Action | Model's rationale | Latency |
 |---|---|---|---|
-| 1 | `click` Member Lookup | "Clicking on 'Member Lookup' will allow us to look up member [REDACTED:internal]." | 10.6 s (cold) |
-| 2 | `fill` Member ID | "Need to enter the member ID to look up the member's information." | 2.4 s |
-| 3 | `click` Search | "Clicking the search button will look up member [REDACTED:internal]." | 2.1 s |
-| 4 | `click` the member | "Clicking the link for Maria Santos will navigate to her account details, where the Savings account balance can be found." | 2.8 s |
-| 5 | `read` balance | "The balance of the Savings account is displayed in e26, which matches the goal's request." | 3.7 s |
-| 6 | `finish` | "The goal is complete as the balance has already been read." | 4.3 s |
+| 1 | `click` Member Lookup | "Clicking on Member Lookup to proceed with looking up member [REDACTED:internal]." | 12.7 s (first call) |
+| 2 | `fill` Member ID | "Need to enter the member ID to look them up." | 2.3 s |
+| 3 | `click` Search | "Clicking the search button will look up member [REDACTED:internal]." | 2.2 s |
+| 4 | `click` the member | "Clicking the member's name will navigate to their details, where the Savings account balance can be found." | 2.7 s |
+| 5 | `read` balance | "The balance of the Savings account is displayed in e26." | 3.4 s |
+| 6 | `finish` | "The goal was to read the balance of member [REDACTED:internal]'s Savings account, which has been accomplished." | 4.3 s |
+
+Each decision also records Ollama's own metadata (`providerMeta`: token counts, durations).
 
 ## The artifact
 
-The run above became [`capabilities/member.read-account-balance/1.0.1.json`](capabilities/member.read-account-balance/1.0.1.json).
-A caller sees a contract — typed inputs, typed outputs, declared outcomes — not a
-recording. Targets are described the way an operator would find them, never by a
-brittle selector:
+The run above became [`capabilities/member.read-account-balance/1.0.2.json`](capabilities/member.read-account-balance/1.0.2.json):
+discovery writes it as a `draft`, and a reviewer approved it. A caller sees a contract —
+typed inputs, typed outputs, declared outcomes — not a recording. Targets are described
+the way an operator would find them, never by a brittle selector, and each says why its
+locators should hold:
 
 ```json
 "content.balance": {
@@ -145,7 +155,8 @@ brittle selector:
       "row": { "column": "Acct Type", "equals": "{{inputs.accountType}}" },
       "column": "Balance"
     }
-  ]
+  ],
+  "notes": "Cell located by its row (Acct Type = {{inputs.accountType}}) and column header (Balance), not by position or by its own text (record data), so it survives row reordering and works for any record. Searched only inside the content frame."
 }
 ```
 
@@ -171,12 +182,14 @@ never guessed. The schema is specified in [RFC-002](docs/rfcs/RFC-002-capability
 | Status | Exit code | Example |
 |---|---|---|
 | `succeeded` | 0 | typed outputs: `{ "balance": "3,100.55" }` |
-| `business_outcome` | 2 | `member_not_found`, `invalid_initial_deposit` — the caller decides |
+| `business_outcome` | 2 | `member_not_found`, `member_restricted` (permission denied), `invalid_initial_deposit` — the caller decides |
 | `failed` | 3 | `server_error` at step `click-member-lookup`, with expected, observed and a screenshot |
 | `escalated` | 4 | a human was needed and the run could not continue without one |
 
-Recoverable conditions — a slow load, an interstitial page, an expired session — are
-handled inside the run with bounded retries and reported in `recoveries[]`.
+Recoverable conditions — a slow load, an interstitial page, an expired session, an
+unexpected native dialog (dismissed) — are handled inside the run with bounded retries
+and reported in `recoveries[]`. After re-authenticating, a run starts over, unless a
+risky step is already done: then it fails rather than repeat it.
 
 <p align="center">
   <img alt="When it's risky, a human takes the same live session: take, act, resume" src="assets/handoff.png" width="100%" />
@@ -189,10 +202,11 @@ local, deliberately hostile 2000s-era member-services console — iframe shell, 
 tables, presentational markup, no test IDs, ASP.NET-style generated names, native
 `confirm()` dialogs, irreversible buttons, and a fault-injection endpoint that makes
 slowness, interstitials, session expiry, server errors and missing controls happen on
-demand. This is a screenshot from the committed discovery run:
+demand. This is a screenshot from the committed discovery run (declared sensitive
+values and account numbers are masked):
 
 <p align="center">
-  <img alt="The legacy member-services console the model drives" src="evidence/runs/2026-09-24T17-21-04-747Z-discovery-member.read-account-balance/screenshots/0024-step-5.png" width="85%" />
+  <img alt="The legacy member-services console the model drives" src="evidence/runs/2026-09-24T21-39-10-424Z-discovery-member.read-account-balance/screenshots/0024-step-5.png" width="85%" />
 </p>
 
 ---
@@ -241,8 +255,9 @@ loads `.env` automatically, so export what you change (e.g.
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | `discover` (local); must be a loopback address so observations stay on the machine |
 | `REASONER_MODEL` | `qwen3:14b` | `discover` (local) |
 | `HOSTED_BASE_URL`, `HOSTED_MODEL`, `HOSTED_API_KEY` | unset | `discover --reasoner hosted`; the base URL must be `https:` unless it is loopback |
-| `EVIDENCE_DIR` | `evidence/runs` | where each run's evidence folder is written |
+| `EVIDENCE_DIR` | `evidence/runs` | where each run's evidence folder is written; a relative path resolves from the repository root |
 | `REPLAY_STEP_TIMEOUT_MS` | `5000` | per-step budget in replay |
+| `DISCOVERY_STEP_TIMEOUT_MS` | `5000` | per-action budget in discovery |
 | `HANDOFF_TTL_MS` | `600000` (10 min) | how long a handoff waits for the operator |
 | `OPERATOR_ID` | `local-operator` | who is recorded as taking and resuming a handoff |
 
@@ -254,11 +269,12 @@ listens.
 
 ```bash
 npm run verify    # typecheck, lint, tests (fixture on a free port, scripted model), dependency rules
-npm run demo      # replays the committed capabilities in six scenarios; no model, no model env
+npm run demo      # replays the committed capabilities in eight scenarios; no model, no model env
 ```
 
 `npm run demo` starts the fixture itself, replays against it, and prints one line per
-scenario, then `6/6 as expected` (exit 0). Faults are injected through the fixture's
+scenario (expected result, actual result, evidence folder), then `8/8 as expected`
+(exit 0). Faults are injected through the fixture's
 `/_fault` endpoint right before the step they target; the handoff scenario uses a
 scripted operator that types `take` and `resume` at the real handoff prompt and clicks
 in the run's own page. Evidence goes to a temp dir; `npm run demo -- --keep` writes it
@@ -273,20 +289,24 @@ npm run fixture                 # http://localhost:8080
 ```
 
 Terminal 2 — **discover** the read flow with the local model. Published versions are
-immutable and `1.0.1` is committed, so first set `"version": "1.0.2"` under
-`capability` in `discovery/requests/member.read-account-balance.json`, then:
+immutable and `1.0.2` is committed, so ask for a new version:
 
 ```bash
-npm run discover -- --request discovery/requests/member.read-account-balance.json
+npm run discover -- --request discovery/requests/member.read-account-balance.json --version 1.0.3
 ```
 
 Each decision and its rationale is printed as it happens; the result is JSON on
-stdout (exit 0 `succeeded`, 3 `failed`, 4 `escalated`). The new artifact is written as
-a draft to `capabilities/member.read-account-balance/1.0.2.json`, and the run's
-evidence to `evidence/runs/<run>/`. Review the artifact (it is a new file in
-`git status`, comparable with the committed `1.0.1.json`) before committing it.
+stdout (exit 0 `succeeded`, 3 `failed`, 4 `escalated`). The new artifact is written
+with `"status": "draft"` to `capabilities/member.read-account-balance/1.0.3.json`, and
+the run's evidence to `evidence/runs/<run>/`. Review it (a new file in `git status`,
+comparable with the committed `1.0.2.json`) and set `"status": "approved"` before
+committing it. Instead of a request file, `--goal <text> --capability <id>
+--input name=example[:sensitivity] --output name[:sensitivity]` describes the request
+on the command line.
 
-**Replay** it — `@1` resolves to the latest `1.x`, and no model is involved:
+**Replay** it — `@1` resolves to the latest approved `1.x` (`1.0.2` today; add
+`--allow-draft` to include an unreviewed draft such as your `1.0.3`), and no model is
+involved:
 
 ```bash
 npm run replay -- --capability member.read-account-balance@1 --input memberId=10002 --input accountType=Savings
@@ -300,8 +320,8 @@ npm run replay -- --capability member.read-account-balance@1 --input memberId=ab
 ```
 
 Replay exit codes: 0 `succeeded`, 2 `business_outcome`, 3 `failed`, 4 `escalated`,
-1 usage or configuration error. Outputs are returned unmasked on stdout; in the
-evidence they are redacted.
+1 usage or configuration error, 5 internal error (a crash, not a result of the run).
+Outputs are returned unmasked on stdout; in the evidence they are redacted.
 
 ## Human handoff
 
@@ -330,19 +350,25 @@ intervention request (also written to `intervention.json`) and a `handoff>` prom
 typed values as `[redacted]`) is recorded as `handoff_*` events with before/after
 screenshots.
 
-To rediscover the write flow yourself, bump `capability.version` in
-`discovery/requests/member.open-sub-account.json` to `1.0.1` and run
-`npm run discover -- --request discovery/requests/member.open-sub-account.json --headed`;
+With `--headed`, replay also hands over a step that fails in a way no declared recovery
+handles (a missing control, a checkpoint that does not hold); without an operator
+window that run ends `failed`.
+
+To rediscover the write flow yourself, run
+`npm run discover -- --request discovery/requests/member.open-sub-account.json --version 1.0.2 --headed`;
 when the model's click on `Confirm` is escalated, do the same `take`, click, `accept`,
-`resume`.
+`resume`. The model is then told what you did, reads the new account number and
+finishes.
 
 ## Evidence
 
 [`evidence/README.md`](evidence/README.md) indexes the committed runs: the two genuine
-local-model discoveries (read flow, 6 decisions in 27 s; write flow, 13 decisions in
-68 s with a handoff), their artifacts, and replays covering success, a business
-outcome, a recovered fault, a hard failure, a handoff and an escalation with no
-operator. The operator actions in the committed handoffs were performed by a scripted
+local-model discoveries (read flow, 6 decisions in 31 s; write flow, 13 decisions in
+45 s with a handoff), their artifacts, and replays covering success, business outcomes
+(member not found, permission denied, a rejected deposit), a recovered fault, a
+dismissed unexpected dialog, a hard failure, handoffs and an escalation with no
+operator. Screenshots are masked: declared sensitive values and account numbers are
+covered by boxes. The operator actions in the committed handoffs were performed by a scripted
 operator through the real handoff channel; the evidence index explains how.
 
 ## What is mocked, and why
@@ -353,7 +379,7 @@ operator through the real handoff channel; the evidence index explains how.
 | The operator console | the run's own headed browser window plus the `handoff>` prompt on stdin, on the same machine | the control-transfer model is real; a console that streams the session (CDP screencast) and queues requests is UI work with no new decisions (RFC-005) |
 | The operator in committed handoff evidence | a scripted operator using the same prompt and page | a recording has to be reproducible; the steps for a person are above |
 | Credential storage | environment variables; sign-in over HTTP, cookie injected into the browser | authentication is a precondition, not a recorded step (ADR-013) |
-| Desktop surfaces, per-tenant overlays, drift detection | design only, with the seams in code | out of scope for v1 (RFC-007) |
+| Desktop surfaces, other tenants and per-tenant overlays, drift detection | design only, with the seams in code; the fixture is the only tenant | out of scope for v1 (RFC-007) |
 | The model in `npm run verify` | a scripted reasoner; real calls are opt-in with `npm run test:live` | tests must run offline and deterministically |
 
 ## Layout
@@ -363,13 +389,14 @@ src/
   models/ logic/        domain types (Zod) and pure rules: policy, checkpoints, classification, redaction, synthesis
   controllers/          discovery, replay, escalation
   adapters/ wire/       external formats <-> domain
-  diplomat/             CLI entrypoints and I/O: surface (Playwright), reasoner, session, gateway, store, evidence, escalation
+  diplomat/             CLI entrypoints, the composition root (shared by both CLIs, the tests and the demo) and I/O:
+                        surface (Playwright), reasoner, session, gateway, store, evidence, escalation
   infrastructure/       config, clock, ids
 capabilities/           versioned capability artifacts
 discovery/              capability requests and per-app outcome catalogs (discovery input)
 evidence/               curated sample runs
 fixture/                the target app
-scripts/demo.ts         the no-model demo
+scripts/                the no-model demo and its helpers (fixture control, scripted operator)
 tests/                  unit, integration (real fixture and browser), live (opt-in, real model)
 policy.json             the allowlist
 assets/                 README illustrations

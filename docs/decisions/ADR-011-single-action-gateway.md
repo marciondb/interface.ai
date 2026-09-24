@@ -21,28 +21,30 @@ easy to bypass by accident. The policy also needs to be testable and configurabl
 - **One gateway** wraps the surface driver. Controllers never act through the raw
   driver; the escalation controller only gets a view of the live window that
   observes and captures human actions (ADR-012)
-- **Policy is pure Logic**: `evaluate(action, target, currentUrl, policy) →
+- **Policy is pure Logic**: `evaluatePolicy({ action, element, currentUrl }, policy) →
   allow | deny(reason) | requires_human(reason)`
 - **Policy is a config file** (`policy.json`): allowed origins, allowed routes,
   allowed action types, and risky-action rules (by route and by control
   text, e.g. `Close Account`, `Post Adjustment`)
 
 - **Precedence:** `deny` > `requires_human` > `allow`
-- **Matching:** routes match exactly on the canonical path, and a trailing `/*`
-  matches the route and everything under it (e.g. `/member/*`); risky control text
-  is matched as whole words in any label the control shows (RFC-006)
+- **Matching:** routes match exactly on the canonical path, and a trailing `*` is a
+  prefix match (`/member/*` matches `/member` and everything under it); a URL
+  carrying credentials is always denied; risky control text is matched as whole
+  words in any label the control shows (RFC-006)
 - **Landing check:** after the driver acts, the gateway checks where the page and
   its frames ended up; outside the allowlist or on a newly reached risky route, the
   outcome is `landed_outside_policy` with the landed URL. The gateway also installs a navigation
-  guard on the driver that aborts off-allowlist navigations and closes popups
+  guard on the driver that aborts off-allowlist navigations, and the browser session
+  closes any popup
 
 Risky-action policy: **block for automation, allow only through human handoff.**
 In discovery, a `deny` before acting is returned to the model as feedback, while
 `requires_human` triggers the human handoff; a `deny` after acting (landing) ends
 the run. In replay, a step marked `risky` in the artifact escalates instead of
 executing, even if the policy would allow it, unless the policy denies it
-(deny wins). The gateway also rejects every automation action while a human owns
-control (ADR-012).
+(deny wins). The gateway also rejects every automation action except `read` while
+a human owns control (ADR-012).
 
 ## Consequences
 

@@ -22,15 +22,16 @@ a combination.
 
 ## Decision
 
-**The accessibility tree is the primary observation**, one per frame, with each
-node reduced to role, accessible name, value, and state.
+**The accessibility tree is the primary observation**, one per page covering every
+frame, with each node reduced to role, accessible name, value, state, and the frame
+it belongs to.
 
 Secondary signals:
 
 - **DOM attributes** (`id`, `name`) — used as locator fallbacks, never shown to the
   model as the main view
-- **Screenshots** — captured for evidence and on failure; not used for targeting
-  in v1
+- **Screenshots** — captured for evidence (every discovery step, replay failures,
+  handoffs); not used for targeting in v1
 
 Browsers compute implicit roles (textbox, button, link, cell) even when markup
 declares none, so the tree is populated on surfaces with no semantic markup at all.

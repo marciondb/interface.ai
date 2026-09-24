@@ -7,7 +7,7 @@
 | **Contributors** | N/A |
 | **Started at** | 2026-08-19 |
 | **Status** | ACCEPTED |
-| **Description** | This ADR documents the decision to build a local, deliberately hostile back-office web console as the target application, rather than automating a public demo site or a desktop application, because deterministic fault injection and configurable per-tenant variation cannot be obtained from a third-party surface. |
+| **Description** | This ADR documents the decision to build a local, deliberately hostile back-office web console as the target application, rather than automating a public demo site or a desktop application, because deterministic fault injection and control over per-tenant variation cannot be obtained from a third-party surface. |
 
 ---
 
@@ -46,17 +46,22 @@ The fixture provides:
 - **Hostile markup by construction** — nested table layout, presentational
   elements, framework-style generated identifiers, content inside a frame, no
   test identifiers and no accessibility affordances added for automation's benefit
-- **A fault injection endpoint** that arms exactly one of: slow load,
-  interstitial, session expiry, server error, missing control
+- **A fault injection endpoint** (`POST /_fault`) that arms exactly one
+  single-fire fault: slow load, interstitial, session expiry, server error,
+  missing control, or an unexpected native dialog
 - **Data-driven business outcomes** — specific record identifiers produce "not
   found" and "not authorized" results through ordinary application behavior,
   entirely separate from the fault mechanism
 - **A multi-step read flow and a multi-step write flow**, both parameterized
-- **Irreversible operations** that exist outside any recorded flow
-- **Per-tenant configuration** affecting identifiers, labels, and column order
+- **Irreversible operations** (Close Account, Post Adjustment) outside the read
+  and write flows
+- **Tenant configuration** for identifier prefixes, labels, column order, and route
+  base; only one tenant (`banktest`) is defined, so cross-tenant variation is
+  designed for but not demonstrated
 - **An authenticated session** with a real cookie and a real expiry
 
-It has no third-party dependencies and starts with a single command.
+It has no third-party dependencies, listens on `127.0.0.1` only, and starts with a
+single command.
 
 ### Separation of concerns
 
@@ -74,8 +79,8 @@ be unpleasant to automate — which is exactly what a real legacy console is.
   taxonomy can be **demonstrated** rather than described
 - The hostility is calibrated to the real environment instead of whatever a demo
   site happens to look like
-- Per-tenant variation makes the reuse story demonstrable rather than
-  hypothetical
+- Tenant-specific values are already configuration, so a second tenant to
+  demonstrate reuse is a data change; today only one tenant exists
 - No availability risk, no terms-of-service concerns, no real credentials, no real
   personal data
 - The reviewer runs one command with no external accounts
@@ -89,7 +94,7 @@ be unpleasant to automate — which is exactly what a real legacy console is.
 ### Mitigation for the second point
 
 The fixture is genuinely hostile, and deliberately so: no stable identifiers, no
-semantic structure, content inside a frame, generated identifiers that change with
+semantic structure, content inside a frame, generated identifiers derived from
 tenant configuration, and a required control whose disappearance is an injectable
 fault. The hostility is documented, and the specific real-world problem each
 choice reproduces is stated.

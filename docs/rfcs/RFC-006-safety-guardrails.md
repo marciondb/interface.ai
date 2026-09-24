@@ -29,7 +29,8 @@
 }
 ```
 
-- Routes match exactly; a trailing `/*` matches the route and everything under it
+- Routes match exactly; a trailing `*` matches by prefix, and `/x/*` also matches
+  `/x` itself. A route must start with `/` and may only end with `*`
 - Paths are canonicalized before matching: each segment percent-decoded, `;params`
   dropped, empty segments removed; a segment that decodes to `/`, `\`, `.` or `..`
   is denied. Risky routes match case-insensitively
@@ -70,8 +71,13 @@ The artifact records each step's `risk`; replay honors it even if policy changes
 - **Secrets** (credentials, tokens, cookies) never enter the system's data: the
   session provider holds them in memory only (ADR-013)
 - **Sensitive values** are redacted before:
-  - observations are sent to the model
-  - events and snapshots are written to evidence (ADR-014)
+  - observations are sent to the model: secrets, the patterns below and every
+    sensitive output read so far are masked; declared inputs stay visible, since
+    the model has to type them
+  - events and snapshots are written to evidence (ADR-014), where inputs are
+    masked too
+  - screenshots are written: every element or field showing a sensitive declared
+    input or output value is covered by a solid box
 - Patterns redacted:
   - secrets by value in any case, also URL-encoded and JSON-escaped
     (`[REDACTED:secret]`): the target password, and the hosted API key when
@@ -85,7 +91,9 @@ The artifact records each step's `risk`; replay honors it even if policy changes
     than 4 characters are not masked
 - Redaction is pure Logic, applied in two places: in discovery, the controller
   redacts each observation before calling the reasoner; the evidence recorder
-  redacts before writing
+  redacts every JSON record before writing. Screenshot masking is done by the
+  surface driver, from the values the run protects; the sign-in page is never
+  photographed
 - A value learned late (an output read at the last step) may already sit in
   earlier snapshots, whole or partly masked (an account number whose member-id
   prefix was masked first); when the run finishes, the recorder redacts every
@@ -115,8 +123,9 @@ does not show, and every action still goes through the gateway.
 
 ## Limits
 
-- Screenshots are not masked in v1; acceptable only because the target uses
-  synthetic data
+- Screenshots mask only the declared sensitive input and output values; other page
+  data and pattern-shaped values (account numbers, SSNs) stay visible in them,
+  acceptable only because the target uses synthetic data
 - Risk classification by route and control text is per-app configuration and can
   be wrong; it fails closed when in doubt
 - Pattern-based redaction cannot catch every novel PII shape; the local default

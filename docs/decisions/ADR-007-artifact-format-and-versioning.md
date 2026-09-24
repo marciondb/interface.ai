@@ -29,10 +29,16 @@ and invoked by agents that depend on their input/output contract.
 | `schemaVersion` | Version of the artifact format itself | The engine's schema changes incompatibly |
 | `capability.version` | Semver of this capability | Major: input/output contract changes. Minor: new optional output or outcome. Patch: locator or timing fixes |
 
-Callers pin a capability major version; locator fixes never break them.
+Callers pin a capability major version (`<id>@<major>`); replay loads the newest
+approved version in that major, so locator fixes never break them.
 
 A published version is immutable: changes produce a new version file, and the
 store refuses to overwrite an existing one.
+
+An optional `status` (`draft | approved`) gates replay: discovery writes `draft`,
+a reviewer sets `approved`, and replay skips drafts unless `--allow-draft` is given.
+An absent `status` means approved. `capability.app.productVersion` optionally
+records the release of the app the artifact was written against.
 
 ## Consequences
 

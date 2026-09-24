@@ -25,11 +25,14 @@ in control.
 - A **control owner** value (`automation | human`) is held by the escalation
   controller; the gateway rejects automation actions unless the owner is
   `automation`
+- Escalation happens at a risky step, when discovery stalls or the model asks for
+  help, and, in replay, at a failure a human may get past when an operator window
+  exists
 - On escalation: write an intervention request, set owner to `human`, start
   capturing human actions, and wait
 - Human actions are captured by page-level listeners (clicks, inputs, navigations)
-  plus before/after snapshots; captured input values are redacted in the page
-  before they reach the system
+  plus before/after snapshots; typed values are replaced by `[redacted]` in the
+  page before they reach the system
 - The operator controls the handoff by typing `take`, `resume`, or `abort` at a
   stdin prompt of the running process; on resume the run re-observes the page,
   verifies the current step's checkpoint, and continues or reports

@@ -32,7 +32,7 @@ decision the model faces as small and as constrained as possible.
 
 | Setting | Value |
 |---|---|
-| Endpoint | Ollama native chat API, `http://localhost:11434` (configurable) |
+| Endpoint | Ollama native chat API, `http://localhost:11434` by default, configurable via `OLLAMA_BASE_URL` (must be loopback) |
 | Model | `qwen3:14b` by default, configurable via `REASONER_MODEL` |
 | Output | `format` set to the step's JSON Schema — constrained decoding, not parsing |
 | Sampling | `temperature: 0`, `think: false`, `stream: false` |
@@ -62,11 +62,13 @@ best-effort action.
 
 **Hosted alternative.** A second adapter speaks the OpenAI-compatible chat API
 with `response_format` set to the same JSON Schema. It covers hosted providers
-and any local server exposing that API. Selection is explicit per run
+and any local server exposing that API; its endpoint (`HOSTED_BASE_URL`) must use
+https unless it is loopback. Selection is explicit per run
 (`--reasoner local|hosted`); there is no automatic failover.
 
-**Provenance.** Adapter, model, and per-call latency are recorded in the
-evidence of every discovery run and in the artifact's `provenance`.
+**Provenance.** Adapter and model are recorded in the artifact's `provenance`.
+Every decision event in the run's evidence also records them, with the call's
+latency and, when the provider reports it, its metadata (`providerMeta`).
 
 ## Consequences
 

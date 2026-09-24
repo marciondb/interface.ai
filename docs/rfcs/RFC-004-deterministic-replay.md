@@ -55,7 +55,7 @@ business outcome. The outcome classifier (pure Logic) checks, in order:
 | Timeout while loading | Recoverable | Retry with backoff (max 2) |
 | Session expired | Recoverable | Re-authenticate once, restart from the first step |
 | Server error page | Hard failure | Return `failed` |
-| Target not found / ambiguous | Hard failure or escalate | Escalate if configured, else `failed` |
+| Target not found / ambiguous | Hard failure | Return `failed` (v1 does not escalate it) |
 | Anything else | Hard failure | Return `failed` with expected vs observed |
 
 Recoveries are recorded in `result.recoveries[]`.

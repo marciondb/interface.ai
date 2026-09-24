@@ -237,9 +237,9 @@ could.
 ### Escalation
 
 Escalation is available on both paths, triggered when the system cannot proceed
-safely: discovery has reached a dead end, replay has hit a condition it cannot
-recover from, or a step has been classified as risky and requires a human
-decision.
+safely: discovery has stalled or the model asked for help, or a step has been
+classified as risky and requires a human decision. In v1 a replay condition it
+cannot recover from ends the run as `failed` rather than escalating (RFC-004).
 
 The run suspends, an intervention request carrying enough context to act on is
 published, and the **same live session** is exposed for manual control. When the

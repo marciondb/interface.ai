@@ -15,9 +15,11 @@
 
 ## Triggers
 
-- Discovery dead end or `request_help` (RFC-003)
-- Replay condition that cannot be recovered and is configured to escalate (RFC-004)
-- A step marked risky (ADR-011)
+- Discovery stall or `request_help` (RFC-003)
+- A replay step marked `risky` in the artifact, or any action the gateway answers
+  with `requires_human`, in discovery or replay (ADR-011)
+- Not in v1: escalating an unrecoverable replay condition instead of failing
+  (RFC-004)
 
 ## Intervention request
 
@@ -25,22 +27,21 @@ Written to `evidence/runs/<run>/intervention.json` and printed by the CLI:
 
 ```json
 {
-  "interventionId": "int_…",
+  "interventionId": "int-…",
   "runId": "…",
   "mode": "replay",
-  "goal": "…",
-  "capability": "member.open-sub-account@1",
-  "stepId": "confirm-open",
+  "capability": "member.open-sub-account@1.0.0",
+  "stepId": "click-confirm",
   "reason": "risky_action",
-  "message": "Step requires human approval: Confirm",
-  "screenshot": "screenshots/0007.png",
+  "message": "step click-confirm is risky: click on content.confirm needs a human",
+  "screenshot": "screenshots/0050-handoff-int-…-before.png",
   "url": "http://localhost:8080/member/subacct/review",
   "requestedAt": "…",
   "expiresAt": "…"
 }
 ```
 
-`mode` is `discovery` or `replay`; `reason` is `risky_action`, `stalled`, or
+`mode` is `discovery` (which adds the rendered, redacted `goal`) or `replay`; `reason` is `risky_action`, `stalled`, or
 `help_requested`. `intervention.json` holds the latest request of the run; every
 request is also a `handoff_requested` event.
 

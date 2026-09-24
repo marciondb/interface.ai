@@ -18,16 +18,21 @@
 The seam is the **surface driver port**:
 
 ```ts
-interface SurfaceDriver {
-  open(url: string, session: SessionCookie[]): Promise<void>   // one browser/page per run
+type SurfaceDriver = {
+  open(url: string, session: readonly SessionCookie[]): Promise<void>   // one browser/page per run
   observe(): Promise<Observation>          // accessibility tree per frame/window
-  resolve(target: TargetSpec): Promise<ResolvedTarget>
+  resolve(target: TargetSpec): Promise<Resolution>   // candidate chain → ref (ADR-008)
+  perform(action: Action, options?: { timeoutMs?: number }): Promise<PerformOutcome>   // done | timeout | error
+  describe(ref: string): Promise<ElementInfo>
   inspect(ref: string): Promise<ElementDescriptor>   // observation ref → how to find it again
-  perform(action: Action, target?: ResolvedTarget): Promise<void>
-  screenshot(): Promise<Buffer>
+  currentUrl(): string
+  screenshot(): Promise<Uint8Array>
   close(): Promise<void>
 }
 ```
+
+A handoff also needs the driver's `HumanSurface` side (observe, screenshot, and
+capture of what a human does in the live window); it offers no way to act.
 
 An `ElementDescriptor` carries what the observation node does not — identifying
 attributes, the adjacent label, and for table cells the column header and row

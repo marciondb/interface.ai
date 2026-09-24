@@ -1,0 +1,244 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "member.close-account",
+    "version": "1.0.0",
+    "description": "Look up a member by ID and close their account; a human performs the closure",
+    "app": {
+      "product": "legacy-member-console",
+      "surface": "web"
+    }
+  },
+  "preconditions": [
+    {
+      "kind": "authenticated_session"
+    }
+  ],
+  "inputs": {
+    "memberId": {
+      "type": "string",
+      "description": "Member ID, digits only (the lookup field accepts up to 12)",
+      "pattern": "^[0-9]{1,12}$",
+      "sensitivity": "internal"
+    }
+  },
+  "outputs": {},
+  "targets": {
+    "shell.memberLookup": {
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "link",
+          "name": "Member Lookup"
+        },
+        {
+          "strategy": "text",
+          "text": "Member Lookup"
+        },
+        {
+          "strategy": "attribute",
+          "name": "href",
+          "value": "/member/search"
+        }
+      ],
+      "notes": "Left menu of the shell page; it loads the lookup screen into the content frame."
+    },
+    "lookup.memberId": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "label",
+          "text": "Member ID:"
+        },
+        {
+          "strategy": "attribute",
+          "name": "name",
+          "value": "ctl00$ContentPlaceHolder1$txtMemberId"
+        },
+        {
+          "strategy": "attribute",
+          "name": "id",
+          "value": "ctl00_ContentPlaceHolder1_txtMemberId"
+        }
+      ],
+      "notes": "The input has no label element or title, so it has no accessible name; the chain starts at the adjacent label text."
+    },
+    "lookup.search": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "button",
+          "name": "Search"
+        },
+        {
+          "strategy": "attribute",
+          "name": "name",
+          "value": "ctl00$ContentPlaceHolder1$btnPrimary"
+        },
+        {
+          "strategy": "attribute",
+          "name": "id",
+          "value": "ctl00_ContentPlaceHolder1_btnPrimary"
+        }
+      ]
+    },
+    "results.memberLink": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "attribute",
+          "name": "href",
+          "value": "/member/detail?memberId={{inputs.memberId}}"
+        },
+        {
+          "strategy": "table_cell",
+          "row": {
+            "column": "Member ID",
+            "equals": "{{inputs.memberId}}"
+          },
+          "column": "Name",
+          "role": "link"
+        }
+      ],
+      "notes": "The link text is the member's name, which differs per member, so it is located by destination or by its row."
+    },
+    "interstitial.continue": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "button",
+          "name": "Continue"
+        },
+        {
+          "strategy": "attribute",
+          "name": "value",
+          "value": "Continue"
+        }
+      ]
+    },
+    "detail.closeAccount": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "button",
+          "name": "Close Account"
+        },
+        {
+          "strategy": "attribute",
+          "name": "value",
+          "value": "Close Account"
+        }
+      ],
+      "notes": "Submits the Member Detail form that posts to /member/danger/close; policy.json also marks it risky."
+    }
+  },
+  "steps": [
+    {
+      "id": "open-member-lookup",
+      "action": {
+        "kind": "click",
+        "target": "shell.memberLookup"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "target_visible",
+        "target": "lookup.memberId"
+      }
+    },
+    {
+      "id": "enter-member-id",
+      "action": {
+        "kind": "fill",
+        "target": "lookup.memberId",
+        "value": "{{inputs.memberId}}"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "value_equals",
+        "target": "lookup.memberId",
+        "value": "{{inputs.memberId}}"
+      }
+    },
+    {
+      "id": "submit-search",
+      "action": {
+        "kind": "click",
+        "target": "lookup.search"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "target_visible",
+        "target": "results.memberLink"
+      }
+    },
+    {
+      "id": "open-member-detail",
+      "action": {
+        "kind": "click",
+        "target": "results.memberLink"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "target_visible",
+        "target": "detail.closeAccount"
+      }
+    },
+    {
+      "id": "close-account",
+      "action": {
+        "kind": "click",
+        "target": "detail.closeAccount"
+      },
+      "risk": "risky",
+      "checkpoint": {
+        "kind": "text_visible",
+        "text": "Account closure has been submitted",
+        "frame": "content"
+      }
+    }
+  ],
+  "outcomes": [
+    {
+      "id": "member_not_found",
+      "kind": "business",
+      "description": "No member has this ID",
+      "when": {
+        "kind": "text_visible",
+        "text": "No records found.",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "member_restricted",
+      "kind": "business",
+      "description": "The operator is not authorized to view this member",
+      "when": {
+        "kind": "text_visible",
+        "text": "not authorized",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "interstitial",
+      "kind": "recoverable",
+      "description": "Maintenance notice shown before the requested screen",
+      "when": {
+        "kind": "text_visible",
+        "text": "Click Continue to proceed",
+        "frame": "content"
+      },
+      "recover": {
+        "kind": "click",
+        "target": "interstitial.continue"
+      }
+    }
+  ],
+  "provenance": {
+    "method": "hand_written",
+    "createdAt": "2026-09-24T00:00:00Z"
+  },
+  "notes": "Written by hand as the risky-step demo for the human handoff (RFC-005). Closing the account is irreversible, so automation stops before it and hands the same session to an operator; replay verifies the closure message before it continues."
+}

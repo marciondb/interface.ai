@@ -7,7 +7,3 @@ export function observationRefs(observation: Observation): Ref[] {
 export function findNode(observation: Observation, ref: string): ObservationNode | undefined {
   return observation.nodes.find((node) => node.ref === ref);
 }
-
-export function hasRef(observation: Observation, ref: string | null): boolean {
-  return ref !== null && findNode(observation, ref) !== undefined;
-}

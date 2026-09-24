@@ -102,7 +102,6 @@ export function redactObservation(observation: Observation, rules: RedactionRule
       name: text(node.name),
       ...(node.label === undefined ? {} : { label: text(node.label) }),
       ...(node.value === undefined ? {} : { value: text(node.value) }),
-      ...(node.attributes === undefined ? {} : { attributes: deep(node.attributes, text) as Record<string, string> }),
     })),
     dialog: observation.dialog === null ? null : { ...observation.dialog, message: text(observation.dialog.message) },
   };

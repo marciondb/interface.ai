@@ -117,7 +117,7 @@ describe('redactObservation', () => {
         { ref: 'e1', role: 'cell', name: 'Member ID: 10001 Search', frame: 'content' },
         { ref: 'e2', role: 'textbox', name: '', label: 'Member ID:', value: '10001', frame: 'content' },
         { role: 'text', name: 'Password hint: training', frame: null },
-        { ref: 'e3', role: 'cell', name: '4,812.37', frame: 'content', attributes: { id: 'acct-100018830' } },
+        { ref: 'e3', role: 'cell', name: '4,812.37', frame: 'content' },
       ],
       dialog: { type: 'alert', message: 'Member 10001 updated' },
     };
@@ -140,7 +140,7 @@ describe('redactObservation', () => {
         { ref: 'e1', role: 'cell', name: 'Member ID: [REDACTED:internal] Search', frame: 'content' },
         { ref: 'e2', role: 'textbox', name: '', label: 'Member ID:', value: '[REDACTED:internal]', frame: 'content' },
         { role: 'text', name: `Password hint: ${SECRET_MASK}`, frame: null },
-        { ref: 'e3', role: 'cell', name: '[REDACTED:financial]', frame: 'content', attributes: { id: 'acct-*****8830' } },
+        { ref: 'e3', role: 'cell', name: '[REDACTED:financial]', frame: 'content' },
       ],
       dialog: { type: 'alert', message: 'Member [REDACTED:internal] updated' },
     });

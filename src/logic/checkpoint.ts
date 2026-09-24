@@ -35,7 +35,7 @@ export function factsNeeded(predicates: readonly Predicate[]): FactRequest[] {
   return [...needed].map(([target, needsValue]) => ({ target, needsValue }));
 }
 
-export function describeCandidate(candidate: Candidate): string {
+function describeCandidate(candidate: Candidate): string {
   switch (candidate.strategy) {
     case 'role':
       return `role ${candidate.role} ${JSON.stringify(candidate.name)}`;
@@ -84,6 +84,7 @@ function unresolved(name: string, fact: TargetFact | undefined): string {
   return `${name} did not resolve: ${describeCounts(fact.candidates, fact.counts)}`;
 }
 
+// Checkpoints and outcome detectors alike (RFC-002).
 export function evaluatePredicate(predicate: Predicate, facts: Facts): PredicateResult {
   switch (predicate.kind) {
     case 'text_visible': {
@@ -122,13 +123,4 @@ export function evaluatePredicate(predicate: Predicate, facts: Facts): Predicate
       return unhandled;
     }
   }
-}
-
-export function evaluateCheckpoint(checkpoint: Predicate, facts: Facts): PredicateResult {
-  return evaluatePredicate(checkpoint, facts);
-}
-
-// Outcome detectors are predicates too (RFC-002).
-export function matchesDetector(detector: Predicate, facts: Facts): boolean {
-  return evaluatePredicate(detector, facts).holds;
 }

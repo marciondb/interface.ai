@@ -14,8 +14,6 @@ export const ObservationNodeSchema = z.object({
   disabled: z.boolean().optional(),
   // Frame name; null is the top-level document.
   frame: z.string().nullable(),
-  // Stable identifying attributes (web: id, name); locator fallbacks only, never shown to the model.
-  attributes: z.record(z.string(), z.string()).optional(),
 });
 
 export const FrameSchema = z.object({

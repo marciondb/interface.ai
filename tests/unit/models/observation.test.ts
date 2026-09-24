@@ -8,7 +8,7 @@ describe('ObservationSchema', () => {
     expect(ObservationSchema.safeParse(emptyObservation()).success).toBe(true);
   });
 
-  it('accepts frames, a dialog and locator attributes', () => {
+  it('accepts frames and a dialog', () => {
     const observation = {
       ...loginObservation(),
       frames: [
@@ -22,7 +22,6 @@ describe('ObservationSchema', () => {
           name: '',
           label: 'Member ID',
           frame: 'content',
-          attributes: { id: 'ctl00_ContentPlaceHolder1_txtMemberId' },
         },
       ],
       dialog: { type: 'confirm', message: 'Are you sure?' },

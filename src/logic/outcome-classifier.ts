@@ -1,6 +1,6 @@
 import type { Outcome } from '../models/capability';
 import type { Classification, ClassificationTrigger } from '../models/classification';
-import { matchesDetector, type Facts } from './checkpoint';
+import { evaluatePredicate, type Facts } from './checkpoint';
 
 export type ClassifyInput = {
   readonly trigger: ClassificationTrigger;
@@ -17,10 +17,10 @@ export type ClassifyInput = {
 export function classify(input: ClassifyInput): Classification {
   const { trigger, facts, outcomes } = input;
   for (const outcome of outcomes) {
-    if (outcome.kind === 'business' && matchesDetector(outcome.when, facts)) return { kind: 'business', outcomeId: outcome.id };
+    if (outcome.kind === 'business' && evaluatePredicate(outcome.when, facts).holds) return { kind: 'business', outcomeId: outcome.id };
   }
   for (const outcome of outcomes) {
-    if (outcome.kind === 'recoverable' && matchesDetector(outcome.when, facts)) {
+    if (outcome.kind === 'recoverable' && evaluatePredicate(outcome.when, facts).holds) {
       return outcome.recover === undefined
         ? { kind: 'recoverable', outcomeId: outcome.id }
         : { kind: 'recoverable', outcomeId: outcome.id, recover: outcome.recover };

@@ -4,7 +4,7 @@ import type { CapabilityRequest } from '../models/capability-request';
 import type { AgentTraceStep, HumanTraceStep, TraceStep } from '../models/discovery';
 import { outcomeTargets, type OutcomeCatalog } from '../models/outcome-catalog';
 import type { Observation, ObservationNode } from '../models/observation';
-import { matchesDetector } from './checkpoint';
+import { evaluatePredicate } from './checkpoint';
 
 export type SynthesisErrorCode =
   | 'no_steps'
@@ -208,7 +208,7 @@ function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog:
   // a validation error on submit) makes the step a detour, not part of the procedure.
   const rejections = outcomes.filter((outcome) => outcome.kind === 'business' && predicateTarget(outcome.when) === undefined);
   function rejected(step: AgentTraceStep): boolean {
-    const shows = (observation: Observation, detector: Predicate) => matchesDetector(detector, { observation, targets: {} });
+    const shows = (observation: Observation, detector: Predicate) => evaluatePredicate(detector, { observation, targets: {} }).holds;
     return rejections.some(({ when }) => shows(step.observationAfter, when) && !shows(step.observation, when));
   }
 

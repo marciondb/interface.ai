@@ -4,7 +4,7 @@ import type { SessionCookie, SessionProvider } from '../diplomat/session/port';
 import type { ArtifactStore } from '../diplomat/store/port';
 import type { Clock } from '../infrastructure/clock';
 import { bindInputs, validateInputs } from '../logic/capability-inputs';
-import { describeCounts, evaluateCheckpoint, factsNeeded, type Facts, type TargetFact } from '../logic/checkpoint';
+import { describeCounts, evaluatePredicate, factsNeeded, type Facts, type TargetFact } from '../logic/checkpoint';
 import { classify, describeClassification, isDefinitive } from '../logic/outcome-classifier';
 import { describeLanding } from '../logic/policy';
 import { nextMove, type Move } from '../logic/recovery';
@@ -178,7 +178,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
       let checkpoint: { holds: boolean; expected: string; observed: string };
       try {
         const facts = await gatherFacts(capability, step.id, await gateway.observe(), [step.checkpoint]);
-        checkpoint = evaluateCheckpoint(step.checkpoint, facts);
+        checkpoint = evaluatePredicate(step.checkpoint, facts);
       } catch (error) {
         checkpoint = { holds: false, expected: 'the page to be readable', observed: errorMessage(error) };
       }
@@ -321,7 +321,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
     for (;;) {
       const observation = await gateway.observe();
       const facts = await gatherFacts(capability, step.id, observation, predicates);
-      const checkpoint = evaluateCheckpoint(step.checkpoint, facts);
+      const checkpoint = evaluatePredicate(step.checkpoint, facts);
       if (checkpoint.holds) {
         await evidence.event({ type: 'checkpoint', stepId: step.id, ...checkpoint });
         return { kind: 'holds' };
@@ -435,7 +435,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
         const condition = capability.outcomes.find((declared) => declared.id === move.outcomeId)?.when;
         return handOff(capability, stepId, `click on ${name} needs a human: ${outcome.reason}`, async () => {
           if (condition === undefined) return { held: true };
-          const shown = evaluateCheckpoint(condition, await gatherFacts(capability, stepId, await gateway.observe(), [condition]));
+          const shown = evaluatePredicate(condition, await gatherFacts(capability, stepId, await gateway.observe(), [condition]));
           return shown.holds ? { held: false, expected: `${move.outcomeId} to be dismissed`, observed: shown.observed } : { held: true };
         });
       }

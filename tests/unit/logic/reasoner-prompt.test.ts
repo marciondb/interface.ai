@@ -49,7 +49,7 @@ describe('buildUserPrompt', () => {
       ],
       nodes: [
         { ref: 'e1', role: 'link', name: 'Home', frame: null },
-        { ref: 'e2', role: 'checkbox', name: 'Exact', checked: true, disabled: true, frame: 'content', attributes: { id: 'chk' } },
+        { ref: 'e2', role: 'checkbox', name: 'Exact', checked: true, disabled: true, frame: 'content' },
       ],
       dialog: { type: 'confirm', message: 'Leave page?' },
     };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeCounts, evaluateCheckpoint, factsNeeded, matchesDetector, type Facts } from '../../../src/logic/checkpoint';
+import { describeCounts, evaluatePredicate, factsNeeded, type Facts } from '../../../src/logic/checkpoint';
 import type { Candidate } from '../../../src/models/capability';
 import type { Observation } from '../../../src/models/observation';
 
@@ -28,28 +28,28 @@ function facts(targets: Facts['targets'] = {}): Facts {
   return { observation: results('No   records\nfound.'), targets };
 }
 
-describe('evaluateCheckpoint', () => {
+describe('evaluatePredicate', () => {
   it('finds visible text within the named frame, ignoring whitespace differences', () => {
-    expect(evaluateCheckpoint({ kind: 'text_visible', text: 'No records found.', frame: 'content' }, facts())).toMatchObject({ holds: true });
-    expect(evaluateCheckpoint({ kind: 'text_visible', text: 'Member Lookup', frame: 'content' }, facts())).toEqual({
+    expect(evaluatePredicate({ kind: 'text_visible', text: 'No records found.', frame: 'content' }, facts())).toMatchObject({ holds: true });
+    expect(evaluatePredicate({ kind: 'text_visible', text: 'Member Lookup', frame: 'content' }, facts())).toEqual({
       holds: false,
       expected: 'text "Member Lookup" visible in frame content (http://localhost:8080/member/results?memberId=99999)',
       observed: 'text not visible in frame content (http://localhost:8080/member/results?memberId=99999)',
     });
-    expect(evaluateCheckpoint({ kind: 'text_visible', text: 'Member Lookup' }, facts())).toMatchObject({ holds: true });
+    expect(evaluatePredicate({ kind: 'text_visible', text: 'Member Lookup' }, facts())).toMatchObject({ holds: true });
   });
 
   it('holds for a target only when it resolved, and reports the counts otherwise', () => {
     const resolved = facts({ 'lookup.memberId': { candidates: CANDIDATES, counts: [1], resolved: true } });
     const missing = facts({ 'lookup.memberId': { candidates: CANDIDATES, counts: [0, 2], resolved: false } });
 
-    expect(evaluateCheckpoint({ kind: 'target_visible', target: 'lookup.memberId' }, resolved)).toMatchObject({ holds: true });
-    expect(evaluateCheckpoint({ kind: 'target_visible', target: 'lookup.memberId' }, missing)).toEqual({
+    expect(evaluatePredicate({ kind: 'target_visible', target: 'lookup.memberId' }, resolved)).toMatchObject({ holds: true });
+    expect(evaluatePredicate({ kind: 'target_visible', target: 'lookup.memberId' }, missing)).toEqual({
       holds: false,
       expected: 'lookup.memberId matches exactly one element',
       observed: 'lookup.memberId did not resolve: label "Member ID:" matched 0, attribute name="txtMemberId" matched 2',
     });
-    expect(evaluateCheckpoint({ kind: 'target_visible', target: 'lookup.memberId' }, facts())).toMatchObject({
+    expect(evaluatePredicate({ kind: 'target_visible', target: 'lookup.memberId' }, facts())).toMatchObject({
       holds: false,
       observed: 'lookup.memberId was not looked up',
     });
@@ -58,21 +58,16 @@ describe('evaluateCheckpoint', () => {
   it('compares values exactly or by pattern', () => {
     const balance = facts({ 'detail.balance': { candidates: CANDIDATES, counts: [1], resolved: true, value: '4,812.37' } });
 
-    expect(evaluateCheckpoint({ kind: 'value_equals', target: 'detail.balance', value: '4,812.37' }, balance)).toMatchObject({ holds: true });
-    expect(evaluateCheckpoint({ kind: 'value_equals', target: 'detail.balance', value: '4812.37' }, balance)).toEqual({
+    expect(evaluatePredicate({ kind: 'value_equals', target: 'detail.balance', value: '4,812.37' }, balance)).toMatchObject({ holds: true });
+    expect(evaluatePredicate({ kind: 'value_equals', target: 'detail.balance', value: '4812.37' }, balance)).toEqual({
       holds: false,
       expected: 'detail.balance value "4812.37"',
       observed: 'value "4,812.37"',
     });
-    expect(evaluateCheckpoint({ kind: 'value_matches', target: 'detail.balance', pattern: '^[0-9,]+\\.[0-9]{2}$' }, balance)).toMatchObject({
+    expect(evaluatePredicate({ kind: 'value_matches', target: 'detail.balance', pattern: '^[0-9,]+\\.[0-9]{2}$' }, balance)).toMatchObject({
       holds: true,
     });
-    expect(evaluateCheckpoint({ kind: 'value_matches', target: 'detail.balance', pattern: '^x$' }, facts())).toMatchObject({ holds: false });
-  });
-
-  it('shares its predicate evaluation with outcome detectors', () => {
-    expect(matchesDetector({ kind: 'text_visible', text: 'records found', frame: 'content' }, facts())).toBe(true);
-    expect(matchesDetector({ kind: 'text_visible', text: 'not authorized', frame: 'content' }, facts())).toBe(false);
+    expect(evaluatePredicate({ kind: 'value_matches', target: 'detail.balance', pattern: '^x$' }, facts())).toMatchObject({ holds: false });
   });
 });
 

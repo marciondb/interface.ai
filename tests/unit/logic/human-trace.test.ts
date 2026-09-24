@@ -14,18 +14,11 @@ const DETAIL: Observation = {
     { role: 'text', name: 'Close Account', frame: 'content' },
     { ref: 'e2', role: 'button', name: 'Open Sub-Account', frame: 'content' },
     { ref: 'e3', role: 'button', name: 'Close Account', frame: 'content' },
-    { ref: 'e4', role: 'textbox', name: '', frame: 'content', attributes: { name: 'ctl00$txtNote' } },
   ],
   dialog: null,
 };
 
 describe('matchHumanTarget', () => {
-  it('matches by the name attribute first', () => {
-    const node = matchHumanTarget({ frame: 'content', tag: 'input', role: 'textbox', name: 'ignored', nameAttr: 'ctl00$txtNote' }, DETAIL);
-
-    expect(node?.ref).toBe('e4');
-  });
-
   it('matches an addressable element by role and name', () => {
     const node = matchHumanTarget({ frame: 'content', tag: 'input', role: 'button', name: 'Close Account' }, DETAIL);
 

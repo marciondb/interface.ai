@@ -1,9 +1,10 @@
 import type { Candidate, Capability, Outcome, Predicate, Provenance, Step, StepAction, TargetSpec } from '../models/capability';
-import { CapabilitySchema, PLACEHOLDER } from '../models/capability';
+import { CapabilitySchema, PLACEHOLDER, predicateTarget } from '../models/capability';
 import type { CapabilityRequest } from '../models/capability-request';
 import type { AgentTraceStep, HumanTraceStep, TraceStep } from '../models/discovery';
 import { outcomeTargets, type OutcomeCatalog } from '../models/outcome-catalog';
 import type { Observation, ObservationNode } from '../models/observation';
+import { matchesDetector } from './checkpoint';
 
 export type SynthesisErrorCode =
   | 'no_steps'
@@ -203,6 +204,14 @@ function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog:
     steps.push({ id, action: { kind: 'click', target }, risk: 'risky', checkpoint: revealed(click) });
   }
 
+  // The application rejecting what the model did (a declared business outcome newly shown, e.g.
+  // a validation error on submit) makes the step a detour, not part of the procedure.
+  const rejections = outcomes.filter((outcome) => outcome.kind === 'business' && predicateTarget(outcome.when) === undefined);
+  function rejected(step: AgentTraceStep): boolean {
+    const shows = (observation: Observation, detector: Predicate) => matchesDetector(detector, { observation, targets: {} });
+    return rejections.some(({ when }) => shows(step.observationAfter, when) && !shows(step.observation, when));
+  }
+
   const handoffs = new Set<string>();
   for (const step of trace) {
     if (step.actor === 'human') {
@@ -211,7 +220,7 @@ function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog:
       humanStep(trace.filter((other): other is HumanTraceStep => other.actor === 'human' && other.interventionId === step.interventionId));
       continue;
     }
-    if (!step.progressed) continue;
+    if (!step.progressed || rejected(step)) continue;
     const { decision } = step;
     const argument = decision.argument ?? '';
     let action: StepAction;

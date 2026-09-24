@@ -216,6 +216,21 @@ describe('synthesizeArtifact on the write flow', () => {
     ]);
   });
 
+  it('leaves out a submit the application rejected with a declared business outcome', () => {
+    const empty = form('Money Market', 'Rainy Day', '');
+    const rejected = screen([...empty.nodes, content('e27', 'cell', 'Initial deposit must be at least $25.00')]);
+    const trace = writeFlow();
+    const premature = agent('step-8a', ['click', CONTINUE], { attributes: {} }, empty, rejected);
+    const fill = trace[7];
+    if (fill.actor === 'human') throw new Error('expected the deposit fill');
+    trace.splice(7, 1, premature, { ...fill, observation: rejected, observationAfter: screen([...rejected.nodes.slice(0, -1), { ...DEPOSIT, value: '250.00' }, rejected.nodes.at(-1) ?? MENU]) });
+
+    const { steps } = artifact(synthesizeArtifact(trace, REQUEST, CATALOG, PROVENANCE));
+
+    expect(steps.map((step) => step.id).slice(6, 9)).toEqual(['fill-nickname', 'fill-initial-deposit', 'click-continue']);
+    expect(steps.find((step) => step.id === 'click-continue')?.checkpoint).toEqual({ kind: 'text_visible', text: 'Review Sub-Account Request', frame: 'content' });
+  });
+
   it('refuses a handoff whose dialog the human dismissed', () => {
     const synthesis = synthesizeArtifact(writeFlow(NUMBER_DESCRIPTOR, 'dismiss'), REQUEST, CATALOG, PROVENANCE);
 

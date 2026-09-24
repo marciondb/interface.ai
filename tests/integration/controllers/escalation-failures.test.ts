@@ -38,14 +38,22 @@ function fakeWindow(): FakeWindow {
   return window;
 }
 
-// Types the given commands, one per prompt.
-function fakeBroker(commands: readonly OperatorCommand[]): EscalationBroker {
+type FakeBroker = EscalationBroker & { readonly shown: unknown[] };
+
+// Types the given commands, one per prompt, and keeps what it was asked to show.
+function fakeBroker(commands: readonly OperatorCommand[]): FakeBroker {
   const queue = [...commands];
+  const shown: unknown[] = [];
   return {
-    publish: () => undefined,
+    shown,
+    publish: (request) => {
+      shown.push(request);
+    },
     nextCommand: () => Promise.resolve(queue.shift() ?? 'timeout'),
     askDialog: () => Promise.resolve('dismiss'),
-    notify: () => undefined,
+    notify: (text) => {
+      shown.push(text);
+    },
     close: () => undefined,
   };
 }
@@ -62,14 +70,24 @@ function request(): HandoffRequest {
   };
 }
 
-function controller(evidence: FakeEvidence, window: FakeWindow, commands: readonly OperatorCommand[]) {
+function controller(evidence: FakeEvidence, window: FakeWindow, commands: readonly OperatorCommand[], broker = fakeBroker(commands)) {
   return createEscalationController(
-    { surface: window, broker: fakeBroker(commands), evidence, clock: createFakeClock() },
+    { surface: window, broker, evidence, clock: createFakeClock() },
     { ttlMs: 30_000, humanSurfaceAvailable: true, operatorId: 'test-operator' },
   );
 }
 
 describe('escalation controller when the handoff itself breaks', () => {
+  it('shows the operator only redacted text', async () => {
+    const evidence: FakeEvidence = { ...createFakeEvidence(), redact: <T>(value: T): T => JSON.parse(JSON.stringify(value).replaceAll('10001', '[REDACTED]')) as T };
+    const broker = fakeBroker(['abort']);
+    const escalation = controller(evidence, fakeWindow(), [], broker);
+
+    await escalation.handOff({ ...request(), goal: 'Look up member 10001', message: 'confirm for 10001 needs a human' });
+    expect(JSON.stringify(broker.shown)).not.toContain('10001');
+    expect(broker.shown[0]).toMatchObject({ goal: 'Look up member [REDACTED]', message: 'confirm for [REDACTED] needs a human' });
+  });
+
   it('masks the protected values in the handoff screenshots', async () => {
     const evidence = createFakeEvidence();
     const window = fakeWindow();

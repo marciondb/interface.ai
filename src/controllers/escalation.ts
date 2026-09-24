@@ -69,6 +69,10 @@ function iso(ms: number): string {
 
 export function createEscalationController(deps: EscalationDeps, options: EscalationOptions): Escalation {
   const { surface, broker, evidence, clock } = deps;
+
+  function tell(text: string): void {
+    broker.notify(evidence.redact(text));
+  }
   let state: ControlState = 'automation';
 
   function move(event: ControlEvent): void {
@@ -118,7 +122,8 @@ export function createEscalationController(deps: EscalationDeps, options: Escala
     };
     await evidence.intervention(intervention);
     await evidence.event({ type: 'handoff_requested', stepId, interventionId, reason: request.reason, message: request.message, expiresAt: intervention.expiresAt });
-    broker.publish(intervention);
+    // The terminal gets the same redacted request as intervention.json.
+    broker.publish(evidence.redact(intervention));
   }
 
   async function verifyWork(request: HandoffRequest): Promise<Verification> {
@@ -148,12 +153,12 @@ export function createEscalationController(deps: EscalationDeps, options: Escala
       await recorded;
       if (cause !== 'surface_closed' && cause !== 'no_operator_surface') await capture(`handoff-${interventionId}-after`, maskTexts);
       await evidence.event({ type: 'handoff_aborted', stepId, interventionId, cause, ...(by === undefined ? {} : { by }) });
-      broker.notify(`Handoff ${interventionId} ended: ${cause}. The run ends as escalated.`);
+      tell(`Handoff ${interventionId} ended: ${cause}. The run ends as escalated.`);
       return { status: 'aborted', interventionId, cause, at: iso(clock.now()), actions };
     }
 
     if (!options.humanSurfaceAvailable) {
-      broker.notify('No operator window is available: run with --headed to take over the session.');
+      tell('No operator window is available: run with --headed to take over the session.');
       return abort('no_operator_surface');
     }
 
@@ -172,7 +177,7 @@ export function createEscalationController(deps: EscalationDeps, options: Escala
       surface.startHumanCapture({
         onAction: record,
         async onDialog(dialog) {
-          const answer = await broker.askDialog(dialog, waitOptions);
+          const answer = await broker.askDialog(evidence.redact(dialog), waitOptions);
           const decision: DialogDecision = answer === 'timeout' ? 'dismiss' : answer;
           record({ kind: 'dialog', message: dialog.message, decision, at: iso(clock.now()) });
           return decision;
@@ -192,7 +197,7 @@ export function createEscalationController(deps: EscalationDeps, options: Escala
           case 'take':
             move('operator_take');
             await evidence.event({ type: 'handoff_taken', stepId, interventionId, by: options.operatorId });
-            broker.notify('You have control of the browser window. Do the step there, then type resume.');
+            tell('You have control of the browser window. Do the step there, then type resume.');
             continue;
           case 'resume':
             break;
@@ -211,12 +216,12 @@ export function createEscalationController(deps: EscalationDeps, options: Escala
           await recorded;
           await capture(`handoff-${interventionId}-after`, maskTexts);
           await evidence.event({ type: 'handoff_resumed', stepId, interventionId, by: options.operatorId, actions: actions.length });
-          broker.notify('The checkpoint holds: automation has control again.');
+          tell('The checkpoint holds: automation has control again.');
           return { status: 'resumed', interventionId, by: options.operatorId, at: iso(clock.now()), actions };
         }
         move('checkpoint_failed');
         await evidence.event({ type: 'handoff_verify_failed', stepId, interventionId, expected: verification.expected, observed: verification.observed });
-        broker.notify(`Not done yet: expected ${verification.expected}; observed ${verification.observed}. You still have control.`);
+        tell(`Not done yet: expected ${verification.expected}; observed ${verification.observed}. You still have control.`);
       }
     } finally {
       waits.abort();

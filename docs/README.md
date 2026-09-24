@@ -41,6 +41,9 @@ structurally, by the dependency graph, rather than by a runtime flag.
 [Service Design Principles](architecture/service-design-principles.md) ·
 [ADR-001 — Diplomat Architecture](decisions/ADR-001-diplomat-architecture.md)
 
+How to run it is in the root [`README.md`](../README.md); sample discovery and replay
+runs are indexed in [`evidence/README.md`](../evidence/README.md).
+
 ---
 
 ## Architecture

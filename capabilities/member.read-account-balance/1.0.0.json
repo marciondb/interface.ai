@@ -1,0 +1,259 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "member.read-account-balance",
+    "version": "1.0.0",
+    "description": "Look up a member by ID and read the balance of one of their accounts",
+    "app": {
+      "product": "legacy-member-console",
+      "surface": "web"
+    }
+  },
+  "preconditions": [
+    {
+      "kind": "authenticated_session"
+    }
+  ],
+  "inputs": {
+    "memberId": {
+      "type": "string",
+      "description": "Member ID, digits only (the lookup field accepts up to 12)",
+      "pattern": "^[0-9]{1,12}$",
+      "sensitivity": "internal"
+    },
+    "accountType": {
+      "type": "string",
+      "description": "Type of the account whose balance is read",
+      "enum": [
+        "Checking",
+        "Savings",
+        "Money Market"
+      ],
+      "sensitivity": "none"
+    }
+  },
+  "outputs": {
+    "balance": {
+      "type": "string",
+      "description": "Account balance as displayed, e.g. 4,812.37",
+      "sensitivity": "financial"
+    }
+  },
+  "targets": {
+    "shell.memberLookup": {
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "link",
+          "name": "Member Lookup"
+        },
+        {
+          "strategy": "text",
+          "text": "Member Lookup"
+        },
+        {
+          "strategy": "attribute",
+          "name": "href",
+          "value": "/member/search"
+        }
+      ],
+      "notes": "Left menu of the shell page; it loads the lookup screen into the content frame."
+    },
+    "lookup.memberId": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "label",
+          "text": "Member ID:"
+        },
+        {
+          "strategy": "attribute",
+          "name": "name",
+          "value": "ctl00$ContentPlaceHolder1$txtMemberId"
+        },
+        {
+          "strategy": "attribute",
+          "name": "id",
+          "value": "ctl00_ContentPlaceHolder1_txtMemberId"
+        }
+      ],
+      "notes": "The input has no label element or title, so it has no accessible name; the chain starts at the adjacent label text."
+    },
+    "lookup.search": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "button",
+          "name": "Search"
+        },
+        {
+          "strategy": "attribute",
+          "name": "name",
+          "value": "ctl00$ContentPlaceHolder1$btnPrimary"
+        },
+        {
+          "strategy": "attribute",
+          "name": "id",
+          "value": "ctl00_ContentPlaceHolder1_btnPrimary"
+        }
+      ]
+    },
+    "results.memberLink": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "attribute",
+          "name": "href",
+          "value": "/member/detail?memberId={{inputs.memberId}}"
+        },
+        {
+          "strategy": "table_cell",
+          "row": {
+            "column": "Member ID",
+            "equals": "{{inputs.memberId}}"
+          },
+          "column": "Name",
+          "role": "link"
+        }
+      ],
+      "notes": "The link text is the member's name, which differs per member, so it is located by destination or by its row."
+    },
+    "detail.balance": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "table_cell",
+          "row": {
+            "column": "Acct Type",
+            "equals": "{{inputs.accountType}}"
+          },
+          "column": "Balance"
+        }
+      ],
+      "notes": "Columns are found by header text because their order is tenant configuration."
+    },
+    "interstitial.continue": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "button",
+          "name": "Continue"
+        },
+        {
+          "strategy": "attribute",
+          "name": "value",
+          "value": "Continue"
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "id": "open-member-lookup",
+      "action": {
+        "kind": "click",
+        "target": "shell.memberLookup"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "target_visible",
+        "target": "lookup.memberId"
+      }
+    },
+    {
+      "id": "enter-member-id",
+      "action": {
+        "kind": "fill",
+        "target": "lookup.memberId",
+        "value": "{{inputs.memberId}}"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "value_equals",
+        "target": "lookup.memberId",
+        "value": "{{inputs.memberId}}"
+      }
+    },
+    {
+      "id": "submit-search",
+      "action": {
+        "kind": "click",
+        "target": "lookup.search"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "target_visible",
+        "target": "results.memberLink"
+      }
+    },
+    {
+      "id": "open-member-detail",
+      "action": {
+        "kind": "click",
+        "target": "results.memberLink"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "target_visible",
+        "target": "detail.balance"
+      }
+    },
+    {
+      "id": "read-balance",
+      "action": {
+        "kind": "read",
+        "target": "detail.balance",
+        "output": "balance"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "value_matches",
+        "target": "detail.balance",
+        "pattern": "^[0-9][0-9,]*\\.[0-9]{2}$"
+      }
+    }
+  ],
+  "outcomes": [
+    {
+      "id": "member_not_found",
+      "kind": "business",
+      "description": "No member has this ID",
+      "when": {
+        "kind": "text_visible",
+        "text": "No records found.",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "member_restricted",
+      "kind": "business",
+      "description": "The operator is not authorized to view this member",
+      "when": {
+        "kind": "text_visible",
+        "text": "not authorized",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "interstitial",
+      "kind": "recoverable",
+      "description": "Maintenance notice shown before the requested screen",
+      "when": {
+        "kind": "text_visible",
+        "text": "Click Continue to proceed",
+        "frame": "content"
+      },
+      "recover": {
+        "kind": "click",
+        "target": "interstitial.continue"
+      }
+    }
+  ],
+  "provenance": {
+    "method": "hand_written",
+    "createdAt": "2026-09-24T00:00:00Z"
+  },
+  "notes": "Written by hand against the target's HTML as the reference artifact for replay. Signing in is a precondition, not a step (ADR-013)."
+}

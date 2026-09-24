@@ -15,7 +15,8 @@
     "fixture": "node fixture/server.js",
     "discover": "tsx src/diplomat/cli/discover.ts",
     "replay": "tsx src/diplomat/cli/replay.ts",
-    "depcruise": "depcruise src"
+    "depcruise": "depcruise src",
+    "demo": "tsx scripts/demo.ts"
   },
   "dependencies": {
     "playwright": "^1.63.0",

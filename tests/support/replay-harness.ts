@@ -79,6 +79,8 @@ export type HarnessOptions = {
   // The operator of a handoff; without one there is no operator surface.
   readonly operator?: HumanActor;
   readonly handoffTtlMs?: number;
+  // Evidence root (default: a fresh temp dir).
+  readonly evidenceRoot?: string;
 };
 
 // A store holding only the hand-written read-account-balance@1.0.0, the reference the replay
@@ -100,7 +102,7 @@ export async function runReplay(
   if (!policyFile.ok) throw new Error(policyFile.issues.join('; '));
   const basePolicy = { ...policyFile.policy, allowedOrigins: [new URL(fixture.baseUrl).origin] };
   const policy = options.policy === undefined ? basePolicy : options.policy(basePolicy);
-  const evidenceRoot = await mkdtemp(join(tmpdir(), 'replay-evidence-'));
+  const evidenceRoot = options.evidenceRoot ?? (await mkdtemp(join(tmpdir(), 'replay-evidence-')));
 
   const driver = createPlaywrightDriver();
   const evidence = createFsRecorder({ root: evidenceRoot, secrets: [PASSWORD] });

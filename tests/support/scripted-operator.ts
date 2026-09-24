@@ -27,6 +27,17 @@ export async function approveWithCode(context: ActorContext): Promise<void> {
   await frame.getByText('Sub-Account Opened', { exact: true }).waitFor({ timeout: SETTLE_MS });
 }
 
+export async function clickCloseAccount(context: ActorContext): Promise<void> {
+  const frame = content(context);
+  await frame.getByRole('button', { name: 'Close Account', exact: true }).click();
+  await frame.waitForURL((url) => url.pathname.endsWith('/danger/close'), { timeout: SETTLE_MS });
+}
+
+// Takes control, closes the account and hands back.
+export function operatorClosesAccount(): HumanActor {
+  return createHumanActor([{ command: 'take' }, { act: clickCloseAccount }, { command: 'resume' }]);
+}
+
 // Takes control, confirms the sub-account (accepting the dialog) and hands back.
 export function operatorConfirms(): HumanActor {
   return createHumanActor([{ command: 'take' }, { act: clickConfirm }, { command: 'resume' }], ['accept']);

@@ -27,15 +27,20 @@ Written to `evidence/runs/<run>/intervention.json` and printed by the CLI:
 {
   "interventionId": "int_…",
   "runId": "…",
+  "mode": "replay",
+  "goal": "…",
   "capability": "member.open-sub-account@1",
   "stepId": "confirm-open",
   "reason": "risky_action",
   "message": "Step requires human approval: Confirm",
   "screenshot": "screenshots/0007.png",
   "url": "http://localhost:8080/member/subacct/review",
-  "requestedAt": "…"
+  "requestedAt": "…",
+  "expiresAt": "…"
 }
 ```
+
+`mode` is `discovery` or `replay`.
 
 ## Control state machine
 
@@ -43,18 +48,27 @@ Written to `evidence/runs/<run>/intervention.json` and printed by the CLI:
 stateDiagram-v2
     [*] --> Automation
     Automation --> AwaitingHuman: escalate
-    AwaitingHuman --> Human: operator attaches
-    Human --> Verifying: operator signals resume
+    AwaitingHuman --> Human: take
+    Human --> Verifying: resume
     Verifying --> Automation: checkpoint holds
     Verifying --> Human: checkpoint fails
-    Human --> Aborted: operator aborts
+    AwaitingHuman --> Aborted: abort / TTL / window closed
+    Human --> Aborted: abort / TTL / window closed
     Automation --> [*]: result
     Aborted --> [*]: result (escalated)
 ```
 
+- The operator types `take`, `resume`, or `abort` at the stdin prompt of the
+  running process.
+- The run moves to Aborted on `abort`, on TTL expiry (default 10 min), or when
+  the browser window is closed.
 - One owner at a time (ADR-012). The gateway rejects automation actions unless the
-  owner is `automation`.
-- The operator works in the same headed browser window.
+  owner is `automation`. While Verifying, automation only observes.
+- The operator works in the same headed browser window. Without `--headed` there
+  is no operator surface, and the run ends immediately as `escalated`
+  (`no_operator_surface`).
+- Native dialogs raised during the handoff are answered at the terminal and
+  recorded.
 - On resume, the run re-observes and verifies the current step's checkpoint before
   continuing — the human's word is not taken on faith.
 

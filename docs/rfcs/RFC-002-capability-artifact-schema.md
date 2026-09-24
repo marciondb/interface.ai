@@ -35,7 +35,7 @@ Illustrative; the Zod schema in code is canonical (ADR-007).
   "preconditions": [{ "kind": "authenticated_session" }],
   "inputs": {
     "memberId": { "type": "string", "pattern": "^[0-9]+$", "sensitivity": "internal" },
-    "accountType": { "type": "string", "enum": ["Checking", "Savings"], "sensitivity": "none" }
+    "accountType": { "type": "string", "enum": ["Checking", "Savings", "Money Market"], "sensitivity": "none" }
   },
   "outputs": {
     "balance": { "type": "string", "sensitivity": "financial" }
@@ -44,10 +44,19 @@ Illustrative; the Zod schema in code is canonical (ADR-007).
     "lookup.memberId": {
       "frame": "content",
       "candidates": [
-        { "strategy": "role", "role": "textbox", "name": "Member ID" },
         { "strategy": "label", "text": "Member ID:" },
         { "strategy": "attribute", "name": "name", "value": "ctl00$ContentPlaceHolder1$txtMemberId" }
       ]
+    },
+    "detail.balance": {
+      "frame": "content",
+      "candidates": [
+        { "strategy": "table_cell", "row": { "column": "Acct Type", "equals": "{{inputs.accountType}}" }, "column": "Balance" }
+      ]
+    },
+    "interstitial.continue": {
+      "frame": "content",
+      "candidates": [{ "strategy": "role", "role": "button", "name": "Continue" }]
     }
   },
   "steps": [
@@ -56,6 +65,12 @@ Illustrative; the Zod schema in code is canonical (ADR-007).
       "action": { "kind": "fill", "target": "lookup.memberId", "value": "{{inputs.memberId}}" },
       "risk": "safe",
       "checkpoint": { "kind": "value_equals", "target": "lookup.memberId", "value": "{{inputs.memberId}}" }
+    },
+    {
+      "id": "read-balance",
+      "action": { "kind": "read", "target": "detail.balance", "output": "balance" },
+      "risk": "safe",
+      "checkpoint": { "kind": "value_matches", "target": "detail.balance", "pattern": "^[0-9,]+\\.[0-9]{2}$" }
     }
   ],
   "outcomes": [
@@ -63,9 +78,18 @@ Illustrative; the Zod schema in code is canonical (ADR-007).
     { "id": "member_restricted", "kind": "business", "when": { "kind": "text_visible", "text": "not authorized" } },
     { "id": "interstitial", "kind": "recoverable", "when": { "kind": "text_visible", "text": "Click Continue to proceed" }, "recover": { "kind": "click", "target": "interstitial.continue" } }
   ],
-  "provenance": { "discoveryRunId": "…", "model": "…", "discoveredAt": "…" }
+  "provenance": {
+    "method": "discovered",
+    "createdAt": "…",
+    "runId": "…",
+    "reasoner": { "adapter": "local", "model": "…" }
+  },
+  "notes": "…"
 }
 ```
+
+The Member ID input has no accessible name in the target, so its chain starts at
+`label` rather than `role`.
 
 ## Sections
 
@@ -77,7 +101,20 @@ Illustrative; the Zod schema in code is canonical (ADR-007).
 | `targets` | Named controls with ordered locator candidates (ADR-008). Steps refer to targets by name |
 | `steps` | Ordered actions, each with a `risk` class and a `checkpoint` |
 | `outcomes` | Declared business outcomes and recoverable conditions, each with a detector |
-| `provenance` | Link back to the discovery run evidence |
+| `provenance` | How the artifact was made: `method` (`discovered` \| `hand_written`), `createdAt`, optional `runId` linking to the discovery run evidence, optional `reasoner` (`adapter`, `model`) |
+| `notes` | Optional free-text notes for reviewers |
+
+Vocabulary:
+
+- **Locator strategies:** `role`, `label`, `attribute`, `text`, `table_cell`
+  (the cell in column Y of the row where column X equals a value)
+- **Checkpoint and detector kinds:** `text_visible`, `target_visible`,
+  `value_equals`, `value_matches`
+- **Step actions:** `click`, `fill`, `select`, `press`, `navigate`, `read`
+
+Beyond the schema, the artifact is validated for internal consistency: every
+referenced target exists, every placeholder names a declared input, and each
+output is produced by exactly one `read`.
 
 ## Design notes
 

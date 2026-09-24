@@ -25,11 +25,20 @@ the shape of its answer is constrained during generation.
 ## Input
 
 ```bash
-discover --goal "look up member 10001 and read their savings balance" \
-         --target http://localhost:8080/ \
-         --capability member.read-account-balance \
-         --reasoner local
+discover --request discovery/requests/<id>.json --reasoner local|hosted [--headed]
 ```
+
+The capability request file declares:
+
+- a goal template with `{{param}}` placeholders
+  ("look up member {{memberId}} and read their {{accountType}} balance")
+- typed inputs, each with an `example` value used during the run
+- the declared outputs
+- the ids of the outcomes that apply, taken from a per-app catalog
+  (`discovery/catalogs/<app>.json`)
+
+Any observed value equal to an input's `example` becomes `{{inputs.x}}` in the
+artifact, so parameterization is deterministic rather than guessed.
 
 ## Reasoner port
 
@@ -45,17 +54,19 @@ interface Reasoner {
 ```
 
 Stateless per call. The controller owns the history. Adapters: local (Ollama) and
-hosted (OpenAI-compatible), selected per run.
+hosted (OpenAI-compatible), selected per run. The reasoner does not redact; it
+receives an observation that is already redacted.
 
 ## Loop
 
 1. **Observe** — the surface driver returns the accessibility tree per frame,
    current URL, and dialog state (ADR-005). Each addressable element gets a short
-   ref (`e12`) valid **only for this observation**. Sensitive values are redacted
-   before the reasoner sees them.
-2. **Decide** — the controller builds this step's JSON Schema from the domain
-   `Action` schema, with `target` narrowed to the observation's refs, and calls
-   the reasoner. The answer is one action:
+   ref (`e12`) valid **only for this observation**. The controller redacts the
+   observation right after `observe()` and before `propose`, so the model and
+   the trace see the same redacted observation (RFC-006).
+2. **Decide** — the controller calls the reasoner, which builds this step's JSON
+   Schema from the domain `Action` schema with `target` narrowed to `validRefs`.
+   The answer is one action:
 
    ```json
    { "verb": "fill", "target": "e12", "argument": "10001", "rationale": "Member ID field on the lookup form" }
@@ -65,7 +76,10 @@ hosted (OpenAI-compatible), selected per run.
    `request_help`.
 3. **Ground** — the controller re-checks that the ref belongs to the current
    observation. A mismatch is rejected without touching the surface.
-4. **Gate** — the action gateway evaluates policy (ADR-011).
+4. **Gate** — the action gateway evaluates policy (ADR-011). A `requires_human`
+   answer triggers the human handoff (RFC-005). After resume, if the page
+   changed, the blocked action the human performed is recorded as a step with
+   `risk: risky`; if unchanged, the human declined and the model gets feedback.
 5. **Act** — the driver executes; the action, the resolved element, and the new
    observation are appended to the run trace.
 6. **Progress check** — if the new observation is unchanged, the step made no
@@ -86,8 +100,12 @@ If an observation has no addressable elements, the model is not called.
 | Step budget exceeded (default 25) | Failure |
 | Wall-clock timeout (default 10 min — local models are slow) | Failure |
 | Reasoner exhausts its retry budgets | Failure |
-| No progress 3 times in a row, or repeated denials | Escalate |
+| Stall counter reaches 3 | Escalate |
 | Model answers `request_help` | Escalate |
+
+- **Goal check:** every declared output has been captured with `read`.
+- **Stall counter:** a single counter summing unchanged-page steps, rejected refs,
+  and gateway denials; reset whenever a step makes progress.
 
 ## Prompt
 
@@ -103,14 +121,18 @@ The **artifact synthesizer** (pure Logic) turns the trace into an artifact:
 - Each executed action becomes a step. Refs are ephemeral and never persisted;
   each resolved element becomes a target with a candidate chain built from what
   was observed (role/name, label, attributes)
+- An element in a table row that contains an input value gets a `table_cell`
+  structural candidate
+- A target the model reads never uses role/name — its name is the data itself
 - The observation after each action becomes that step's checkpoint
-- Values that match goal parameters are replaced by `{{inputs.*}}`
+- Values equal to an input's `example` are replaced by `{{inputs.*}}`
 - Values captured with `read` become typed outputs
-- Business outcomes and recoverable conditions come from a per-app catalog (the
-  fixture's known result texts), not guessed
+- Business outcomes and recoverable conditions come from the per-app catalog
+  ids listed in the request, not guessed
 - `provenance` records reasoner adapter, model, and discovery run id
 
-The artifact is written as a draft; a human reviews it before it is used.
+The artifact is written as a draft: a new version file, reviewed in the diff
+before it is committed. There is no status field.
 
 ## Non-Goals
 

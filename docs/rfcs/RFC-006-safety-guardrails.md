@@ -20,15 +20,18 @@
 ```json
 {
   "allowedOrigins": ["http://localhost:8080"],
-  "allowedRoutes": ["/", "/welcome", "/member/"],
+  "allowedRoutes": ["/", "/welcome", "/member/*"],
   "allowedActions": ["click", "fill", "select", "navigate", "read"],
   "risky": {
-    "routes": ["/member/danger/"],
+    "routes": ["/member/danger/*"],
     "controlText": ["Close Account", "Post Adjustment", "Confirm"]
   }
 }
 ```
 
+- Routes match exactly; a trailing `*` makes the entry a prefix match
+- Risky control text is compared as a normalized exact match
+- Precedence: deny > `requires_human` > allow
 - Actions outside the allowlist are **denied**, not logged and executed
 - Navigation to a disallowed origin or route is denied before the driver is called
 
@@ -45,12 +48,18 @@ The artifact records each step's `risk`; replay honors it even if policy changes
 
 - **Secrets** (credentials, tokens, cookies) never enter the system's data: the
   session provider holds them in memory only (ADR-013)
-- **Sensitive values** are redacted by field `sensitivity` (RFC-002) and by
-  patterns (account numbers, SSN-like strings) before:
+- **Sensitive values** are redacted before:
   - observations are sent to the model
   - events and snapshots are written to evidence (ADR-014)
-- Redaction is pure Logic, applied inside the reasoner client and the evidence
-  recorder — the two places data leaves the process
+- Patterns redacted:
+  - the target password
+  - account-number-like digit runs, keeping the last 4 digits
+  - SSN-like strings
+  - declared input and output values whose `sensitivity` (RFC-002) is not `none`
+- Redaction is pure Logic, applied in two places: in discovery, the controller
+  redacts each observation before calling the reasoner; the evidence recorder
+  redacts before writing
+- Outputs are masked in evidence but returned unmasked to the caller
 
 ## Data residency
 
@@ -74,6 +83,7 @@ does not show, and every action still goes through the gateway.
   be wrong; it fails closed when in doubt
 - Pattern-based redaction cannot catch every novel PII shape; the local default
   limits the exposure to the machine running discovery
+- Money amounts outside declared outputs are not masked
 - Using the hosted adapter in production would require a data-processing agreement
   with the provider
 

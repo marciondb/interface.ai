@@ -31,25 +31,29 @@ replay --capability member.read-account-balance@1 --input memberId=10002 --input
 2. Ensure preconditions (session provider, ADR-013)
 3. For each step:
    1. Resolve the target through its candidate chain (ADR-008)
-   2. If the step is risky, escalate instead of acting (ADR-011)
+   2. Escalate instead of acting if the step is `risky` in the artifact or the
+      gateway returns `requires_human` (ADR-011)
    3. Execute through the gateway with an explicit timeout
    4. Observe and evaluate the checkpoint
-   5. If the checkpoint fails, classify the observation (below)
+   5. If target resolution, the action, or the checkpoint fails, classify the
+      observation (below)
 4. Extract outputs and return `succeeded`
 
 No step consults a model. The replay controller has no dependency on the reasoner.
 
 ## Classification
 
-When a checkpoint does not hold, the outcome classifier (pure Logic) checks, in
-order:
+Classification runs whenever target resolution, the action, or the checkpoint
+fails — not only on checkpoint failure. That is how "No records found." is
+caught: the next step's target is absent, and the page matches a declared
+business outcome. The outcome classifier (pure Logic) checks, in order:
 
 | Check | Classification | Response |
 |---|---|---|
 | Matches a declared `business` outcome | Business outcome | Stop, return `business_outcome` |
 | Matches a declared `recoverable` condition | Recoverable | Apply its recovery, retry the step (max 2) |
 | Timeout while loading | Recoverable | Retry with backoff (max 2) |
-| Session expired | Recoverable | Re-authenticate once, retry the step |
+| Session expired | Recoverable | Re-authenticate once, restart from the first step |
 | Server error page | Hard failure | Return `failed` |
 | Target not found / ambiguous | Hard failure or escalate | Escalate if configured, else `failed` |
 | Anything else | Hard failure | Return `failed` with expected vs observed |
@@ -61,15 +65,27 @@ Recoveries are recorded in `result.recoveries[]`.
 The discriminated union from ADR-009. Failures always include `stepId`, `code`,
 `expected`, `observed`, and a pointer to the evidence screenshot.
 
+CLI exit codes:
+
+| Code | Meaning |
+|---|---|
+| 0 | `succeeded` |
+| 2 | `business_outcome` |
+| 3 | `failed` |
+| 4 | `escalated` |
+| 1 | Usage or configuration error |
+
 ## Mapping to the target's injectable faults
 
-| Fault | Expected handling |
-|---|---|
-| `slow_load` | Recoverable: retry after timeout |
-| `interstitial` | Recoverable: declared recovery clicks Continue |
-| `session_expired` | Recoverable once: re-authenticate |
-| `server_error` | Hard failure |
-| `element_missing` | Hard failure or escalate |
+Every fault fires exactly once, on the next request, and then clears.
+
+| Fault | Fixture behavior | Expected handling |
+|---|---|---|
+| `slow_load` | Response delayed ~8 s | Recoverable: a ~5 s step timeout catches it; the retry succeeds |
+| `interstitial` | Maintenance notice with Continue | Recoverable: declared recovery clicks Continue |
+| `session_expired` | Session destroyed, redirect to login | Recoverable once: re-login and restart from the first step |
+| `server_error` | HTTP 500 error page | Hard failure |
+| `element_missing` | Primary submit (Search) removed | Hard failure: resolving it fails, `target_not_found` |
 
 ## Non-Goals
 

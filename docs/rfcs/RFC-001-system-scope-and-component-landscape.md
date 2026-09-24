@@ -174,6 +174,7 @@ expressed structurally rather than as a runtime condition. See ADR-001.
 | **Artifact Store** | Diplomat (outbound) | Persists and loads versioned capability artifacts |
 | **Evidence Recorder** | Diplomat (outbound) | Writes a structured record of what happened and why, plus richer signal on failure |
 | **Escalation Broker** | Diplomat (outbound) | Delivers the intervention request and exposes the live session for manual control |
+| **Session Provider** | Diplomat (outbound) | Establishes the authenticated session before a run from environment credentials, logging in over HTTP so the password never enters the browser. Outside the action gateway because signing in is not an agent action (ADR-013) |
 | **Artifact Synthesizer** | Logic | Turns a successful run trace into a parameterized capability. Pure |
 | **Checkpoint Evaluator** | Logic | Decides whether an observation satisfies a step's success condition. Pure |
 | **Outcome Classifier** | Logic | Maps an observation to a business outcome, a recoverable condition, or a hard failure. Pure |

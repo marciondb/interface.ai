@@ -15,18 +15,18 @@
     "fixture": "node fixture/server.js",
     "discover": "tsx src/diplomat/cli/discover.ts",
     "replay": "tsx src/diplomat/cli/replay.ts",
-    "depcruise": "depcruise src",
+    "depcruise": "depcruise src scripts",
     "demo": "tsx scripts/demo.ts"
   },
   "dependencies": {
     "playwright": "^1.63.0",
+    "tsx": "^4.23.15",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^24.13.6",
     "dependency-cruiser": "^18.4.0",
     "eslint": "^9.39.5",
-    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.70.1",
     "vitest": "^5.0.1"

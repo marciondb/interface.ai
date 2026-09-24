@@ -30,6 +30,7 @@ describe('replay of the discovered open-sub-account artifact', { timeout: 60_000
     const run = await runReplay(fixture, inputs, {
       capability: 'member.open-sub-account',
       capabilitiesDir,
+      allowDraft: true,
       ...(operator === undefined ? {} : { operator }),
     });
     expect(operator?.errors ?? []).toEqual([]);

@@ -103,8 +103,8 @@ describe('discovery controller against the fixture', { timeout: 60_000 }, () => 
       if (fixture === undefined) throw new Error('fixture not started');
       const { capabilitiesDir } = discovered();
 
-      const james = await runReplay(fixture, { memberId: '10002', accountType: 'Savings' }, { capabilitiesDir });
-      const missing = await runReplay(fixture, { memberId: '99999', accountType: 'Savings' }, { capabilitiesDir });
+      const james = await runReplay(fixture, { memberId: '10002', accountType: 'Savings' }, { capabilitiesDir, allowDraft: true });
+      const missing = await runReplay(fixture, { memberId: '99999', accountType: 'Savings' }, { capabilitiesDir, allowDraft: true });
 
       expect(james.result).toMatchObject({ status: 'succeeded', outputs: { balance: '3,100.55' }, capability: { version: '1.0.1' } });
       expect(missing.result).toMatchObject({ status: 'business_outcome', outcome: 'member_not_found' });

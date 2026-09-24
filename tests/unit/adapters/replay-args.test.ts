@@ -9,6 +9,7 @@ describe('toReplayRequest', () => {
         input: ['memberId=10001', 'accountType=Money Market', 'note=a=b'],
         target: 'http://localhost:9000',
         headed: true,
+        'allow-draft': true,
       }),
     ).toEqual({
       ok: true,
@@ -19,14 +20,16 @@ describe('toReplayRequest', () => {
         targetUrl: 'http://localhost:9000/',
       },
       headed: true,
+      allowDraft: true,
     });
   });
 
-  it('defaults the target and runs headless', () => {
+  it('defaults the target, runs headless and skips drafts', () => {
     expect(toReplayRequest({ capability: 'member.read-account-balance@2' })).toMatchObject({
       ok: true,
       request: { major: 2, inputs: {}, targetUrl: 'http://localhost:8080/' },
       headed: false,
+      allowDraft: false,
     });
   });
 

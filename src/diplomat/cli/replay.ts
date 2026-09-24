@@ -1,125 +1,43 @@
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { parseArgs } from 'node:util';
-import { fromPolicyFile } from '../../adapters/policy-file';
 import { toReplayRequest } from '../../adapters/replay-args';
-import { createEscalationController } from '../../controllers/escalation';
-import { replay } from '../../controllers/replay';
-import { errorMessage } from '../../infrastructure/errors';
-import { systemClock } from '../../infrastructure/clock';
-import { loadConfig } from '../../infrastructure/config';
-import { readJsonFile } from '../../infrastructure/json-file';
-import { urlViolation } from '../../logic/policy';
-import type { ExecutionResult } from '../../models/execution-result';
-import { createCliBroker } from '../escalation/cli-broker';
-import { createFsRecorder } from '../evidence/fs-recorder';
-import { createActionGateway } from '../gateway/action-gateway';
-import { createFixtureSessionProvider } from '../session/fixture-login';
-import { createFsArtifactStore } from '../store/fs-store';
-import { createPlaywrightDriver } from '../surface/playwright-driver';
+import { buildReplayStack } from '../composition/replay';
+import { loadPolicyFor } from '../composition/shared';
+import { createCli, replayExitCode } from './command';
 
-const USAGE = 'usage: npm run replay -- --capability <id>@<major> [--input name=value]... [--target <url>] [--headed]';
-const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
-const USAGE_ERROR = 1;
-
-function exitCode(result: ExecutionResult): number {
-  switch (result.status) {
-    case 'succeeded':
-      return 0;
-    case 'business_outcome':
-      return 2;
-    case 'failed':
-      return 3;
-    case 'escalated':
-      return 4;
-    default: {
-      const unhandled: never = result;
-      return unhandled;
-    }
-  }
-}
-
-function usageError(...lines: string[]): number {
-  for (const line of [...lines, USAGE]) process.stderr.write(`${line}\n`);
-  return USAGE_ERROR;
-}
+const cli = createCli(
+  'replay',
+  'usage: npm run replay -- --capability <id>@<major> [--input name=value]... [--target <url>] [--headed] [--allow-draft]',
+);
 
 async function main(argv: string[]): Promise<number> {
-  let values: unknown;
-  try {
-    values = parseArgs({
-      args: argv,
-      options: {
-        capability: { type: 'string' },
-        input: { type: 'string', multiple: true },
-        target: { type: 'string' },
-        headed: { type: 'boolean' },
-      },
-      strict: true,
-      allowPositionals: false,
-    }).values;
-  } catch (error) {
-    return usageError(errorMessage(error));
-  }
-  const args = toReplayRequest(values);
-  if (!args.ok) return usageError(...args.issues);
-  const { request, headed } = args;
+  const flags = cli.flags(argv, {
+    capability: { type: 'string' },
+    input: { type: 'string', multiple: true },
+    target: { type: 'string' },
+    headed: { type: 'boolean' },
+    'allow-draft': { type: 'boolean' },
+  });
+  if (!flags.ok) return cli.usageError(flags.issue);
+  const args = toReplayRequest(flags.values);
+  if (!args.ok) return cli.usageError(...args.issues);
+  const { request, headed, allowDraft } = args;
 
-  let config: ReturnType<typeof loadConfig>;
-  try {
-    config = loadConfig();
-  } catch (error) {
-    return usageError(`config: ${errorMessage(error)}`);
-  }
+  const loaded = cli.config();
+  if (!loaded.ok) return cli.usageError(loaded.issue);
+  const { config } = loaded;
+  const policy = await loadPolicyFor(request.targetUrl);
+  if (!policy.ok) return cli.usageError(...policy.issues);
 
-  let policyFile: unknown;
+  const stack = buildReplayStack(config, policy.policy, { headed, allowDraft });
   try {
-    policyFile = await readJsonFile(join(ROOT, 'policy.json'));
-  } catch (error) {
-    return usageError(`policy.json: ${errorMessage(error)}`);
-  }
-  const policy = fromPolicyFile(policyFile);
-  if (!policy.ok) return usageError(...policy.issues.map((issue) => `policy.json: ${issue}`));
-  const outside = urlViolation(request.targetUrl, policy.policy);
-  if (outside !== undefined) return usageError(`--target is outside the policy allowlist: ${outside}`);
-
-  // The headed window is the operator's surface for a handoff (ADR-012); prompts go to stderr.
-  const driver = createPlaywrightDriver({ headless: !headed });
-  const evidence = createFsRecorder({ root: config.evidenceDir, secrets: [config.targetPassword] });
-  const broker = createCliBroker({ input: process.stdin, output: process.stderr, evidenceRoot: config.evidenceDir });
-  const escalation = createEscalationController(
-    { surface: driver, broker, evidence, clock: systemClock },
-    { ttlMs: config.handoffTtlMs, humanSurfaceAvailable: headed, operatorId: config.operatorId },
-  );
-  try {
-    const result = await replay(
-      {
-        store: createFsArtifactStore(join(ROOT, 'capabilities')),
-        session: createFixtureSessionProvider({ username: config.targetUsername, password: config.targetPassword }),
-        gateway: createActionGateway({ driver, policy: policy.policy, controlOwner: escalation.owner }),
-        evidence,
-        escalation,
-        clock: systemClock,
-      },
-      request,
-      { stepTimeoutMs: config.replayStepTimeoutMs },
-    );
+    const result = await stack.run(request);
     // The caller's channel: outputs are unmasked here, unlike in the evidence.
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    process.stderr.write(`evidence: ${join(config.evidenceDir, result.runId)}\n`);
-    return exitCode(result);
+    process.stderr.write(`evidence: ${cli.shown(join(config.evidenceDir, result.runId))}\n`);
+    return replayExitCode(result);
   } finally {
-    broker.close();
-    await driver.close();
+    await stack.close();
   }
 }
 
-main(process.argv.slice(2)).then(
-  (code) => {
-    process.exitCode = code;
-  },
-  (error: unknown) => {
-    process.stderr.write(`replay: ${error instanceof Error ? error.message : String(error)}\n`);
-    process.exitCode = USAGE_ERROR;
-  },
-);
+cli.run(main);

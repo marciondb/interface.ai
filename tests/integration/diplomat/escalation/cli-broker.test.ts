@@ -1,5 +1,6 @@
+import { once } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { COMMAND_PROMPT, createCliBroker, DIALOG_PROMPT } from '../../../../src/diplomat/escalation/cli-broker';
 import type { EscalationBroker } from '../../../../src/diplomat/escalation/port';
 import type { InterventionRequest } from '../../../../src/models/intervention';
@@ -23,6 +24,7 @@ describe('CLI escalation broker', () => {
 
   afterEach(() => {
     broker?.close();
+    vi.useRealTimers();
   });
 
   function terminal() {
@@ -88,17 +90,28 @@ describe('CLI escalation broker', () => {
     const first = cli.nextCommand(['take'], open());
     input.write('take\n');
     await expect(first).resolves.toBe('take');
+    // The broker's reader is attached first, so it has the line once this listener sees it.
+    const read = once(input, 'data');
     input.write('abort\n');
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await read;
 
     await expect(cli.nextCommand(['resume', 'abort'], open())).resolves.toBe('abort');
   });
 
   it('times out at the deadline and when the wait is cancelled', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     const { broker: cli } = terminal();
     const cancel = new AbortController();
 
-    await expect(cli.nextCommand(['take'], open(50))).resolves.toBe('timeout');
+    const expiring = cli.nextCommand(['take'], open(50));
+    let settled = false;
+    void expiring.then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(49);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(expiring).resolves.toBe('timeout');
     const cancelled = cli.nextCommand(['take'], { expiresAt: Date.now() + 5_000, signal: cancel.signal });
     cancel.abort();
     await expect(cancelled).resolves.toBe('timeout');

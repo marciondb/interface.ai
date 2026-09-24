@@ -8,6 +8,8 @@ const server = createApp();
 
 // Loopback only: the fixture has no real authentication and POST /_fault is open.
 server.listen(config.PORT, '127.0.0.1', () => {
+  // The bound port, which differs from the configured one when PORT=0.
+  config.PORT = server.address().port;
   console.log(`Legacy Console listening on http://localhost:${config.PORT}`);
   console.log(`Tenant: ${tenant.key} (${tenant.displayName})`);
   console.log(`Members loaded: ${membersById.size}`);

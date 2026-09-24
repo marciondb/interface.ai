@@ -159,7 +159,7 @@ describe('human handoff of the live session', { timeout: 60_000 }, () => {
   it('(d) records human clicks, masked inputs, navigations and dialog answers on a direct handoff', async () => {
     if (fixture === undefined) throw new Error('fixture not started');
     const evidenceRoot = await mkdtemp(join(tmpdir(), 'handoff-evidence-'));
-    const driver = createPlaywrightDriver();
+    const driver = createPlaywrightDriver({ exposePageForTests: true });
     const evidence = createFsRecorder({ root: evidenceRoot, secrets: [PASSWORD] });
     let accepted: unknown;
     const operator = createHumanActor(

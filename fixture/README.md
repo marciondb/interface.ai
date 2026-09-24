@@ -38,7 +38,7 @@ This value is **not** shown in the UI, HTML, or terminal logs. It is documented 
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PORT` | `8080` | HTTP port (on `127.0.0.1`) |
+| `PORT` | `8080` | HTTP port (on `127.0.0.1`); `0` picks a free port, printed in the `listening on` line |
 | `TENANT` | `banktest` | Tenant config key |
 | `SESSION_TTL_MIN` | `30` | Session cookie lifetime |
 | `SUPERVISOR_CODE` | `482917` | Dual-control approval code |
@@ -75,8 +75,11 @@ curl -X POST http://localhost:8080/_fault \
 | `server_error` | HTTP 500 app error page |
 | `element_missing` | Remove primary submit button |
 | `session_expired` | Invalidate session and redirect to login (may appear inside the iframe) |
+| `unexpected_dialog` | The next **HTML page** opens a native `alert("Your password expires in 3 days.")` while it loads |
 
-Every kind is single-fire: it affects exactly one response and then clears.
+Every kind is single-fire: it affects exactly one response and then clears. `unexpected_dialog`
+waits for an HTML page: a redirect or a non-HTML answer in between leaves it armed.
+`/_fault`, `/public/*` and `/favicon.ico` never consume a fault.
 
 ## Smoke test
 

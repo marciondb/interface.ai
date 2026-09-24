@@ -6,6 +6,7 @@ export const ReplayArgsInSchema = z.object({
   input: z.array(z.string()).optional(),
   target: z.string().optional(),
   headed: z.boolean().optional(),
+  'allow-draft': z.boolean().optional(),
 });
 
 export type ReplayArgsIn = z.infer<typeof ReplayArgsInSchema>;

@@ -82,6 +82,7 @@ describe('discovery with a human handoff', { timeout: 60_000 }, () => {
     const replayed = await runReplay(fixture, { memberId: '10002', accountType: 'Savings' }, {
       capability: 'member.read-account-balance',
       capabilitiesDir: run.capabilitiesDir,
+      allowDraft: true,
       operator: replayOperator,
     });
     expect(replayOperator.errors).toEqual([]);

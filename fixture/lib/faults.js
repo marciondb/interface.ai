@@ -6,7 +6,11 @@ const FAULT_KINDS = [
   'session_expired',
   'server_error',
   'element_missing',
+  'unexpected_dialog',
 ];
+
+// The native alert the unexpected_dialog fault opens on the next HTML page.
+const UNEXPECTED_DIALOG_MESSAGE = 'Your password expires in 3 days.';
 
 /** Armed one-shot runtime fault, or null. */
 let armedFault = null;
@@ -38,6 +42,7 @@ function isFaultExempt(pathname) {
 
 module.exports = {
   FAULT_KINDS,
+  UNEXPECTED_DIALOG_MESSAGE,
   armFault,
   getArmedFault,
   clearArmedFault,

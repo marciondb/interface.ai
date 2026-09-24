@@ -25,9 +25,24 @@ module.exports = {
     {
       name: 'replay-never-reaches-reasoner',
       severity: 'error',
-      comment: 'Replay must not depend on the reasoner, directly or transitively (ADR-001, service-design-principles.md).',
-      from: { path: '^src/controllers/replay' },
+      comment:
+        'Replay must not depend on the reasoner, directly or transitively (ADR-001, service-design-principles.md): not the controller, not the replay composition, not the replay CLI, not the demo.',
+      from: { path: '^(src/controllers/replay|src/diplomat/composition/(replay|shared)|src/diplomat/cli/(replay|command)|scripts/demo)\\.ts$' },
       to: { path: '^src/diplomat/reasoner/', reachable: true },
+    },
+    {
+      name: 'no-test-imports',
+      severity: 'error',
+      comment: 'Shipped code and scripts never import tests; what both need lives in src/ or scripts/lib/.',
+      from: { path: '^(src|scripts)/' },
+      to: { path: '^tests/' },
+    },
+    {
+      name: 'src-not-to-scripts',
+      severity: 'error',
+      comment: 'scripts/ compose src/, never the other way round.',
+      from: { path: '^src/' },
+      to: { path: '^scripts/' },
     },
     {
       name: 'controllers-use-ports-only',
@@ -39,8 +54,8 @@ module.exports = {
     {
       name: 'playwright-only-in-surface',
       severity: 'error',
-      comment: 'Only the surface driver may import Playwright (ADR-006).',
-      from: { pathNot: '^src/diplomat/surface/' },
+      comment: 'Only the surface driver may import Playwright (ADR-006); scripts/lib plays the human operator on the page.',
+      from: { path: '^src/', pathNot: '^src/diplomat/surface/' },
       to: { path: '(^|node_modules/)(playwright|playwright-core|@playwright/[^/]+)(/|$)' },
     },
     {
@@ -60,8 +75,8 @@ module.exports = {
     {
       name: 'fs-confined',
       severity: 'error',
-      comment: 'node:fs is only used by the artifact store, the evidence recorder and infrastructure.',
-      from: { pathNot: '^src/(diplomat/(store|evidence)|infrastructure)/' },
+      comment: 'In src/, node:fs is only used by the artifact store, the evidence recorder and infrastructure.',
+      from: { path: '^src/', pathNot: '^src/(diplomat/(store|evidence)|infrastructure)/' },
       to: { dependencyTypes: ['core'], path: '^(node:)?fs(/promises)?$' },
     },
     {

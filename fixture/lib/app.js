@@ -88,6 +88,13 @@ function createApp() {
         dispatch(req, res, pathname);
         return;
       }
+
+      if (kind === 'unexpected_dialog') {
+        // Cleared by sendHtml: a redirect or a non-HTML answer leaves it armed for the next page.
+        res.__injectDialog = true;
+        dispatch(req, res, pathname);
+        return;
+      }
     }
 
     dispatch(req, res, pathname);

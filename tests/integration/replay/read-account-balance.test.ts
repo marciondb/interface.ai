@@ -5,23 +5,22 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ExecutionResultSchema, type ExecutionResult } from '../../../src/models/execution-result';
 import { evidenceText, readEvents as events } from '../../support/evidence';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
+import { JAMES, JAMES_SAVINGS_BALANCE, MARIA, MARIA_SAVINGS_BALANCE, NOT_FOUND, RESTRICTED } from '../../support/fixture-data';
 import { PASSWORD, referenceCapabilities, runReplay, STEP_TIMEOUT_MS, type HarnessOptions, type HarnessRun } from '../../support/replay-harness';
-
-const MARIA = { memberId: '10001', accountType: 'Savings' };
 
 function failure(result: ExecutionResult) {
   if (result.status !== 'failed') throw new Error(`expected failed, got ${JSON.stringify(result)}`);
   return result.failure;
 }
 
-describe('replay of member.read-account-balance@1 against the fixture', { timeout: 30_000 }, () => {
+describe('replay of member.read-account-balance@1 against the fixture', () => {
   let fixture: FixtureHandle | undefined;
   let capabilitiesDir = '';
 
   beforeAll(async () => {
     fixture = await startFixture();
     capabilitiesDir = await referenceCapabilities();
-  }, 30_000);
+  });
 
   afterAll(async () => {
     await fixture?.stop();
@@ -37,7 +36,7 @@ describe('replay of member.read-account-balance@1 against the fixture', { timeou
 
     expect(result).toMatchObject({
       status: 'succeeded',
-      outputs: { balance: '4,812.37' },
+      outputs: { balance: MARIA_SAVINGS_BALANCE },
       capability: { id: 'member.read-account-balance', requestedMajor: 1, version: '1.0.0' },
       recoveries: [],
       interventions: [],
@@ -45,23 +44,27 @@ describe('replay of member.read-account-balance@1 against the fixture', { timeou
   });
 
   it('finds savings by column headers when it is not the first account (10002)', async () => {
-    const replayRun = await run({ memberId: '10002', accountType: 'Savings' });
+    const replayRun = await run(JAMES);
 
-    expect(replayRun.result).toMatchObject({ status: 'succeeded', outputs: { balance: '3,100.55' } });
+    expect(replayRun.result).toMatchObject({ status: 'succeeded', outputs: { balance: JAMES_SAVINGS_BALANCE } });
     const balanceTarget = (await events(replayRun)).find((event) => event.type === 'target_resolved' && event.stepId === 'read-balance');
     expect(balanceTarget).toMatchObject({ target: 'detail.balance', strategy: 'table_cell', counts: [1] });
   });
 
   it('returns member_not_found for 99999 without waiting for the step timeout', async () => {
-    const started = Date.now();
-    const { result } = await run({ memberId: '99999', accountType: 'Savings' });
+    const replayRun = await run(NOT_FOUND);
 
-    expect(result).toMatchObject({ status: 'business_outcome', outcome: 'member_not_found', details: { stepId: 'submit-search' } });
-    expect(Date.now() - started).toBeLessThan(STEP_TIMEOUT_MS * 3);
+    expect(replayRun.result).toMatchObject({ status: 'business_outcome', outcome: 'member_not_found', details: { stepId: 'submit-search' } });
+    const lines = await events(replayRun);
+    const started = lines.find((event) => event.type === 'step_started' && event.stepId === 'submit-search');
+    const classified = lines.find((event) => event.type === 'classification' && event.stepId === 'submit-search');
+    expect(classified).toMatchObject({ classification: { kind: 'business', outcomeId: 'member_not_found' } });
+    expect(lines.some((event) => event.type === 'recovery' || (event.type === 'action' && event.outcome === 'timeout'))).toBe(false);
+    expect(Date.parse(String(classified?.timestamp)) - Date.parse(String(started?.timestamp))).toBeLessThan(STEP_TIMEOUT_MS);
   });
 
   it('returns member_restricted for 10009', async () => {
-    const { result } = await run({ memberId: '10009', accountType: 'Savings' });
+    const { result } = await run(RESTRICTED);
 
     expect(result).toMatchObject({ status: 'business_outcome', outcome: 'member_restricted', details: { stepId: 'submit-search' } });
   });
@@ -85,7 +88,7 @@ describe('replay of member.read-account-balance@1 against the fixture', { timeou
 
     expect(result).toMatchObject({
       status: 'succeeded',
-      outputs: { balance: '4,812.37' },
+      outputs: { balance: MARIA_SAVINGS_BALANCE },
       recoveries: [{ stepId: 'open-member-lookup', condition: 'timeout', response: 'retry', attempt: 1 }],
     });
   });
@@ -95,7 +98,7 @@ describe('replay of member.read-account-balance@1 against the fixture', { timeou
 
     expect(result).toMatchObject({
       status: 'succeeded',
-      outputs: { balance: '4,812.37' },
+      outputs: { balance: MARIA_SAVINGS_BALANCE },
       recoveries: [{ stepId: 'open-member-lookup', condition: 'outcome', outcomeId: 'interstitial', response: 'declared_recovery', attempt: 1 }],
     });
   });
@@ -105,7 +108,7 @@ describe('replay of member.read-account-balance@1 against the fixture', { timeou
 
     expect(result).toMatchObject({
       status: 'succeeded',
-      outputs: { balance: '4,812.37' },
+      outputs: { balance: MARIA_SAVINGS_BALANCE },
       recoveries: [{ stepId: 'submit-search', condition: 'session_expired', response: 'reauthenticate', attempt: 1 }],
     });
   });

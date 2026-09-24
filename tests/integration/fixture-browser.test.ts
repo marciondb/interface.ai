@@ -9,7 +9,7 @@ describe('fixture in a real browser', () => {
   beforeAll(async () => {
     fixture = await startFixture();
     browser = await chromium.launch();
-  }, 30_000);
+  });
 
   afterAll(async () => {
     await browser.close();
@@ -43,6 +43,26 @@ describe('fixture in a real browser', () => {
       const recovered = await page.goto(`${fixture.baseUrl}/login`);
       expect(recovered?.status()).toBe(200);
       expect(await page.getByRole('button', { name: 'Sign On' }).isVisible()).toBe(true);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('opens a native alert on the next page for an armed unexpected_dialog', async () => {
+    const context = await browser.newContext();
+    try {
+      const page = await context.newPage();
+      const dialogs: string[] = [];
+      page.on('dialog', (dialog) => {
+        dialogs.push(`${dialog.type()}: ${dialog.message()}`);
+        void dialog.dismiss();
+      });
+      await fixture.armFault('unexpected_dialog');
+
+      await page.goto(`${fixture.baseUrl}/login`);
+      await page.goto(`${fixture.baseUrl}/login`);
+
+      expect(dialogs).toEqual(['alert: Your password expires in 3 days.']);
     } finally {
       await context.close();
     }

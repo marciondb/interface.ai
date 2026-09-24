@@ -12,9 +12,9 @@ const http = require('http');
 const { spawn } = require('child_process');
 const path = require('path');
 
-const PORT = 18080;
-const BASE = `http://127.0.0.1:${PORT}`;
 const ROOT = __dirname;
+// Set once the server reports the ephemeral port it bound (PORT=0).
+let BASE = '';
 
 function request(method, urlPath, opts) {
   const options = opts || {};
@@ -63,7 +63,7 @@ async function run() {
     {
       cwd: ROOT,
       env: Object.assign({}, process.env, {
-        PORT: String(PORT),
+        PORT: '0',
         SUPERVISOR_CODE: '482917',
       }),
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -72,9 +72,13 @@ async function run() {
 
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('server start timeout')), 5000);
+    let stdout = '';
     child.stdout.on('data', (buf) => {
-      if (String(buf).includes('listening')) {
+      stdout += String(buf);
+      const match = /listening on http:\/\/localhost:(\d+)/.exec(stdout);
+      if (match) {
         clearTimeout(timer);
+        BASE = `http://127.0.0.1:${match[1]}`;
         resolve();
       }
     });
@@ -148,6 +152,18 @@ async function run() {
     assert(fault.body === 'armed:server_error', 'arm fault');
     const boom = await request('GET', '/member/search', { headers: authHeaders });
     assert(boom.status === 500 && boom.body.includes('System Error'), 'server_error fault');
+
+    const dialogFault = await request('POST', '/_fault', {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'unexpected_dialog' }),
+    });
+    assert(dialogFault.body === 'armed:unexpected_dialog', 'arm unexpected_dialog');
+    const redirected = await request('GET', '/');
+    assert(redirected.status === 302, 'unexpected_dialog survives a redirect');
+    const alerted = await request('GET', '/member/search', { headers: authHeaders });
+    assert(alerted.body.includes('alert("Your password expires in 3 days.")'), 'unexpected_dialog fault');
+    const quiet = await request('GET', '/member/search', { headers: authHeaders });
+    assert(!quiet.body.includes('alert('), 'unexpected_dialog is one-shot');
 
     console.log('smoke OK');
   } finally {

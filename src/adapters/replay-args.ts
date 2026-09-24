@@ -5,7 +5,7 @@ import { ReplayArgsInSchema } from '../wire/in/replay-args';
 export const DEFAULT_TARGET = 'http://localhost:8080';
 
 export type ReplayArgsResult =
-  | { ok: true; request: ReplayRequest; headed: boolean }
+  | { ok: true; request: ReplayRequest; headed: boolean; allowDraft: boolean }
   | { ok: false; issues: string[] };
 
 const REFERENCE = /^([^@]+)@([0-9]+)$/;
@@ -48,5 +48,6 @@ export function toReplayRequest(raw: unknown): ReplayArgsResult {
     ok: true,
     request: { capabilityId, major: Number(major), inputs, targetUrl: target },
     headed: args.headed ?? false,
+    allowDraft: args['allow-draft'] ?? false,
   };
 }

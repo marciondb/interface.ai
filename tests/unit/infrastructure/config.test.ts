@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from '../../../src/infrastructure/config';
+import { join } from 'node:path';
+import { loadConfig, REPO_ROOT } from '../../../src/infrastructure/config';
 
 describe('loadConfig', () => {
   it('uses fixture and local model defaults when the environment is empty', () => {
@@ -9,8 +10,9 @@ describe('loadConfig', () => {
       ollamaBaseUrl: 'http://localhost:11434',
       reasonerModel: 'qwen3:14b',
       hosted: { baseUrl: undefined, model: undefined, apiKey: undefined },
-      evidenceDir: 'evidence/runs',
+      evidenceDir: join(REPO_ROOT, 'evidence/runs'),
       replayStepTimeoutMs: 5_000,
+      discoveryStepTimeoutMs: 5_000,
       handoffTtlMs: 600_000,
       operatorId: 'local-operator',
     });
@@ -28,6 +30,7 @@ describe('loadConfig', () => {
         HOSTED_API_KEY: 'key',
         EVIDENCE_DIR: '/tmp/evidence',
         REPLAY_STEP_TIMEOUT_MS: '2000',
+        DISCOVERY_STEP_TIMEOUT_MS: '7000',
         HANDOFF_TTL_MS: '30000',
         OPERATOR_ID: 'ops-7',
       }),
@@ -39,6 +42,7 @@ describe('loadConfig', () => {
       hosted: { baseUrl: 'https://api.example.com/v1', model: 'gpt-x', apiKey: 'key' },
       evidenceDir: '/tmp/evidence',
       replayStepTimeoutMs: 2_000,
+      discoveryStepTimeoutMs: 7_000,
       handoffTtlMs: 30_000,
       operatorId: 'ops-7',
     });
@@ -47,6 +51,12 @@ describe('loadConfig', () => {
   it('rejects a step timeout that is not a positive integer', () => {
     expect(() => loadConfig({ REPLAY_STEP_TIMEOUT_MS: '5s' })).toThrow('REPLAY_STEP_TIMEOUT_MS');
     expect(() => loadConfig({ REPLAY_STEP_TIMEOUT_MS: '0' })).toThrow('REPLAY_STEP_TIMEOUT_MS');
+    expect(() => loadConfig({ DISCOVERY_STEP_TIMEOUT_MS: '-1' })).toThrow('DISCOVERY_STEP_TIMEOUT_MS');
+  });
+
+  it('resolves a relative evidence dir from the repository root, not the cwd', () => {
+    expect(loadConfig({ EVIDENCE_DIR: 'tmp/runs' }).evidenceDir).toBe(join(REPO_ROOT, 'tmp/runs'));
+    expect(loadConfig({ EVIDENCE_DIR: '/var/evidence' }).evidenceDir).toBe('/var/evidence');
   });
 
   it('treats empty strings as absent', () => {

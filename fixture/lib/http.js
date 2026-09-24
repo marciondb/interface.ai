@@ -3,6 +3,14 @@
 const config = require('./config');
 const { stripPrimarySubmit, escapeHtml } = require('./template');
 const sessionStore = require('./session');
+const { clearArmedFault, UNEXPECTED_DIALOG_MESSAGE } = require('./faults');
+
+// Runs while the page is parsed, so the alert is up before the page finishes loading.
+function injectDialog(html) {
+  const script = `<script>alert(${JSON.stringify(UNEXPECTED_DIALOG_MESSAGE)});</script>`;
+  const end = html.search(/<\/body>/i);
+  return end === -1 ? html + script : html.slice(0, end) + script + html.slice(end);
+}
 
 function parseCookies(header) {
   const out = {};
@@ -70,6 +78,11 @@ function sendHtml(res, html, statusCode, extraHeaders) {
   if (res.__stripPrimary) {
     body = stripPrimarySubmit(body);
     res.__stripPrimary = false;
+  }
+  if (res.__injectDialog) {
+    body = injectDialog(body);
+    res.__injectDialog = false;
+    clearArmedFault();
   }
   const headers = Object.assign(
     { 'Content-Type': 'text/html; charset=iso-8859-1' },

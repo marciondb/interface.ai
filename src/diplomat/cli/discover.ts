@@ -1,162 +1,107 @@
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { parseArgs } from 'node:util';
-import { toDiscoverArgs, type ReasonerChoice } from '../../adapters/discover-args';
-import { fromPolicyFile } from '../../adapters/policy-file';
-import { discover } from '../../controllers/discovery';
-import { createEscalationController } from '../../controllers/escalation';
+import { toDiscoverArgs, toGoalRequest, withVersion, type DiscoverArgs } from '../../adapters/discover-args';
+import { REPO_ROOT } from '../../infrastructure/config';
 import { errorMessage } from '../../infrastructure/errors';
-import { systemClock } from '../../infrastructure/clock';
-import { loadConfig, type Config } from '../../infrastructure/config';
-import { readJsonFile } from '../../infrastructure/json-file';
 import { checkRequest } from '../../logic/capability-request';
-import { urlViolation } from '../../logic/policy';
-import type { DiscoveryResult } from '../../models/discovery';
-import { createCliBroker } from '../escalation/cli-broker';
-import { createFsRecorder } from '../evidence/fs-recorder';
-import { createActionGateway } from '../gateway/action-gateway';
-import { createOllamaReasoner } from '../reasoner/ollama';
-import { createOpenAiCompatibleReasoner } from '../reasoner/openai-compatible';
+import type { CapabilityRequest } from '../../models/capability-request';
+import type { OutcomeCatalog } from '../../models/outcome-catalog';
+import { buildDiscoveryStack, createReasoner } from '../composition/discovery';
+import { CAPABILITIES_DIR, loadPolicyFor } from '../composition/shared';
 import type { Reasoner } from '../reasoner/port';
-import { createFixtureSessionProvider } from '../session/fixture-login';
 import { loadCatalog, loadRequest } from '../store/discovery-inputs';
-import { createFsArtifactStore } from '../store/fs-store';
-import { createPlaywrightDriver } from '../surface/playwright-driver';
+import { createCli, discoveryExitCode } from './command';
 import { discoverySecrets, narrated } from './discover-support';
 
-const USAGE = 'usage: npm run discover -- --request <file> [--reasoner local|hosted] [--target <url>] [--headed]';
-const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
-const USAGE_ERROR = 1;
-const STEP_TIMEOUT_MS = 5_000;
+const CATALOGS_DIR = join(REPO_ROOT, 'discovery', 'catalogs');
 
-function exitCode(result: DiscoveryResult): number {
-  switch (result.status) {
-    case 'succeeded':
-      return 0;
-    case 'failed':
-      return 3;
-    case 'escalated':
-      return 4;
-    default: {
-      const unhandled: never = result;
-      return unhandled;
+const cli = createCli(
+  'discover',
+  [
+    'usage: npm run discover -- --request <file> [--version x.y.z] [--reasoner local|hosted] [--target <url>] [--headed]',
+    '       npm run discover -- --goal <text> --capability <id> [--input name=example[:sensitivity]]... --output name[:sensitivity]...',
+    '                           [--outcome <catalog id>]... [--version x.y.z] [--reasoner local|hosted] [--target <url>] [--headed]',
+  ].join('\n'),
+);
+
+type Loaded = { ok: true; request: CapabilityRequest; catalog: OutcomeCatalog } | { ok: false; issues: string[] };
+
+async function loadTask(args: DiscoverArgs): Promise<Loaded> {
+  const { source } = args;
+  switch (source.kind) {
+    case 'file': {
+      const request = await loadRequest(source.path);
+      if (!request.ok) return request;
+      const catalog = await loadCatalog(CATALOGS_DIR, request.request.capability.app.product);
+      if (!catalog.ok) return catalog;
+      const problems = checkRequest(request.request, catalog.catalog).map((problem) => `${source.path}: ${problem}`);
+      return problems.length > 0 ? { ok: false, issues: problems } : { ok: true, request: withVersion(request.request, args.version), catalog: catalog.catalog };
     }
-  }
-}
-
-function usageError(...lines: string[]): number {
-  for (const line of [...lines, USAGE]) process.stderr.write(`${line}\n`);
-  return USAGE_ERROR;
-}
-
-function createReasoner(choice: ReasonerChoice, config: Config): Reasoner {
-  switch (choice) {
-    case 'local':
-      return createOllamaReasoner({ baseUrl: config.ollamaBaseUrl, model: config.reasonerModel });
-    case 'hosted':
-      return createOpenAiCompatibleReasoner(config.hosted);
+    case 'goal': {
+      const catalog = await loadCatalog(CATALOGS_DIR, source.goal.product);
+      if (!catalog.ok) return catalog;
+      const request = toGoalRequest(source.goal, catalog.catalog, args.version);
+      if (!request.ok) return request;
+      const problems = checkRequest(request.request, catalog.catalog);
+      return problems.length > 0 ? { ok: false, issues: problems } : { ok: true, request: request.request, catalog: catalog.catalog };
+    }
     default: {
-      const unhandled: never = choice;
+      const unhandled: never = source;
       return unhandled;
     }
   }
 }
 
 async function main(argv: string[]): Promise<number> {
-  let values: unknown;
-  try {
-    values = parseArgs({
-      args: argv,
-      options: {
-        request: { type: 'string' },
-        reasoner: { type: 'string' },
-        target: { type: 'string' },
-        headed: { type: 'boolean' },
-      },
-      strict: true,
-      allowPositionals: false,
-    }).values;
-  } catch (error) {
-    return usageError(errorMessage(error));
-  }
-  const parsed = toDiscoverArgs(values);
-  if (!parsed.ok) return usageError(...parsed.issues);
+  const flags = cli.flags(argv, {
+    request: { type: 'string' },
+    goal: { type: 'string' },
+    capability: { type: 'string' },
+    input: { type: 'string', multiple: true },
+    output: { type: 'string', multiple: true },
+    outcome: { type: 'string', multiple: true },
+    version: { type: 'string' },
+    reasoner: { type: 'string' },
+    target: { type: 'string' },
+    headed: { type: 'boolean' },
+  });
+  if (!flags.ok) return cli.usageError(flags.issue);
+  const parsed = toDiscoverArgs(flags.values);
+  if (!parsed.ok) return cli.usageError(...parsed.issues);
   const { args } = parsed;
 
-  let config: Config;
-  try {
-    config = loadConfig();
-  } catch (error) {
-    return usageError(`config: ${errorMessage(error)}`);
-  }
-
-  const request = await loadRequest(args.requestPath);
-  if (!request.ok) return usageError(...request.issues);
-  const catalog = await loadCatalog(join(ROOT, 'discovery', 'catalogs'), request.request.capability.app.product);
-  if (!catalog.ok) return usageError(...catalog.issues);
-  const problems = checkRequest(request.request, catalog.catalog);
-  if (problems.length > 0) return usageError(...problems.map((problem) => `${args.requestPath}: ${problem}`));
-
-  let policyFile: unknown;
-  try {
-    policyFile = await readJsonFile(join(ROOT, 'policy.json'));
-  } catch (error) {
-    return usageError(`policy.json: ${errorMessage(error)}`);
-  }
-  const policy = fromPolicyFile(policyFile);
-  if (!policy.ok) return usageError(...policy.issues.map((issue) => `policy.json: ${issue}`));
-  const outside = urlViolation(args.targetUrl, policy.policy);
-  if (outside !== undefined) return usageError(`--target is outside the policy allowlist: ${outside}`);
+  const loaded = cli.config();
+  if (!loaded.ok) return cli.usageError(loaded.issue);
+  const { config } = loaded;
+  const task = await loadTask(args);
+  if (!task.ok) return cli.usageError(...task.issues);
+  const policy = await loadPolicyFor(args.targetUrl);
+  if (!policy.ok) return cli.usageError(...policy.issues);
 
   let reasoner: Reasoner;
   try {
     reasoner = createReasoner(args.reasoner, config);
   } catch (error) {
-    return usageError(`--reasoner ${args.reasoner}: ${errorMessage(error)}`);
+    return cli.usageError(`--reasoner ${args.reasoner}: ${errorMessage(error)}`);
   }
 
-  // The headed window is the operator's surface for a handoff (ADR-012); prompts go to stderr.
-  const driver = createPlaywrightDriver({ headless: !args.headed });
-  const secrets = discoverySecrets(args.reasoner, config);
-  const evidence = narrated(createFsRecorder({ root: config.evidenceDir, secrets }), process.stderr);
-  const broker = createCliBroker({ input: process.stdin, output: process.stderr, evidenceRoot: config.evidenceDir });
-  const escalation = createEscalationController(
-    { surface: driver, broker, evidence, clock: systemClock },
-    { ttlMs: config.handoffTtlMs, humanSurfaceAvailable: args.headed, operatorId: config.operatorId },
+  const stack = buildDiscoveryStack(
+    config,
+    policy.policy,
+    { headed: args.headed, reasoner, secrets: discoverySecrets(args.reasoner, config) },
+    { wrapEvidence: (recorder) => narrated(recorder, process.stderr) },
   );
   try {
-    const result = await discover(
-      {
-        store: createFsArtifactStore(join(ROOT, 'capabilities')),
-        session: createFixtureSessionProvider({ username: config.targetUsername, password: config.targetPassword }),
-        gateway: createActionGateway({ driver, policy: policy.policy, controlOwner: escalation.owner }),
-        reasoner,
-        evidence,
-        escalation,
-        clock: systemClock,
-      },
-      { request: request.request, catalog: catalog.catalog, targetUrl: args.targetUrl, secrets },
-      { stepTimeoutMs: STEP_TIMEOUT_MS },
-    );
+    const result = await stack.run({ request: task.request, catalog: task.catalog, targetUrl: args.targetUrl });
     // The caller's channel: outputs are unmasked here, unlike in the evidence.
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     if (result.status === 'succeeded') {
-      process.stderr.write(`artifact: ${join('capabilities', result.capability.id, `${result.capability.version}.json`)}\n`);
+      process.stderr.write(`artifact: ${cli.shown(join(CAPABILITIES_DIR, result.capability.id, `${result.capability.version}.json`))}\n`);
     }
-    process.stderr.write(`evidence: ${join(config.evidenceDir, result.runId)}\n`);
-    return exitCode(result);
+    process.stderr.write(`evidence: ${cli.shown(join(config.evidenceDir, result.runId))}\n`);
+    return discoveryExitCode(result);
   } finally {
-    broker.close();
-    await driver.close();
+    await stack.close();
   }
 }
 
-main(process.argv.slice(2)).then(
-  (code) => {
-    process.exitCode = code;
-  },
-  (error: unknown) => {
-    process.stderr.write(`discover: ${error instanceof Error ? error.message : String(error)}\n`);
-    process.exitCode = USAGE_ERROR;
-  },
-);
+cli.run(main);

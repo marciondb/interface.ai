@@ -1,3 +1,9 @@
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// capabilities/, policy.json, discovery/ and relative EVIDENCE_DIR resolve from here, not the cwd.
+export const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+
 export type Config = {
   readonly targetUsername: string;
   readonly targetPassword: string;
@@ -8,10 +14,12 @@ export type Config = {
     readonly model: string | undefined;
     readonly apiKey: string | undefined;
   };
-  // Root of the per-run evidence folders (ADR-014).
+  // Root of the per-run evidence folders (ADR-014); absolute.
   readonly evidenceDir: string;
   // Budget for each replay step phase: finding the target, the action, the checkpoint (RFC-004).
   readonly replayStepTimeoutMs: number;
+  // Budget for each discovery action and the page loads it starts (RFC-003).
+  readonly discoveryStepTimeoutMs: number;
   // How long a human handoff may wait before the run ends escalated (RFC-005).
   readonly handoffTtlMs: number;
   // Who is recorded as taking and resuming a handoff.
@@ -41,8 +49,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       model: read(env, 'HOSTED_MODEL'),
       apiKey: read(env, 'HOSTED_API_KEY'),
     },
-    evidenceDir: read(env, 'EVIDENCE_DIR') ?? 'evidence/runs',
+    evidenceDir: resolve(REPO_ROOT, read(env, 'EVIDENCE_DIR') ?? 'evidence/runs'),
     replayStepTimeoutMs: positiveInteger(env, 'REPLAY_STEP_TIMEOUT_MS', 5_000),
+    discoveryStepTimeoutMs: positiveInteger(env, 'DISCOVERY_STEP_TIMEOUT_MS', 5_000),
     handoffTtlMs: positiveInteger(env, 'HANDOFF_TTL_MS', 600_000),
     operatorId: read(env, 'OPERATOR_ID') ?? 'local-operator',
   };

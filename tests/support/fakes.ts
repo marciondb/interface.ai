@@ -283,7 +283,7 @@ export function createFakeEscalation(options: FakeEscalationOptions): FakeEscala
       if (!options.humanSurfaceAvailable) return aborted('no_operator_surface');
       if (options.abort !== undefined) return aborted(options.abort);
       options.human?.(request);
-      const verification = await request.verify();
+      const verification = await request.verify(new AbortController().signal);
       return verification.held ? { status: 'resumed', interventionId, by: 'test-operator', at, actions: [] } : aborted('ttl_expired');
     },
   };

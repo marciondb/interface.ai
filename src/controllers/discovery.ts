@@ -217,11 +217,17 @@ async function escalate(ctx: DiscoveryContext, stepId: string, reason: Intervent
     maskTexts: maskTexts(ctx),
     // Discovery has no step checkpoint: the fresh observation, once what the human started
     // has loaded, decides what the resume means.
-    async verify() {
-      after = await pollUntil(clock, clock.now() + ctx.stepTimeoutMs, ctx.pollIntervalMs, async () => {
-        const observation = await observe(ctx);
-        return { done: progressed(before, observation, false), value: observation };
-      });
+    async verify(signal) {
+      after = await pollUntil(
+        clock,
+        clock.now() + ctx.stepTimeoutMs,
+        ctx.pollIntervalMs,
+        async () => {
+          const observation = await observe(ctx);
+          return { done: progressed(before, observation, false), value: observation };
+        },
+        signal,
+      );
       return { held: true };
     },
   });

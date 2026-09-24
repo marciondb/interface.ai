@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createEscalationController, type HandoffRequest } from '../../../src/controllers/escalation';
 import type { EscalationBroker, OperatorCommand } from '../../../src/diplomat/escalation/port';
-import type { HumanSurface, ScreenshotOptions } from '../../../src/diplomat/surface/port';
+import type { HumanCaptureListener, HumanSurface, ScreenshotOptions } from '../../../src/diplomat/surface/port';
+import type { Verification } from '../../../src/models/intervention';
 import { createFakeClock, createFakeEvidence, type FakeEvidence } from '../../support/fakes';
 import { emptyObservation } from '../../support/observations';
 
@@ -9,29 +10,39 @@ type FakeWindow = HumanSurface & {
   readonly screenshots: (ScreenshotOptions | undefined)[];
   capturing: boolean;
   subscribed: boolean;
+  listener: HumanCaptureListener | undefined;
+  close(): void;
 };
 
 function fakeWindow(): FakeWindow {
+  let closed: (() => void) | undefined;
   const window: FakeWindow = {
     screenshots: [],
     capturing: false,
     subscribed: false,
+    listener: undefined,
+    close() {
+      closed?.();
+    },
     observe: () => Promise.resolve(emptyObservation()),
     screenshot(options) {
       window.screenshots.push(options);
       return Promise.resolve(new Uint8Array([137, 80, 78, 71]));
     },
     currentUrl: () => 'http://app.test/',
-    startHumanCapture() {
+    startHumanCapture(listener) {
       window.capturing = true;
+      window.listener = listener;
     },
     stopHumanCapture() {
       window.capturing = false;
     },
-    onClosed() {
+    onClosed(callback) {
       window.subscribed = true;
+      closed = callback;
       return () => {
         window.subscribed = false;
+        closed = undefined;
       };
     },
   };
@@ -120,5 +131,48 @@ describe('escalation controller when the handoff itself breaks', () => {
     expect(window.capturing).toBe(false);
     expect(window.subscribed).toBe(false);
     expect(escalation.owner()).toBe('human');
+  });
+
+  it('stops checking the human work, and records nothing after, when the window closes mid-check', async () => {
+    const evidence = createFakeEvidence();
+    const window = fakeWindow();
+    const escalation = controller(evidence, window, ['take', 'resume']);
+    let checkSignal: AbortSignal | undefined;
+    const verify = (signal: AbortSignal) =>
+      new Promise<Verification>((resolve) => {
+        checkSignal = signal;
+        signal.addEventListener('abort', () => {
+          resolve({ held: false, expected: 'the operator window to stay open', observed: 'it was closed' });
+        });
+        window.close();
+      });
+
+    await expect(escalation.handOff({ ...request(), verify })).resolves.toMatchObject({ status: 'aborted', cause: 'surface_closed' });
+    expect(checkSignal?.aborted).toBe(true);
+    expect(evidence.events.at(-1)).toMatchObject({ type: 'handoff_aborted', cause: 'surface_closed' });
+  });
+
+  it('fails the handoff with the write error when a human action cannot be recorded while the operator works', async () => {
+    const evidence = createFakeEvidence();
+    const record = evidence.event.bind(evidence);
+    evidence.event = (event) => (event.type === 'handoff_human_action' ? Promise.reject(new Error('ENOSPC: no space left on device')) : record(event));
+    const window = fakeWindow();
+    const broker = fakeBroker([]);
+    let prompts = 0;
+    broker.nextCommand = () => {
+      prompts += 1;
+      if (prompts === 1) return Promise.resolve('take');
+      // The operator clicks while in control; resume comes a moment later.
+      window.listener?.onAction({ kind: 'click', target: { frame: 'content', tag: 'input', role: 'button', name: 'Confirm' }, at: '2026-09-24T21:54:32.000Z' });
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          resolve('resume');
+        }, 20);
+      });
+    };
+    const escalation = controller(evidence, window, [], broker);
+
+    await expect(escalation.handOff(request())).rejects.toThrow('ENOSPC');
+    expect(window.capturing).toBe(false);
   });
 });

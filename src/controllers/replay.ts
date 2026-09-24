@@ -310,11 +310,18 @@ async function readCheckpoint(ctx: ReplayContext, step: Step): Promise<Predicate
 }
 
 // A human did the step: its checkpoint must hold within the step timeout.
-async function verifyStep(ctx: ReplayContext, step: Step): Promise<Verification> {
-  const checkpoint = await pollUntil(ctx.deps.clock, deadline(ctx), ctx.pollIntervalMs, async () => {
-    const result = await readCheckpoint(ctx, step);
-    return { done: result.holds, value: result };
-  });
+async function verifyStep(ctx: ReplayContext, step: Step, signal: AbortSignal): Promise<Verification> {
+  const checkpoint = await pollUntil(
+    ctx.deps.clock,
+    deadline(ctx),
+    ctx.pollIntervalMs,
+    async () => {
+      const result = await readCheckpoint(ctx, step);
+      return { done: result.holds, value: result };
+    },
+    signal,
+  );
+  if (signal.aborted) return { held: false, expected: 'the operator window to stay open', observed: 'it was closed' };
   await ctx.deps.evidence.event({ type: 'checkpoint', stepId: step.id, ...checkpoint, performedBy: 'human' });
   return checkpoint.holds ? { held: true } : { held: false, expected: checkpoint.expected, observed: checkpoint.observed };
 }
@@ -328,7 +335,7 @@ async function recoveryVerified(ctx: ReplayContext, stepId: string, outcomeId: s
 
 // Stops with the page as it is and hands the same session to a human (RFC-005). undefined when
 // the human did it and `verify` confirmed it: the run goes on.
-async function handOff(ctx: ReplayContext, stepId: string, reason: InterventionReason, message: string, verify: () => Promise<Verification>): Promise<Ending | undefined> {
+async function handOff(ctx: ReplayContext, stepId: string, reason: InterventionReason, message: string, verify: (signal: AbortSignal) => Promise<Verification>): Promise<Ending | undefined> {
   const { id, version } = ctx.capability.capability;
   const outcome = await ctx.deps.escalation.handOff({
     run: ctx.record.evidenceRun,
@@ -497,7 +504,7 @@ async function runStep(ctx: ReplayContext, step: Step, reauthUsed: boolean): Pro
       return NEXT;
     }
     if (outcome.kind === 'requires_human') {
-      const ended = await handOff(ctx, step.id, 'risky_action', outcome.message, () => verifyStep(ctx, step));
+      const ended = await handOff(ctx, step.id, 'risky_action', outcome.message, (signal) => verifyStep(ctx, step, signal));
       if (ended !== undefined) return end(ended);
       ctx.riskyStepDone = true;
       return NEXT;
@@ -509,7 +516,7 @@ async function runStep(ctx: ReplayContext, step: Step, reauthUsed: boolean): Pro
     if (!handedOver && humanCanRecover(next.code) && ctx.deps.escalation.humanSurfaceAvailable) {
       handedOver = true;
       const message = `step ${step.id} failed with ${next.code}: expected ${next.expected}; observed ${next.observed}`;
-      const ended = await handOff(ctx, step.id, 'unrecoverable', message, () => verifyStep(ctx, step));
+      const ended = await handOff(ctx, step.id, 'unrecoverable', message, (signal) => verifyStep(ctx, step, signal));
       if (ended !== undefined) return end(ended);
       // A read still has to capture its value from the page the human left.
       if (step.action.kind === 'read') continue;

@@ -37,8 +37,9 @@ export type HandoffRequest = {
   readonly stepId: string;
   readonly reason: InterventionReason;
   readonly message: string;
-  // Re-observes the page and checks the human's work; their word is not taken on faith.
-  readonly verify: () => Promise<Verification>;
+  // Re-observes the page and checks the human's work; their word is not taken on faith. Stops,
+  // recording nothing, once signal aborts (the window was closed).
+  readonly verify: (signal: AbortSignal) => Promise<Verification>;
   // The run's protected values, covered in the handoff screenshots.
   readonly maskTexts: readonly string[];
 };
@@ -128,9 +129,9 @@ export function createEscalationController(deps: EscalationDeps, options: Escala
     broker.publish(evidence.redact(intervention));
   }
 
-  async function verifyWork(request: HandoffRequest): Promise<Verification> {
+  async function verifyWork(request: HandoffRequest, signal: AbortSignal): Promise<Verification> {
     try {
-      return await request.verify();
+      return await request.verify(signal);
     } catch (error) {
       if (!isSurfaceError(error)) throw error;
       return { held: false, expected: 'the page to be readable', observed: errorMessage(error) };
@@ -145,15 +146,25 @@ export function createEscalationController(deps: EscalationDeps, options: Escala
     await publish(request, interventionId, requestedAt, expiresAt);
 
     const actions: HumanAction[] = [];
+    // Written in order as they happen; the first failed write surfaces where the writes are awaited.
     let recorded = Promise.resolve();
+    let writeFailure: { readonly error: unknown } | undefined;
     function record(action: HumanAction): void {
       actions.push(action);
-      recorded = recorded.then(() => evidence.event({ type: 'handoff_human_action', stepId, interventionId, action }));
+      recorded = recorded
+        .then(() => evidence.event({ type: 'handoff_human_action', stepId, interventionId, action }))
+        .catch((error: unknown) => {
+          writeFailure ??= { error };
+        });
+    }
+    async function allRecorded(): Promise<void> {
+      await recorded;
+      if (writeFailure !== undefined) throw writeFailure.error;
     }
 
     async function abort(cause: EscalationReason, by?: string): Promise<HandoffOutcome> {
       move(ABORT_EVENTS[cause]);
-      await recorded;
+      await allRecorded();
       if (cause !== 'surface_closed' && cause !== 'no_operator_surface') await capture(`handoff-${interventionId}-after`, maskTexts);
       await evidence.event({ type: 'handoff_aborted', stepId, interventionId, cause, ...(by === undefined ? {} : { by }) });
       tell(`Handoff ${interventionId} ended: ${cause}. The run ends as escalated.`);
@@ -211,12 +222,16 @@ export function createEscalationController(deps: EscalationDeps, options: Escala
         }
 
         move('operator_resume');
-        const verification = await Promise.race([windowClosed, verifyWork(request)]);
-        if (verification === 'closed') return await abort('surface_closed');
+        const verifying = verifyWork(request, waits.signal);
+        const verification = await Promise.race([windowClosed, verifying]);
+        if (verification === 'closed') {
+          await verifying;
+          return await abort('surface_closed');
+        }
         if (verification.held) {
           move('checkpoint_held');
           surface.stopHumanCapture();
-          await recorded;
+          await allRecorded();
           await capture(`handoff-${interventionId}-after`, maskTexts);
           await evidence.event({ type: 'handoff_resumed', stepId, interventionId, by: options.operatorId, actions: actions.length });
           tell('The checkpoint holds: automation has control again.');

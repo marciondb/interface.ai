@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "member.read-account-balance",
+    "version": "1.0.1",
+    "description": "Look up a member by ID and read the balance of one of their accounts",
+    "app": {
+      "product": "legacy-member-console",
+      "surface": "web"
+    }
+  },
+  "goal": "Look up member {{memberId}} and read the balance of their {{accountType}} account",
+  "inputs": {
+    "memberId": {
+      "type": "string",
+      "description": "Member ID, digits only (the lookup field accepts up to 12)",
+      "pattern": "^[0-9]{1,12}$",
+      "sensitivity": "internal",
+      "example": "10001"
+    },
+    "accountType": {
+      "type": "string",
+      "description": "Type of the account whose balance is read",
+      "enum": [
+        "Checking",
+        "Savings",
+        "Money Market"
+      ],
+      "sensitivity": "none",
+      "example": "Savings"
+    }
+  },
+  "outputs": {
+    "balance": {
+      "type": "string",
+      "description": "Account balance as displayed, e.g. 4,812.37",
+      "sensitivity": "financial"
+    }
+  },
+  "outcomes": [
+    "member_not_found",
+    "member_restricted",
+    "interstitial"
+  ]
+}

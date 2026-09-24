@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "product": "legacy-member-console",
+  "targets": {
+    "interstitial.continue": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "button",
+          "name": "Continue"
+        },
+        {
+          "strategy": "attribute",
+          "name": "value",
+          "value": "Continue"
+        }
+      ]
+    }
+  },
+  "outcomes": [
+    {
+      "id": "member_not_found",
+      "kind": "business",
+      "description": "No member has this ID",
+      "when": {
+        "kind": "text_visible",
+        "text": "No records found.",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "member_restricted",
+      "kind": "business",
+      "description": "The operator is not authorized to view this member",
+      "when": {
+        "kind": "text_visible",
+        "text": "not authorized",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "interstitial",
+      "kind": "recoverable",
+      "description": "Maintenance notice shown before the requested screen",
+      "when": {
+        "kind": "text_visible",
+        "text": "Click Continue to proceed",
+        "frame": "content"
+      },
+      "recover": {
+        "kind": "click",
+        "target": "interstitial.continue"
+      }
+    }
+  ]
+}

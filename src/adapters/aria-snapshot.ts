@@ -33,6 +33,12 @@ function ownName(element: AriaElement): string {
   return element.name ?? (VALUE_ROLES.has(element.role) ? undefined : element.text) ?? '';
 }
 
+// A list with no own text shows its chosen option.
+function selectedOption(element: AriaElement): string | undefined {
+  const option = element.children?.find((child) => typeof child !== 'string' && child.role === 'option' && child.selected === true);
+  return option === undefined || typeof option === 'string' ? undefined : option.name;
+}
+
 function visibleText(node: AriaNode | undefined): string | undefined {
   if (node === undefined) return undefined;
   const text = typeof node === 'string' ? node : ownName(node);
@@ -76,7 +82,7 @@ export function toObservation(raw: AriaSnapshotWire, observationId: number): Sna
     }
     const label = name === '' && LABELLED_CONTROL_ROLES.has(element.role) ? toLabel(adjacentText) : undefined;
     if (label !== undefined) node.label = label;
-    if (VALUE_ROLES.has(element.role)) node.value = element.text ?? '';
+    if (VALUE_ROLES.has(element.role)) node.value = element.text ?? selectedOption(element) ?? '';
     if (typeof element.checked === 'boolean') node.checked = element.checked;
     if (element.disabled !== undefined) node.disabled = element.disabled;
     nodes.push(node);

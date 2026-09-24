@@ -192,6 +192,33 @@ describe('toObservation', () => {
     expect(textbox?.ref).toMatch(/^e\d+$/);
   });
 
+  it('reports the chosen option as the value of a list', () => {
+    const row: AriaNode = {
+      role: 'row',
+      children: [
+        { role: 'cell', name: 'Account Type:', ref: 'e5' },
+        {
+          role: 'cell',
+          name: 'Money Market',
+          ref: 'e6',
+          children: [
+            {
+              role: 'combobox',
+              ref: 'e7',
+              children: [
+                { role: 'option', name: 'Savings' },
+                { role: 'option', name: 'Money Market', selected: true },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const { observation } = adapt(AriaSnapshotWireSchema.parse({ url: 'http://localhost:8080/', frames: [], nodes: [row] }));
+
+    expect(observation.nodes.find((node) => node.role === 'combobox')).toMatchObject({ name: '', label: 'Account Type', value: 'Money Market' });
+  });
+
   it('names a generic element from its own text', () => {
     const { observation } = adapt(wire());
 

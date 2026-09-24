@@ -11,6 +11,8 @@ export const AriaElementSchema = z.looseObject({
   url: z.string().optional(),
   checked: z.union([z.boolean(), z.literal('mixed')]).optional(),
   disabled: z.boolean().optional(),
+  // On the chosen option of a list.
+  selected: z.boolean().optional(),
   get children(): z.ZodOptional<z.ZodArray<z.ZodUnion<readonly [z.ZodString, typeof AriaElementSchema]>>> {
     return z.array(z.union([z.string(), AriaElementSchema])).optional();
   },

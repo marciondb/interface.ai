@@ -19,7 +19,7 @@ function answer(content: unknown): Response {
 
 function reasoner(queue: (Response | Error)[]) {
   const fake = fakeFetch(queue);
-  const created = createOllamaReasoner({ baseUrl: 'http://ollama.test/', model: 'qwen3:8b', fetch: fake.fetch, retryDelayMs: 0 });
+  const created = createOllamaReasoner({ baseUrl: 'http://localhost:11434/', model: 'qwen3:8b', fetch: fake.fetch, retryDelayMs: 0 });
   return { reasoner: created, calls: fake.calls };
 }
 
@@ -43,7 +43,7 @@ describe('createOllamaReasoner', () => {
     await expect(ollama.propose(input)).resolves.toEqual(decision);
     expect(ollama).toMatchObject({ adapter: 'ollama', model: 'qwen3:8b' });
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.url).toBe('http://ollama.test/api/chat');
+    expect(calls[0]?.url).toBe('http://localhost:11434/api/chat');
     expect(calls[0]?.body).toMatchObject({
       model: 'qwen3:8b',
       stream: false,
@@ -103,5 +103,14 @@ describe('createOllamaReasoner', () => {
 
     await expect(ollama.propose(input)).resolves.toEqual(decision);
     expect(calls).toHaveLength(2);
+  });
+
+  it('only accepts an Ollama on this machine, since its observations must not leave it', () => {
+    for (const baseUrl of ['http://127.0.0.1:11434', 'http://[::1]:11434', 'http://LOCALHOST:11434']) {
+      expect(() => createOllamaReasoner({ baseUrl, model: 'm' })).not.toThrow();
+    }
+    expect(() => createOllamaReasoner({ baseUrl: 'http://gpu-box:11434', model: 'm' })).toThrow(/on this machine.*--reasoner hosted/);
+    expect(() => createOllamaReasoner({ baseUrl: 'http://localhost.evil.com', model: 'm' })).toThrow('OLLAMA_BASE_URL');
+    expect(() => createOllamaReasoner({ baseUrl: 'localhost:11434', model: 'm' })).toThrow('OLLAMA_BASE_URL');
   });
 });

@@ -1,5 +1,6 @@
 import { OpenAiChatResponseSchema, OpenAiErrorBodySchema } from '../../wire/in/openai-chat-response';
 import type { OpenAiChatRequest } from '../../wire/out/openai-chat-request';
+import { isLoopback, parseBaseUrl } from './endpoint';
 import type { Reasoner } from './port';
 import { failureFromResponse, proposeWithRetries, TransportFailure, type Send } from './propose-with-retries';
 
@@ -28,8 +29,13 @@ export function createOpenAiCompatibleReasoner({
     ].filter((name) => name !== false);
     throw new Error(`Hosted reasoner is not configured: set ${missing.join(', ')}`);
   }
+  const endpoint = parseBaseUrl(baseUrl, 'HOSTED_BASE_URL');
+  // The key travels in a header; only a model on this machine may be reached without TLS.
+  if (endpoint.protocol !== 'https:' && !isLoopback(endpoint)) {
+    throw new Error(`HOSTED_BASE_URL must use https: unless it is on this machine (localhost, 127.0.0.1 or ::1): ${endpoint.origin}`);
+  }
   const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
-  // Some providers echo the key back in error bodies.
+  // Some providers echo the key back in error bodies, and a network error message can carry it too.
   const withoutKey = (text: string) => text.replaceAll(apiKey, '[redacted]');
 
   const send: Send = async ({ system, user, schema }) => {
@@ -49,8 +55,7 @@ export function createOpenAiCompatibleReasoner({
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) {
-      const failure = await failureFromResponse(response, (error) => OpenAiErrorBodySchema.safeParse(error).data?.error.message);
-      throw new TransportFailure(failure.retryable, withoutKey(failure.detail));
+      throw await failureFromResponse(response, (error) => OpenAiErrorBodySchema.safeParse(error).data?.error.message);
     }
     const envelope = OpenAiChatResponseSchema.safeParse(await response.json().catch(() => undefined));
     if (!envelope.success) throw new TransportFailure(true, 'unexpected response envelope');
@@ -60,6 +65,6 @@ export function createOpenAiCompatibleReasoner({
   return {
     adapter: 'openai-compatible',
     model,
-    propose: (input) => proposeWithRetries({ adapter: 'openai-compatible', send, retryDelayMs }, input),
+    propose: (input) => proposeWithRetries({ adapter: 'openai-compatible', send, retryDelayMs, redactDetail: withoutKey }, input),
   };
 }

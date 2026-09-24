@@ -56,16 +56,18 @@ export type RetryOptions = {
   readonly adapter: ReasonerAdapter;
   readonly send: Send;
   readonly retryDelayMs: number;
+  // Applied to every transport failure detail (response bodies and network errors) before it is surfaced.
+  readonly redactDetail?: (detail: string) => string;
 };
 
-async function sendWithRetries({ adapter, send, retryDelayMs }: RetryOptions, call: ModelCall): Promise<string | null> {
+async function sendWithRetries({ adapter, send, retryDelayMs, redactDetail = (detail) => detail }: RetryOptions, call: ModelCall): Promise<string | null> {
   for (let attempt = 1; ; attempt++) {
     try {
       return await send(call);
     } catch (error) {
       const failure = asTransportFailure(error);
       if (!failure.retryable || attempt > MAX_TRANSPORT_RETRIES) {
-        throw new ReasonerError(adapter, 'transport', attempt, failure.detail);
+        throw new ReasonerError(adapter, 'transport', attempt, redactDetail(failure.detail));
       }
       if (retryDelayMs > 0) await sleep(retryDelayMs * attempt);
     }

@@ -70,6 +70,28 @@ describe('createOpenAiCompatibleReasoner', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it('does not leak the key from a network error either', async () => {
+    const { reasoner: hosted, calls } = reasoner([
+      new Error(`connect ECONNREFUSED (key ${API_KEY})`),
+      new Error(`connect ECONNREFUSED (key ${API_KEY})`),
+      new Error(`connect ECONNREFUSED (key ${API_KEY})`),
+    ]);
+
+    const error: unknown = await hosted.propose(input).catch((reason: unknown) => reason);
+    expect(error).toMatchObject({ code: 'transport', attempts: 3 });
+    expect(String(error)).toContain('network error: connect ECONNREFUSED (key [redacted])');
+    expect(calls).toHaveLength(3);
+  });
+
+  it('requires https unless the endpoint is on this machine', () => {
+    const build = (baseUrl: string) => () => createOpenAiCompatibleReasoner({ baseUrl, model: 'm', apiKey: API_KEY });
+
+    expect(build('http://llm.example.com/v1')).toThrow('HOSTED_BASE_URL must use https: unless it is on this machine');
+    expect(build('not a url')).toThrow('HOSTED_BASE_URL is not a valid URL');
+    expect(build('http://localhost:11434/v1')).not.toThrow();
+    expect(build('https://llm.example.com/v1')).not.toThrow();
+  });
+
   it('refuses to build without configuration and names only the variables', () => {
     expect(() => createOpenAiCompatibleReasoner({ baseUrl: undefined, model: 'm', apiKey: undefined })).toThrow(
       'Hosted reasoner is not configured: set HOSTED_BASE_URL, HOSTED_API_KEY',

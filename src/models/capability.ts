@@ -197,7 +197,10 @@ export const CapabilitySchema = z
     const checkPredicate = (predicate: Predicate, path: (string | number)[]) => {
       const target = predicateTarget(predicate);
       if (target !== undefined) targetExists(target, [...path, 'target']);
-      if (predicate.kind === 'value_matches' && compile(predicate.pattern) === null) {
+      if (predicate.kind === 'value_matches' && predicate.pattern.includes('{{')) {
+        // Checked before binding: an input value would become unchecked regex syntax.
+        issue([...path, 'pattern'], 'a pattern may not contain placeholders');
+      } else if (predicate.kind === 'value_matches' && compile(predicate.pattern) === null) {
         issue([...path, 'pattern'], 'pattern is not a valid regular expression');
       }
     };

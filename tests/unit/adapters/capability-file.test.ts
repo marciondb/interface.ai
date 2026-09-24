@@ -45,6 +45,7 @@ describe('fromCapabilityFile', () => {
     ['an invalid input pattern', (f) => { f.inputs.memberId.pattern = '^[0-9'; }, 'inputs.memberId.pattern: pattern is not a valid regular expression'],
     ['an enum value outside the pattern', (f) => { Object.assign(f.inputs.accountType, { pattern: '^[A-Z]+$' }); }, 'inputs.accountType.enum.0: enum value does not match pattern'],
     ['an invalid checkpoint pattern', (f) => { at(f.steps, 1).checkpoint.pattern = '('; }, 'steps.1.checkpoint.pattern: pattern is not a valid regular expression'],
+    ['a placeholder in a checkpoint pattern', (f) => { at(f.steps, 1).checkpoint.pattern = '^{{inputs.memberId}}$'; }, 'steps.1.checkpoint.pattern: a pattern may not contain placeholders'],
     ['a discovered provenance without run and reasoner', (f) => { Object.assign(f.provenance, { method: 'discovered' }); }, 'provenance.runId: Invalid input: expected string, received undefined'],
     ['a target without candidates', (f) => { f.targets['lookup.memberId'].candidates = []; }, 'targets.lookup.memberId.candidates: Too small: expected array to have >=1 items'],
     ['an unknown section', (f) => { Object.assign(f, { retries: 3 }); }, '(root): Unrecognized key: "retries"'],

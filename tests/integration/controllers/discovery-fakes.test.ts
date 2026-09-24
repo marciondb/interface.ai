@@ -4,7 +4,7 @@ import type { Reasoner, ReasonerInput } from '../../../src/diplomat/reasoner/por
 import type { ArtifactStore } from '../../../src/diplomat/store/port';
 import type { AgentDecision } from '../../../src/models/action';
 import { CapabilityRequestSchema } from '../../../src/models/capability-request';
-import { DiscoveryResultSchema } from '../../../src/models/discovery';
+import { DiscoveryResultSchema, type DiscoveryLimits } from '../../../src/models/discovery';
 import { createFakeClock, createFakeEscalation, createFakeEvidence, createFakeGateway, createFakeSession, FAKE_ORIGIN, surfaceFault, type FakeGatewayOptions } from '../../support/fakes';
 
 const MEMBER = '10001';
@@ -49,8 +49,9 @@ function refOf(input: ReasonerInput, name: string): string {
 
 const readBalance: Turn = (input) => ({ kind: 'read', action: { kind: 'read', ref: refOf(input, 'detail.balance') }, output: 'balance', rationale: 'the balance' });
 const askForHelp: Turn = () => ({ kind: 'request_help', message: 'I am done here', rationale: 'stop' });
+const finishEarly: Turn = () => ({ kind: 'finish', summary: 'done', rationale: 'nothing left' });
 
-async function run(reasoner: Reasoner, gatewayOptions: FakeGatewayOptions = {}) {
+async function run(reasoner: Reasoner, gatewayOptions: FakeGatewayOptions = {}, limits?: DiscoveryLimits) {
   const evidence = createFakeEvidence();
   const escalation = createFakeEscalation({ humanSurfaceAvailable: false });
   const gateway = createFakeGateway({ texts: [`Member ${MEMBER}`], ...gatewayOptions });
@@ -58,12 +59,26 @@ async function run(reasoner: Reasoner, gatewayOptions: FakeGatewayOptions = {}) 
   const result = await discover(
     { store: EMPTY_STORE, session: createFakeSession(), gateway, reasoner, evidence, escalation, clock: createFakeClock() },
     { request: REQUEST, catalog: { product: 'fake', targets: {}, outcomes: [] }, targetUrl: `${FAKE_ORIGIN}/`, secrets: [] },
-    { stepTimeoutMs: 1_000, pollIntervalMs: 250 },
+    { stepTimeoutMs: 1_000, pollIntervalMs: 250, ...(limits === undefined ? {} : { limits }) },
   );
   return { result, evidence, escalation, gateway };
 }
 
 describe('discovery controller with fakes', () => {
+  it('escalates as stalled after three turns in a row that did not advance the run', async () => {
+    const { result, escalation, evidence } = await run(scripted([finishEarly, finishEarly, finishEarly]));
+
+    expect(result).toMatchObject({ status: 'escalated', reason: 'no_operator_surface' });
+    expect(escalation.requests.map((request) => request.reason)).toEqual(['stalled']);
+    expect(evidence.events.filter((event) => event.type === 'feedback')).toHaveLength(3);
+  });
+
+  it('fails on the step budget', async () => {
+    const { result } = await run(scripted([readBalance, readBalance]), {}, { maxSteps: 2, timeoutMs: 60_000, maxStalls: 10 });
+
+    expect(result).toMatchObject({ status: 'failed', reason: 'step_budget' });
+  });
+
   it('stops showing the model a sensitive output once it is read, while the inputs stay visible', async () => {
     const reasoner = scripted([readBalance, askForHelp]);
 

@@ -255,6 +255,17 @@ describe('replay controller with fakes', () => {
     expect(result).toMatchObject({ status: 'succeeded', recoveries: [{ stepId: 'open-lookup', condition: 'timeout', response: 'retry', attempt: 1 }] });
   });
 
+  it('fails with timeout at the step once both retries are spent', async () => {
+    const onObserve = () => {
+      throw surfaceFault('timeout', 'the page did not load within 5000 ms');
+    };
+
+    const { result } = await run({ gateway: { onObserve } });
+
+    expect(failure(result)).toMatchObject({ stepId: 'open-lookup', code: 'timeout' });
+    expect(result.recoveries.map((recovery) => recovery.condition === 'timeout' && recovery.attempt)).toEqual([1, 2]);
+  });
+
   it('fails the preconditions when signing in fails, before any action', async () => {
     const { result, gateway } = await run({ sessionFails: 'invalid_credentials' });
 

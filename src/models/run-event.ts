@@ -1,7 +1,7 @@
 import type { Verb } from './action';
 import type { Candidate } from './capability';
 import type { Classification, ClassificationTrigger } from './classification';
-import type { ExecutionStatus, Recovery } from './execution-result';
+import type { EscalationReason, ExecutionStatus, Recovery } from './execution-result';
 import type { Navigation } from './resolution';
 
 export type RunMode = 'replay';
@@ -62,6 +62,13 @@ export type RunEvent =
     }
   | { readonly type: 'recovery'; readonly stepId: string; readonly recovery: Recovery; readonly delayMs?: number }
   | { readonly type: 'output'; readonly stepId: string; readonly name: string; readonly value: string }
+  | {
+      readonly type: 'escalation';
+      readonly stepId: string;
+      readonly interventionId: string;
+      readonly reason: EscalationReason;
+      readonly message: string;
+    }
   | { readonly type: 'result'; readonly status: ExecutionStatus; readonly stepId?: string };
 
 export type RunEventType = RunEvent['type'];

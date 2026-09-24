@@ -3,6 +3,7 @@ import type { ActionGateway, GatewayOutcome } from '../diplomat/gateway/port';
 import type { SessionCookie, SessionProvider } from '../diplomat/session/port';
 import type { ArtifactStore } from '../diplomat/store/port';
 import type { Clock } from '../infrastructure/clock';
+import { newId } from '../infrastructure/ids';
 import { bindInputs, validateInputs } from '../logic/capability-inputs';
 import { describeCounts, evaluateCheckpoint, factsNeeded, type Facts, type TargetFact } from '../logic/checkpoint';
 import { classify, describeClassification, isDefinitive } from '../logic/outcome-classifier';
@@ -11,7 +12,7 @@ import { toSurfaceAction } from '../logic/step-action';
 import type { Action } from '../models/action';
 import { actionTarget, type Capability, type Predicate, type Step } from '../models/capability';
 import type { Classification, ClassificationTrigger } from '../models/classification';
-import type { ExecutionResult, Failure, FailureCode, Recovery } from '../models/execution-result';
+import type { EscalationReason, ExecutionResult, Failure, FailureCode, Recovery } from '../models/execution-result';
 import type { Observation, Ref } from '../models/observation';
 import type { ReplayRequest } from '../models/replay-request';
 import type { ActionPurpose } from '../models/run-event';
@@ -35,7 +36,14 @@ const POLL_INTERVAL_MS = 250;
 type Ending =
   | { readonly status: 'succeeded'; readonly outputs: Record<string, string> }
   | { readonly status: 'business_outcome'; readonly outcome: string; readonly stepId: string }
-  | { readonly status: 'failed'; readonly failure: Failure };
+  | { readonly status: 'failed'; readonly failure: Failure }
+  | {
+      readonly status: 'escalated';
+      readonly interventionId: string;
+      readonly stepId: string;
+      readonly reason: EscalationReason;
+      readonly message: string;
+    };
 
 // Why an attempt at a step stopped short, already classified.
 type Problem = {
@@ -54,7 +62,10 @@ type HardFailure = {
   readonly observed: string;
 };
 
-type AttemptOutcome = { readonly kind: 'done'; readonly value?: string } | Problem | HardFailure;
+// A risky action automation must not perform (ADR-011).
+type HumanNeeded = { readonly kind: 'requires_human'; readonly message: string };
+
+type AttemptOutcome = { readonly kind: 'done'; readonly value?: string } | Problem | HardFailure | HumanNeeded;
 
 type Pass = { readonly kind: 'restart' } | { readonly kind: 'end'; readonly ending: Ending };
 
@@ -98,12 +109,15 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
       case 'failed':
         result = { ...base, status: 'failed', failure: ending.failure };
         break;
+      case 'escalated':
+        result = { ...base, ...ending };
+        break;
       default: {
         const unhandled: never = ending;
         return unhandled;
       }
     }
-    const stepId = ending.status === 'business_outcome' ? ending.stepId : ending.status === 'failed' ? ending.failure.stepId : undefined;
+    const stepId = ending.status === 'succeeded' ? undefined : ending.status === 'failed' ? ending.failure.stepId : ending.stepId;
     await evidence.event(stepId === undefined ? { type: 'result', status: result.status } : { type: 'result', status: result.status, stepId });
     await evidence.finish(result);
     return result;
@@ -133,6 +147,14 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
   ): Promise<Ending> {
     const evidencePath = await captureEvidence(stepId, observation);
     return { status: 'failed', failure: { stepId, code, expected, observed, evidence: evidencePath } };
+  }
+
+  // Stops before a risky action with the page as it is; the human handoff (RFC-005) takes it from here.
+  async function escalated(stepId: string, message: string): Promise<Ending> {
+    await captureEvidence(stepId, undefined);
+    const interventionId = newId('int');
+    await evidence.event({ type: 'escalation', stepId, interventionId, reason: 'risky_action', message });
+    return { status: 'escalated', interventionId, stepId, reason: 'risky_action', message };
   }
 
   async function recordRecovery(recovery: Recovery, delayMs?: number): Promise<void> {
@@ -282,13 +304,16 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
 
     const action = toSurfaceAction(step.id, step.action, ref, request.targetUrl);
     const what = name === undefined ? action.verb : `${action.verb} on ${name}`;
+    // The artifact's risk holds even if policy.json changes (RFC-006), so the gateway is not asked.
+    if (step.risk === 'risky') return { kind: 'requires_human', message: `step ${step.id} is risky: ${what} needs a human` };
     const outcome = await perform(step.id, 'step', action, name);
     let serverError = false;
     let value: string | undefined;
     switch (outcome.status) {
       case 'denied':
-      case 'requires_human':
         return { kind: 'failed', code: 'policy_denied', expected: `${what} allowed by policy`, observed: outcome.reason };
+      case 'requires_human':
+        return { kind: 'requires_human', message: `${what} needs a human: ${outcome.reason}` };
       case 'error':
         return { kind: 'failed', code: 'driver_error', expected: `${what} to complete`, observed: outcome.message };
       case 'timeout': {
@@ -332,9 +357,8 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
     }
     const click = toSurfaceAction(stepId, move.recover, resolution.ref, request.targetUrl);
     const outcome = await perform(stepId, 'recovery', click, name);
-    if (outcome.status === 'denied' || outcome.status === 'requires_human') {
-      return failed(stepId, 'policy_denied', `click on ${name} allowed by policy`, outcome.reason);
-    }
+    if (outcome.status === 'denied') return failed(stepId, 'policy_denied', `click on ${name} allowed by policy`, outcome.reason);
+    if (outcome.status === 'requires_human') return escalated(stepId, `click on ${name} needs a human: ${outcome.reason}`);
     if (outcome.status === 'error') return failed(stepId, 'driver_error', `click on ${name} to complete`, outcome.message);
     return undefined;
   }
@@ -355,6 +379,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
           break;
         }
         if (outcome.kind === 'failed') return end(await failed(step.id, outcome.code, outcome.expected, outcome.observed));
+        if (outcome.kind === 'requires_human') return end(await escalated(step.id, outcome.message));
 
         const { trigger, classification } = outcome;
         await evidence.event({ type: 'classification', stepId: step.id, trigger, classification });
@@ -411,8 +436,17 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
       await evidence.event({ type: 'session', event: reauthenticating ? 'reauthenticated' : 'established' });
     }
     const decision = await gateway.open(request.targetUrl, cookies);
-    if (decision.decision !== 'allow') {
-      return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed by policy`, decision.reason);
+    switch (decision.decision) {
+      case 'allow':
+        break;
+      case 'deny':
+        return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed by policy`, decision.reason);
+      case 'requires_human':
+        return escalated('preconditions', `opening ${request.targetUrl} needs a human: ${decision.reason}`);
+      default: {
+        const unhandled: never = decision;
+        return unhandled;
+      }
     }
     surfaceOpened = true;
     await evidence.event({ type: 'session', event: 'opened' });

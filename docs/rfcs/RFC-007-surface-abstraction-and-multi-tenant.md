@@ -19,11 +19,13 @@ The seam is the **surface driver port**:
 
 ```ts
 interface SurfaceDriver {
+  open(url: string, session: SessionCookie[]): Promise<void>   // one browser/page per run
   observe(): Promise<Observation>          // accessibility tree per frame/window
   resolve(target: TargetSpec): Promise<ResolvedTarget>
   resolveRef(ref: string): Promise<ResolvedTarget>   // observation ref → element
   perform(action: Action, target?: ResolvedTarget): Promise<void>
   screenshot(): Promise<Buffer>
+  close(): Promise<void>
 }
 ```
 

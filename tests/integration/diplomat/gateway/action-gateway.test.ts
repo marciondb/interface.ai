@@ -49,7 +49,10 @@ function fakeDriver(element: ElementInfo, options: FakeOptions = {}) {
     setNavigationGuard: (allows) => {
       guard = allows;
     },
-    screenshot: () => Promise.resolve(new Uint8Array()),
+    screenshot: (screenshotOptions) => {
+      calls.push(`screenshot ${JSON.stringify(screenshotOptions?.maskTexts ?? null)}`);
+      return Promise.resolve(new Uint8Array([1]));
+    },
     close: () => Promise.resolve(),
   };
   return { driver, calls, guard: () => guard };
@@ -205,6 +208,16 @@ describe('action gateway', () => {
     expect(allows?.('http://localhost:8080/member/danger/close')).toBe(true);
     expect(allows?.('http://localhost:8080/logout')).toBe(false);
     expect(allows?.('http://evil.example/')).toBe(false);
+  });
+
+  it('passes screenshot masks through to the driver', async () => {
+    const { driver, calls } = fakeDriver(DETAIL);
+    const gateway = gatewayOf(driver);
+
+    expect(await gateway.screenshot({ maskTexts: ['10001', 'Jane'] })).toEqual(new Uint8Array([1]));
+    await gateway.screenshot();
+
+    expect(calls).toEqual(['screenshot ["10001","Jane"]', 'screenshot null']);
   });
 
   it('refuses every action but reading while a human holds control, before asking the policy', async () => {

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createFixtureSessionProvider } from '../../../src/diplomat/session/fixture-login';
-import { createPlaywrightDriver, type PlaywrightDriver } from '../../../src/diplomat/surface/playwright-driver';
+import { createPlaywrightDriver, type PlaywrightTestDriver } from '../../../src/diplomat/surface/playwright-driver';
 import type { HumanAction } from '../../../src/models/intervention';
 import type { Dialog } from '../../../src/models/observation';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
@@ -9,12 +9,12 @@ const PASSWORD = 'training';
 
 describe('Playwright human capture against the fixture', { timeout: 30_000 }, () => {
   let fixture: FixtureHandle | undefined;
-  let driver: PlaywrightDriver | undefined;
+  let driver: PlaywrightTestDriver | undefined;
 
   beforeAll(async () => {
     fixture = await startFixture();
     const session = await createFixtureSessionProvider({ username: 'operator', password: PASSWORD }).establish(`${fixture.baseUrl}/`);
-    driver = createPlaywrightDriver();
+    driver = createPlaywrightDriver({ exposePageForTests: true });
     await driver.open(`${fixture.baseUrl}/`, session);
   }, 30_000);
 
@@ -23,7 +23,7 @@ describe('Playwright human capture against the fixture', { timeout: 30_000 }, ()
     await fixture?.stop();
   });
 
-  function surface(): PlaywrightDriver {
+  function surface(): PlaywrightTestDriver {
     if (driver === undefined) throw new Error('driver not started');
     return driver;
   }

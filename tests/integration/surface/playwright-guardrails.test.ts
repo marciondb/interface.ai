@@ -3,7 +3,7 @@ import { createActionGateway } from '../../../src/diplomat/gateway/action-gatewa
 import type { ActionGateway } from '../../../src/diplomat/gateway/port';
 import { createFixtureSessionProvider } from '../../../src/diplomat/session/fixture-login';
 import type { SessionCookie } from '../../../src/diplomat/session/port';
-import { createPlaywrightDriver, type PlaywrightDriver } from '../../../src/diplomat/surface/playwright-driver';
+import { createPlaywrightDriver, type PlaywrightTestDriver } from '../../../src/diplomat/surface/playwright-driver';
 import type { HumanAction } from '../../../src/models/intervention';
 import type { Policy } from '../../../src/models/policy';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
@@ -19,14 +19,14 @@ const DISGUISED_CONTROLS = `
 
 describe('Playwright driver guardrails against the fixture', { timeout: 30_000 }, () => {
   let fixture: FixtureHandle | undefined;
-  let driver: PlaywrightDriver | undefined;
+  let driver: PlaywrightTestDriver | undefined;
   let gateway: ActionGateway | undefined;
   let session: readonly SessionCookie[] = [];
 
   beforeAll(async () => {
     fixture = await startFixture();
     session = await createFixtureSessionProvider({ username: 'operator', password: 'training' }).establish(`${fixture.baseUrl}/`);
-    driver = createPlaywrightDriver();
+    driver = createPlaywrightDriver({ exposePageForTests: true });
     const policy: Policy = {
       allowedOrigins: [new URL(fixture.baseUrl).origin],
       allowedRoutes: ['/', '/welcome', '/member/*'],
@@ -43,7 +43,7 @@ describe('Playwright driver guardrails against the fixture', { timeout: 30_000 }
     await fixture?.stop();
   });
 
-  function surface(): PlaywrightDriver {
+  function surface(): PlaywrightTestDriver {
     if (driver === undefined) throw new Error('driver not started');
     return driver;
   }

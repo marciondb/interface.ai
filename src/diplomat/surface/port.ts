@@ -6,11 +6,19 @@ import type { Dialog, Observation } from '../../models/observation';
 import type { ElementInfo, PerformOutcome, Resolution } from '../../models/resolution';
 import type { SessionCookie } from '../session/port';
 
-export type SurfaceErrorCode = 'not_open' | 'unknown_ref' | 'snapshot_mismatch';
+// driver_error: the surface failed in a way that is neither a page outcome nor an absence.
+// invalid_candidate: a locator candidate the surface cannot express (e.g. an unknown role).
+export type SurfaceErrorCode = 'not_open' | 'unknown_ref' | 'snapshot_mismatch' | 'driver_error' | 'invalid_candidate';
 
 export type PerformOptions = {
   // Budget for the action and for the navigations it starts to finish loading (default 5000).
   readonly timeoutMs?: number;
+};
+
+export type ScreenshotOptions = {
+  // Elements, in any frame, whose visible text or field value contains one of these (exact,
+  // case-sensitive substring) are covered by a solid box. Empty strings are ignored.
+  readonly maskTexts?: readonly string[];
 };
 
 // One browser, one context, one page per run. Methods reject with a SurfaceError
@@ -36,7 +44,7 @@ export type SurfaceDriver = {
   // before the request is sent, whoever starts them. Popups are always closed.
   setNavigationGuard(allows: (url: string) => boolean): void;
   // PNG of the full page.
-  screenshot(): Promise<Uint8Array>;
+  screenshot(options?: ScreenshotOptions): Promise<Uint8Array>;
   close(): Promise<void>;
 };
 
@@ -51,7 +59,7 @@ export type HumanCaptureListener = {
 // page: automation acts only through the gateway.
 export type HumanSurface = {
   observe(): Promise<Observation>;
-  screenshot(): Promise<Uint8Array>;
+  screenshot(options?: ScreenshotOptions): Promise<Uint8Array>;
   currentUrl(): string;
   // Until stopHumanCapture(), what happens on the page is reported as human, up to a cap per
   // capture (page scripts can post reports too). Outside a capture, dialogs are dismissed and

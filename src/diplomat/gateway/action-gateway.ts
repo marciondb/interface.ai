@@ -70,6 +70,6 @@ export function createActionGateway({ driver, policy, controlOwner }: ActionGate
       return landing === undefined ? outcome : { status: 'landed_outside_policy', ...landing };
     },
 
-    screenshot: () => driver.screenshot(),
+    screenshot: (options) => driver.screenshot(options),
   };
 }

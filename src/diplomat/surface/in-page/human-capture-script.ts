@@ -1,4 +1,5 @@
-import { HUMAN_INPUT_MASK } from '../../models/intervention';
+import { HUMAN_INPUT_MASK } from '../../../models/intervention';
+import { accessibleText } from './accessible-name';
 
 // Name of the binding the page script reports to.
 export const HUMAN_EVENT_BINDING = '__cuHumanEvent';
@@ -9,23 +10,16 @@ export const HUMAN_EVENT_BINDING = '__cuHumanEvent';
 export const HUMAN_CAPTURE_SCRIPT = `(() => {
   if (window.__cuHumanCapture) return;
   window.__cuHumanCapture = true;
+  const accessibleText = ${accessibleText.toString()};
   const send = (payload) => {
     const binding = window.${HUMAN_EVENT_BINDING};
     if (typeof binding === 'function') binding(payload).catch(() => undefined);
   };
   const describe = (element) => {
-    const tag = element.tagName.toLowerCase();
-    const type = (element.getAttribute('type') || 'text').toLowerCase();
-    const buttonLike = tag === 'button' || (tag === 'input' && ['submit', 'button', 'reset', 'image'].includes(type));
-    const field = ['input', 'select', 'textarea'].includes(tag) && !buttonLike;
-    const implicit = { a: 'link', select: 'combobox', textarea: 'textbox', td: 'cell', th: 'columnheader' };
-    const role = element.getAttribute('role') ||
-      (buttonLike ? 'button' : tag === 'input' ? (['checkbox', 'radio'].includes(type) ? type : 'textbox') : implicit[tag]);
-    const text = buttonLike && tag === 'input' ? element.value : field ? '' : element.textContent;
-    const name = (element.getAttribute('aria-label') || text || '').replace(/\\s+/g, ' ').trim().slice(0, 60);
-    const target = { tag };
+    const { role, name } = accessibleText(element);
+    const target = { tag: element.tagName.toLowerCase() };
     if (role) target.role = role;
-    if (name) target.name = name;
+    if (name) target.name = name.slice(0, 60);
     if (element.id) target.id = element.id;
     const nameAttr = element.getAttribute('name');
     if (nameAttr) target.nameAttr = nameAttr;

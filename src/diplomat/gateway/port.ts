@@ -6,6 +6,7 @@ import type { Landing, PolicyDecision } from '../../models/policy';
 import type { PerformOutcome, Resolution } from '../../models/resolution';
 import type { ActionPurpose } from '../../models/run-event';
 import type { SessionCookie } from '../session/port';
+import type { ScreenshotOptions } from '../surface/port';
 
 export type GatewayRequest = {
   readonly stepId: string;
@@ -46,5 +47,5 @@ export type ActionGateway = {
   // The policy decision for action, without acting.
   check(action: SurfaceAction): Promise<PolicyDecision>;
   perform(request: GatewayRequest): Promise<GatewayOutcome>;
-  screenshot(): Promise<Uint8Array>;
+  screenshot(options?: ScreenshotOptions): Promise<Uint8Array>;
 };

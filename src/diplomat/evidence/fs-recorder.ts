@@ -1,4 +1,4 @@
-import { appendFile, mkdir, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { toCapabilityFile } from '../../adapters/capability-file';
 import { toEvidenceRecord } from '../../adapters/evidence-record';
@@ -20,7 +20,7 @@ function isAlreadyExists(error: unknown): boolean {
 export function createFsRecorder(options: FsRecorderOptions): EvidenceRecorder {
   const secrets = options.secrets ?? [];
   const sensitive: SensitiveValue[] = [];
-  const redact = (record: unknown) => redactDeep(record, { secrets, sensitive });
+  const redact = <T>(value: T): T => redactDeep(value, { secrets, sensitive });
   const now = options.now ?? (() => new Date());
   let run: EvidenceRun | undefined;
   let seq = 0;
@@ -32,6 +32,19 @@ export function createFsRecorder(options: FsRecorderOptions): EvidenceRecorder {
 
   function json(record: unknown): string {
     return JSON.stringify(redact(record), null, 2);
+  }
+
+  function jsonLine(record: unknown): string {
+    return `${JSON.stringify(redact(record))}\n`;
+  }
+
+  function redactedAgain(name: string, text: string): string {
+    if (name.endsWith('.json')) return `${json(JSON.parse(text) as unknown)}\n`;
+    return text
+      .split('\n')
+      .filter((line) => line !== '')
+      .map((line) => jsonLine(JSON.parse(line) as unknown))
+      .join('');
   }
 
   return {
@@ -57,11 +70,13 @@ export function createFsRecorder(options: FsRecorderOptions): EvidenceRecorder {
       sensitive.push(...values);
     },
 
+    redact,
+
     async event(event) {
       const { runId, dir } = active();
       seq += 1;
       const record = toEvidenceRecord(event, { runId, seq, timestamp: now().toISOString() });
-      await appendFile(join(dir, 'run.jsonl'), `${JSON.stringify(redact(record))}\n`, 'utf8');
+      await appendFile(join(dir, 'run.jsonl'), jsonLine(record), 'utf8');
     },
 
     async capture(stepId, capture) {
@@ -90,7 +105,15 @@ export function createFsRecorder(options: FsRecorderOptions): EvidenceRecorder {
     },
 
     async finish(result) {
-      await writeFile(join(active().dir, 'result.json'), `${json(result)}\n`, 'utf8');
+      const { dir } = active();
+      await writeFile(join(dir, 'result.json'), `${json(result)}\n`, 'utf8');
+      const entries = await readdir(dir, { recursive: true, withFileTypes: true });
+      for (const entry of entries.filter((item) => item.isFile() && /\.jsonl?$/.test(item.name))) {
+        const path = join(entry.parentPath, entry.name);
+        const text = await readFile(path, 'utf8');
+        const redacted = redactedAgain(entry.name, text);
+        if (redacted !== text) await writeFile(path, redacted, 'utf8');
+      }
     },
   };
 }

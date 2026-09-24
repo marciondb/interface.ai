@@ -50,8 +50,8 @@ describe('filesystem evidence recorder', () => {
         type: 'checkpoint',
         holds: false,
         expected: '[REDACTED:secret]',
-        // Written before protect(): only values known at write time are masked.
-        observed: 'value 4,812.37',
+        // Written before protect(), masked again by finish().
+        observed: 'value [REDACTED:financial]',
       },
     ]);
     expect(paths).toEqual({
@@ -64,6 +64,44 @@ describe('filesystem evidence recorder', () => {
     });
     expect(JSON.parse(await readFile(join(run.dir, 'result.json'), 'utf8'))).toMatchObject({ outputs: { balance: '[REDACTED:financial]' } });
     expect(result.outputs.balance).toBe('4,812.37');
+  });
+
+  it('leaves no trace of a value protected at the last step in any file of the run', async () => {
+    const recorder = createFsRecorder({ root: await tempRoot(), now: () => NOW });
+    const run = await recorder.startRun({ mode: 'discovery', capabilityId: 'member.open-sub-account' });
+    recorder.protect([{ value: '10001', sensitivity: 'internal' }]);
+    const page = (text: string) => ({ ...loginObservation(), nodes: [{ role: 'text', name: text, frame: null }] });
+    await recorder.capture('step-5', { snapshot: page('Balance 4,812.37') });
+    await recorder.capture('step-12', { snapshot: page('New Account Number: 10001MMRAIN025000') });
+    await recorder.event({ type: 'observation', stepId: 'step-12', observationId: 12, url: 'http://localhost:8080/?a=10001MMRAIN025000', elements: 1 });
+    recorder.protect([
+      { value: '4,812.37', sensitivity: 'financial' },
+      { value: '10001MMRAIN025000', sensitivity: 'financial' },
+    ]);
+    await recorder.finish({
+      runId: run.runId,
+      capability: { id: 'member.open-sub-account', version: '1.0.0' },
+      reasoner: { adapter: 'local', model: 'm' },
+      durationMs: 1,
+      steps: 12,
+      interventions: [],
+      status: 'succeeded',
+      outputs: { accountNumber: '10001MMRAIN025000' },
+    });
+
+    const files = (await readdir(run.dir, { recursive: true, withFileTypes: true })).filter((entry) => entry.isFile());
+    expect(files.map((entry) => entry.name).toSorted()).toEqual(['0000-step-12.json', '0000-step-5.json', 'result.json', 'run.jsonl']);
+    const text = (await Promise.all(files.map((entry) => readFile(join(entry.parentPath, entry.name), 'utf8')))).join('\n');
+    expect(text).not.toMatch(/4,812\.37|MMRAIN025000/);
+    expect(text).toContain('New Account Number: [REDACTED:financial]');
+    expect(text).toContain('Balance [REDACTED:financial]');
+  });
+
+  it('redacts values for display with the same rules', async () => {
+    const recorder = createFsRecorder({ root: await tempRoot(), secrets: ['hunter2'] });
+    recorder.protect([{ value: '10001', sensitivity: 'internal' }]);
+
+    expect(recorder.redact({ argument: '10001', rationale: 'type hunter2' })).toEqual({ argument: '[REDACTED:internal]', rationale: 'type [REDACTED:secret]' });
   });
 
   it('keeps runs that start in the same millisecond apart', async () => {

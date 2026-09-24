@@ -42,6 +42,29 @@ describe('redactText', () => {
   it('ignores sensitive values shorter than 4 characters', () => {
     expect(redactText('row 12 of 123', { secrets: [], sensitive: [{ value: '12', sensitivity: 'internal' }] })).toBe('row 12 of 123');
   });
+
+  it('masks URL-encoded and JSON-escaped forms of secrets', () => {
+    const rules = { secrets: ['p@ss w/"q"'], sensitive: [] };
+
+    expect(redactText('?pw=p%40ss%20w%2F%22q%22 or p%40ss+w%2F%22q%22', rules)).toBe(`?pw=${SECRET_MASK} or ${SECRET_MASK}`);
+    expect(redactText('{"pw":"p@ss w/\\"q\\""}', rules)).toBe(`{"pw":"${SECRET_MASK}"}`);
+  });
+
+  it('masks a value that was already partly masked while only part of it was known', () => {
+    const member = { value: '10001', sensitivity: 'internal' } as const;
+    const early = redactText('New Account Number: 10001MMRAIN025000', { secrets: [], sensitive: [member] });
+
+    expect(early).toBe('New Account Number: [REDACTED:internal]MMRAIN025000');
+    expect(redactText(early, { secrets: [], sensitive: [member, { value: '10001MMRAIN025000', sensitivity: 'financial' }] })).toBe(
+      'New Account Number: [REDACTED:financial]',
+    );
+  });
+
+  it('does not treat a value that is only masks as a partial form', () => {
+    const rules: RedactionRules = { secrets: ['training'], sensitive: [{ value: 'training', sensitivity: 'financial' }] };
+
+    expect(redactText(`${SECRET_MASK} training`, rules)).toBe(`${SECRET_MASK} ${SECRET_MASK}`);
+  });
 });
 
 describe('redactDeep', () => {
@@ -62,6 +85,21 @@ describe('redactDeep', () => {
       cookies: SECRET_MASK,
       clientSecret: SECRET_MASK,
       name: 'n',
+    });
+    expect(
+      redactDeep({ Authorization: 'Bearer x', api_key: 'k', apiKey: 'k', sessionId: 's', pin: '1234', userPin: '1', otp_code: '9', runId: 'r', stepId: 's', shipping: 'ok', footprint: 'ok' }, rules),
+    ).toEqual({
+      Authorization: SECRET_MASK,
+      api_key: SECRET_MASK,
+      apiKey: SECRET_MASK,
+      sessionId: SECRET_MASK,
+      pin: SECRET_MASK,
+      userPin: SECRET_MASK,
+      otp_code: SECRET_MASK,
+      runId: 'r',
+      stepId: 's',
+      shipping: 'ok',
+      footprint: 'ok',
     });
   });
 });

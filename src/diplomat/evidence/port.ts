@@ -26,8 +26,10 @@ export type CapturePaths = {
 // written (RFC-006): the recorder's secrets plus every value handed to protect() so far.
 export type EvidenceRecorder = {
   startRun(run: { readonly mode: RunMode; readonly capabilityId: string }): Promise<EvidenceRun>;
-  // Masks these values in everything written from now on.
+  // Masks these values in everything written from now on, and in the whole run folder at finish().
   protect(values: readonly SensitiveValue[]): void;
+  // A copy of value redacted with the same rules, for anything shown outside the evidence (e.g. the terminal).
+  redact<T>(value: T): T;
   event(event: RunEvent): Promise<void>;
   // Writes screenshots/<seq>-<stepId>.png and snapshots/<seq>-<stepId>.json.
   capture(stepId: string, capture: Capture): Promise<CapturePaths>;
@@ -35,6 +37,7 @@ export type EvidenceRecorder = {
   intervention(request: InterventionRequest): Promise<void>;
   // Writes artifact.json: the capability a discovery run produced.
   artifact(capability: Capability): Promise<void>;
-  // Writes result.json.
+  // Writes result.json, then redacts every JSON file of the run again with the final values, since a
+  // value learned late (an output read at the last step) may sit in snapshots written earlier.
   finish(result: ExecutionResult | DiscoveryResult): Promise<void>;
 };

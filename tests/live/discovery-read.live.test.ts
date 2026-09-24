@@ -55,8 +55,9 @@ describe.skipIf(process.env.RUN_LIVE_MODEL !== '1')('live discovery of the read 
     }
     expect(discovery.result).toMatchObject({ status: 'succeeded', outputs: { balance: '4,812.37' } });
 
-    const replay = await runReplay(fixture, { memberId: '10002', accountType: 'Savings' }, { capabilitiesDir: discovery.capabilitiesDir });
+    // Discovery writes a draft; replaying it before review needs the explicit opt-in.
+    const replay = await runReplay(fixture, { memberId: '10002', accountType: 'Savings' }, { capabilitiesDir: discovery.capabilitiesDir, allowDraft: true });
 
-    expect(replay.result).toMatchObject({ status: 'succeeded', outputs: { balance: '3,100.55' }, capability: { version: '1.0.1' } });
+    expect(replay.result).toMatchObject({ status: 'succeeded', outputs: { balance: '3,100.55' }, capability: { version: discovery.result.capability.version } });
   }, 720_000);
 });

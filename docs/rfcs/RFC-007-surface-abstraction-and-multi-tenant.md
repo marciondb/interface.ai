@@ -22,16 +22,17 @@ interface SurfaceDriver {
   open(url: string, session: SessionCookie[]): Promise<void>   // one browser/page per run
   observe(): Promise<Observation>          // accessibility tree per frame/window
   resolve(target: TargetSpec): Promise<ResolvedTarget>
-  resolveRef(ref: string): Promise<ResolvedTarget>   // observation ref → element
+  inspect(ref: string): Promise<ElementDescriptor>   // observation ref → how to find it again
   perform(action: Action, target?: ResolvedTarget): Promise<void>
   screenshot(): Promise<Buffer>
   close(): Promise<void>
 }
 ```
 
-A `ResolvedTarget` carries a `descriptor` — role/name, label, name attribute, and
-for table cells the column header and row cells — which synthesis uses to build
-candidate chains.
+An `ElementDescriptor` carries what the observation node does not — identifying
+attributes, the adjacent label, and for table cells the column header and row
+cells — which synthesis combines with the node's role/name to build candidate
+chains.
 
 The artifact speaks in surface-neutral terms — roles, names, labels, structural
 relations — so the same schema works across surfaces:

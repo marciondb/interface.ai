@@ -25,7 +25,7 @@ the shape of its answer is constrained during generation.
 ## Input
 
 ```bash
-discover --request discovery/requests/<id>.json --reasoner local|hosted [--headed]
+discover --request discovery/requests/<id>.json --reasoner local|hosted [--target <url>] [--headed]
 ```
 
 The capability request file declares:
@@ -53,7 +53,9 @@ interface Reasoner {
 }
 ```
 
-Stateless per call. The controller owns the history. Adapters: local (Ollama) and
+Stateless per call. The controller owns the history; the only part it passes on is
+in the goal, which lists the declared outputs already read, so the model knows when
+to answer `finish`. Adapters: local (Ollama) and
 hosted (OpenAI-compatible), selected per run. The reasoner does not redact; it
 receives an observation that is already redacted.
 

@@ -63,7 +63,14 @@ Recoveries are recorded in `result.recoveries[]`.
 ## Result
 
 The discriminated union from ADR-009. Failures always include `stepId`, `code`,
-`expected`, `observed`, and a pointer to the evidence screenshot.
+`expected`, `observed`, and a pointer to the evidence screenshot. The sign-in
+screen is never photographed (a target may display credentials on it); there the
+pointer is the redacted snapshot.
+
+Failure codes: `invalid_input`, `artifact_unavailable`, `precondition_failed`,
+`policy_denied`, `target_not_found`, `target_ambiguous`, `timeout`,
+`session_expired`, `server_error`, `recovery_exhausted`, `checkpoint_failed`,
+`driver_error`.
 
 CLI exit codes:
 
@@ -77,11 +84,12 @@ CLI exit codes:
 
 ## Mapping to the target's injectable faults
 
-Every fault fires exactly once, on the next request, and then clears.
+Every fault fires exactly once, on the next request (the sign-in request
+included), and then clears.
 
 | Fault | Fixture behavior | Expected handling |
 |---|---|---|
-| `slow_load` | Response delayed ~8 s | Recoverable: a ~5 s step timeout catches it; the retry succeeds |
+| `slow_load` | Response delayed ~8 s | Recoverable: a ~5 s step timeout catches it; the timed-out load is abandoned and the retry succeeds |
 | `interstitial` | Maintenance notice with Continue | Recoverable: declared recovery clicks Continue |
 | `session_expired` | Session destroyed, redirect to login | Recoverable once: re-login and restart from the first step |
 | `server_error` | HTTP 500 error page | Hard failure |

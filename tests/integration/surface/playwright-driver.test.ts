@@ -78,11 +78,10 @@ describe('Playwright surface driver against the fixture', { timeout: 30_000 }, (
     expect(memberIdBox(filled)?.value).toBe('10001');
   });
 
-  it('rejects verbs it does not implement without touching the page', async () => {
-    const observation = await surface().observe();
-    const ref = searchButton(observation)?.ref ?? null;
+  it('rejects verbs that are not page actions without touching the page', async () => {
+    await surface().observe();
 
-    await expect(surface().perform({ verb: 'select', target: ref, argument: 'x', rationale: 'test' })).rejects.toBeInstanceOf(
+    await expect(surface().perform({ verb: 'finish', target: null, argument: null, rationale: 'test' })).rejects.toBeInstanceOf(
       SurfaceError,
     );
   });

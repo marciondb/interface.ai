@@ -1,0 +1,64 @@
+import type { Locator, Page } from 'playwright';
+import type { Candidate } from '../../models/capability';
+
+type Role = Parameters<Locator['getByRole']>[0];
+
+const ATTRIBUTE_NAME = /^[a-zA-Z_][-a-zA-Z0-9_:.]*$/;
+// Controls that take a value; excludes buttons and hidden fields that share a row with the label.
+const VALUE_CONTROL =
+  '*[self::input[not(@type="hidden" or @type="submit" or @type="button" or @type="image" or @type="reset")] or self::select or self::textarea]';
+
+function cssString(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+// XPath 1.0 has no escapes: split on double quotes and concat().
+function xpathString(value: string): string {
+  if (!value.includes('"')) return `"${value}"`;
+  return `concat(${value
+    .split('"')
+    .map((part) => `"${part}"`)
+    .join(`, '"', `)})`;
+}
+
+// 1-based position of the header cell with this text in the first row of the cell's table.
+function columnPosition(header: string): string {
+  return `count(ancestor::table[1]/descendant::tr[1]/*[normalize-space(.)=${xpathString(header)}]/preceding-sibling::*) + 1`;
+}
+
+function hasHeader(header: string): string {
+  return `ancestor::table[1]/descendant::tr[1]/*[normalize-space(.)=${xpathString(header)}]`;
+}
+
+export function scopeOf(page: Page, frame: string | undefined): Locator {
+  return frame === undefined ? page.locator(':root') : page.frameLocator(`iframe[name=${cssString(frame)}]`).locator(':root');
+}
+
+// undefined when the candidate cannot be expressed as a locator (it then counts as zero matches).
+export function candidateLocator(scope: Locator, candidate: Candidate): Locator | undefined {
+  switch (candidate.strategy) {
+    case 'role':
+      return scope.getByRole(candidate.role as Role, { name: candidate.name, exact: true });
+    case 'label':
+      // The value control in the table row whose own cell text is exactly the label.
+      return scope.locator(`xpath=//tr[td[normalize-space(.)=${xpathString(candidate.text)}]]/td//${VALUE_CONTROL}`);
+    case 'attribute':
+      if (!ATTRIBUTE_NAME.test(candidate.name)) return undefined;
+      return scope.locator(`[${candidate.name}=${cssString(candidate.value)}]`);
+    case 'text':
+      return scope.getByText(candidate.text, { exact: true });
+    case 'table_cell': {
+      const { row, column } = candidate;
+      const cell = scope.locator(
+        `xpath=//tr[${hasHeader(row.column)} and ${hasHeader(column)}]` +
+          `[*[position() = ${columnPosition(row.column)}][normalize-space(.)=${xpathString(row.equals)}]]` +
+          `/*[position() = ${columnPosition(column)}]`,
+      );
+      return candidate.role === undefined ? cell : cell.getByRole(candidate.role as Role);
+    }
+    default: {
+      const unhandled: never = candidate;
+      return unhandled;
+    }
+  }
+}

@@ -17,5 +17,30 @@ build/
 .venv*/
 __pycache__/
 
+# Evidence of local runs (EVIDENCE_DIR default); only the curated runs indexed in evidence/README.md are committed
+evidence/runs/*
+!evidence/runs/2026-09-24T17-21-04-747Z-discovery-member.read-account-balance/
+!evidence/runs/2026-09-24T17-21-50-647Z-replay-member.read-account-balance/
+!evidence/runs/2026-09-24T17-21-52-189Z-replay-member.read-account-balance/
+!evidence/runs/2026-09-24T18-24-21-626Z-discovery-member.open-sub-account/
+!evidence/runs/2026-09-24T18-25-29-841Z-replay-member.open-sub-account/
+!evidence/runs/2026-09-24T18-27-06-416Z-replay-member.open-sub-account/
+!evidence/runs/2026-09-24T18-35-09-617Z-replay-member.read-account-balance/
+!evidence/runs/2026-09-24T18-35-11-093Z-replay-member.read-account-balance/
+!evidence/runs/2026-09-24T18-35-11-541Z-replay-member.close-account/
+!evidence/runs/2026-09-24T18-35-12-677Z-replay-member.close-account/
+
+# Test and tool output (Playwright, coverage, logs)
+test-results/
+playwright-report/
+blob-report/
+*.har
+trace.zip
+coverage/
+*.log
+npm-debug.log*
+
 # OS / editor
 .DS_Store
+.vscode/
+.idea/

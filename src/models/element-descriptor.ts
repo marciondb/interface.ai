@@ -3,7 +3,8 @@
 export type ElementDescriptor = {
   // Stable identifying attributes (web: name, id).
   readonly attributes: { readonly name?: string; readonly id?: string };
-  // For a value control: the text of the cell before its own in the same table row, as displayed ("Member ID:").
+  // For a value control, or a cell that only displays a value: the text of the cell before its
+  // own in the same table row, as displayed ("Member ID:").
   readonly label?: string;
   // For an element in a table row below the header row: its column's header, and each
   // header's cell text in that row.

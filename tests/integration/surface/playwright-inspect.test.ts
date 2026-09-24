@@ -66,6 +66,7 @@ describe('Playwright element descriptors against the fixture', { timeout: 30_000
 
     expect(await surface().inspect(refOf(detail, (node) => node.role === 'cell' && node.name === '3,100.55'))).toEqual({
       attributes: {},
+      label: '100022203',
       cell: { column: 'Balance', row: { 'Acct Type': 'Savings', 'Acct Number': '100022203', Balance: '3,100.55' } },
     });
   });

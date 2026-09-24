@@ -5,8 +5,9 @@ type Role = Parameters<Locator['getByRole']>[0];
 
 const ATTRIBUTE_NAME = /^[a-zA-Z_][-a-zA-Z0-9_:.]*$/;
 // Controls that take a value; excludes buttons and hidden fields that share a row with the label.
-const VALUE_CONTROL =
-  '*[self::input[not(@type="hidden" or @type="submit" or @type="button" or @type="image" or @type="reset")] or self::select or self::textarea]';
+const IS_VALUE_CONTROL =
+  'self::input[not(@type="hidden" or @type="submit" or @type="button" or @type="image" or @type="reset")] or self::select or self::textarea';
+const VALUE_CONTROL = `*[${IS_VALUE_CONTROL}]`;
 
 function cssString(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
@@ -40,8 +41,12 @@ export function candidateLocator(scope: Locator, candidate: Candidate): Locator 
     case 'role':
       return scope.getByRole(candidate.role as Role, { name: candidate.name, exact: true });
     case 'label':
-      // The value control in the table row whose own cell text is exactly the label.
-      return scope.locator(`xpath=//tr[td[normalize-space(.)=${xpathString(candidate.text)}]]/td//${VALUE_CONTROL}`);
+      // In the cell right after the one whose text is exactly the label: its value control, or
+      // the cell itself when it holds none (a displayed value).
+      return scope.locator(
+        `xpath=//td[normalize-space(.)=${xpathString(candidate.text)}]/following-sibling::td[1]` +
+          `/descendant-or-self::*[${IS_VALUE_CONTROL} or (self::td and not(.//${VALUE_CONTROL}))]`,
+      );
     case 'attribute':
       if (!ATTRIBUTE_NAME.test(candidate.name)) return undefined;
       return scope.locator(`[${candidate.name}=${cssString(candidate.value)}]`);

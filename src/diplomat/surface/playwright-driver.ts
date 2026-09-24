@@ -148,6 +148,7 @@ type InspectedElement = {
   readonly rows?: ArrayLike<InspectedElement>;
   getAttribute(name: string): string | null;
   closest(selectors: string): InspectedElement | null;
+  querySelector(selectors: string): InspectedElement | null;
 };
 
 // Runs inside the page, same constraints as elementInfo. The label and header rules mirror
@@ -168,7 +169,8 @@ function elementDescriptor(element: InspectedElement): ElementDescriptor {
   const type = (element.getAttribute('type') ?? 'text').toLowerCase();
   const valueControl =
     tag === 'select' || tag === 'textarea' || (tag === 'input' && !['hidden', 'submit', 'button', 'image', 'reset'].includes(type));
-  const label = valueControl ? (cell.previousElementSibling?.textContent ?? '').replace(/\s+/g, ' ').trim() : '';
+  const valueCell = tag === 'td' && element.querySelector('input, select, textarea, a, button') === null;
+  const label = valueControl || valueCell ? (cell.previousElementSibling?.textContent ?? '').replace(/\s+/g, ' ').trim() : '';
 
   let position: { column: string; row: Record<string, string> } | undefined;
   const header = table.rows?.[0];

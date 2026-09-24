@@ -9,6 +9,8 @@ describe('loadConfig', () => {
       ollamaBaseUrl: 'http://localhost:11434',
       reasonerModel: 'qwen3:14b',
       hosted: { baseUrl: undefined, model: undefined, apiKey: undefined },
+      evidenceDir: 'evidence/runs',
+      replayStepTimeoutMs: 5_000,
     });
   });
 
@@ -22,6 +24,8 @@ describe('loadConfig', () => {
         HOSTED_BASE_URL: 'https://api.example.com/v1',
         HOSTED_MODEL: 'gpt-x',
         HOSTED_API_KEY: 'key',
+        EVIDENCE_DIR: '/tmp/evidence',
+        REPLAY_STEP_TIMEOUT_MS: '2000',
       }),
     ).toEqual({
       targetUsername: 'alice',
@@ -29,7 +33,14 @@ describe('loadConfig', () => {
       ollamaBaseUrl: 'http://ollama:11434',
       reasonerModel: 'llama3:8b',
       hosted: { baseUrl: 'https://api.example.com/v1', model: 'gpt-x', apiKey: 'key' },
+      evidenceDir: '/tmp/evidence',
+      replayStepTimeoutMs: 2_000,
     });
+  });
+
+  it('rejects a step timeout that is not a positive integer', () => {
+    expect(() => loadConfig({ REPLAY_STEP_TIMEOUT_MS: '5s' })).toThrow('REPLAY_STEP_TIMEOUT_MS');
+    expect(() => loadConfig({ REPLAY_STEP_TIMEOUT_MS: '0' })).toThrow('REPLAY_STEP_TIMEOUT_MS');
   });
 
   it('treats empty strings as absent', () => {

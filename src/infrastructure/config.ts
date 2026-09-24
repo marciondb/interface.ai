@@ -8,11 +8,22 @@ export type Config = {
     readonly model: string | undefined;
     readonly apiKey: string | undefined;
   };
+  // Root of the per-run evidence folders (ADR-014).
+  readonly evidenceDir: string;
+  // Budget for each replay step phase: finding the target, the action, the checkpoint (RFC-004).
+  readonly replayStepTimeoutMs: number;
 };
 
 function read(env: NodeJS.ProcessEnv, key: string): string | undefined {
   const value = env[key];
   return value === undefined || value === '' ? undefined : value;
+}
+
+function positiveInteger(env: NodeJS.ProcessEnv, key: string, fallback: number): number {
+  const value = read(env, key);
+  if (value === undefined) return fallback;
+  if (!/^[1-9][0-9]*$/.test(value)) throw new Error(`${key} must be a positive integer`);
+  return Number(value);
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -26,5 +37,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       model: read(env, 'HOSTED_MODEL'),
       apiKey: read(env, 'HOSTED_API_KEY'),
     },
+    evidenceDir: read(env, 'EVIDENCE_DIR') ?? 'evidence/runs',
+    replayStepTimeoutMs: positiveInteger(env, 'REPLAY_STEP_TIMEOUT_MS', 5_000),
   };
 }

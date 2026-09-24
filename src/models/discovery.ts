@@ -52,10 +52,10 @@ const base = {
 };
 
 export const DiscoveryResultSchema = z.discriminatedUnion('status', [
+  // The artifact is published as `capability` in the artifact store.
   z.strictObject({
     ...base,
     status: z.literal('succeeded'),
-    artifactPath: z.string(),
     // Values read with the examples; masked in evidence like any declared-sensitive output.
     outputs: z.record(z.string(), z.string()),
   }),

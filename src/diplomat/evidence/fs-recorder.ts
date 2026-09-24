@@ -1,5 +1,6 @@
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { toCapabilityFile } from '../../adapters/capability-file';
 import { toEvidenceRecord } from '../../adapters/evidence-record';
 import { redactDeep, type SensitiveValue } from '../../logic/redaction';
 import type { CapturePaths, EvidenceRecorder, EvidenceRun } from './port';
@@ -63,7 +64,7 @@ export function createFsRecorder(options: FsRecorderOptions): EvidenceRecorder {
       await appendFile(join(dir, 'run.jsonl'), `${JSON.stringify(redact(record))}\n`, 'utf8');
     },
 
-    async failureCapture(stepId, capture) {
+    async capture(stepId, capture) {
       const { dir } = active();
       const name = `${String(seq).padStart(4, '0')}-${stepId}`;
       const paths: { screenshot?: string; snapshot?: string } = {};
@@ -78,6 +79,10 @@ export function createFsRecorder(options: FsRecorderOptions): EvidenceRecorder {
         await writeFile(paths.snapshot, `${json(capture.snapshot)}\n`, 'utf8');
       }
       return paths satisfies CapturePaths;
+    },
+
+    async artifact(capability) {
+      await writeFile(join(active().dir, 'artifact.json'), `${json(toCapabilityFile(capability))}\n`, 'utf8');
     },
 
     async finish(result) {

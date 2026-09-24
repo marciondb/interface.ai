@@ -1,4 +1,6 @@
 import type { SensitiveValue } from '../../logic/redaction';
+import type { Capability } from '../../models/capability';
+import type { DiscoveryResult } from '../../models/discovery';
 import type { ExecutionResult } from '../../models/execution-result';
 import type { Observation } from '../../models/observation';
 import type { RunEvent, RunMode } from '../../models/run-event';
@@ -9,7 +11,7 @@ export type EvidenceRun = {
   readonly dir: string;
 };
 
-export type FailureCapture = {
+export type Capture = {
   readonly screenshot?: Uint8Array;
   readonly snapshot?: Observation;
 };
@@ -27,7 +29,9 @@ export type EvidenceRecorder = {
   protect(values: readonly SensitiveValue[]): void;
   event(event: RunEvent): Promise<void>;
   // Writes screenshots/<seq>-<stepId>.png and snapshots/<seq>-<stepId>.json.
-  failureCapture(stepId: string, capture: FailureCapture): Promise<CapturePaths>;
+  capture(stepId: string, capture: Capture): Promise<CapturePaths>;
+  // Writes artifact.json: the capability a discovery run produced.
+  artifact(capability: Capability): Promise<void>;
   // Writes result.json.
-  finish(result: ExecutionResult): Promise<void>;
+  finish(result: ExecutionResult | DiscoveryResult): Promise<void>;
 };

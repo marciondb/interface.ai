@@ -135,7 +135,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
     } catch {
       // Best effort: the failure itself is still reported.
     }
-    const paths = await evidence.failureCapture(stepId, { screenshot, snapshot });
+    const paths = await evidence.capture(stepId, { screenshot, snapshot });
     return paths.screenshot ?? paths.snapshot ?? run.dir;
   }
 

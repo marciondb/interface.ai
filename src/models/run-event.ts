@@ -1,10 +1,13 @@
 import type { Verb } from './action';
 import type { Candidate } from './capability';
 import type { Classification, ClassificationTrigger } from './classification';
+import type { DiscoveryEscalationReason, DiscoveryFailureReason, DiscoveryLimits } from './discovery';
 import type { EscalationReason, ExecutionStatus, Recovery } from './execution-result';
 import type { Navigation } from './resolution';
 
-export type RunMode = 'replay';
+export type RunMode = 'replay' | 'discovery';
+
+export type ReasonerInfo = { readonly adapter: 'local' | 'hosted'; readonly model: string };
 
 export type ActionPurpose = 'step' | 'recovery' | 'checkpoint';
 
@@ -66,9 +69,39 @@ export type RunEvent =
       readonly type: 'escalation';
       readonly stepId: string;
       readonly interventionId: string;
-      readonly reason: EscalationReason;
+      readonly reason: EscalationReason | DiscoveryEscalationReason;
       readonly message: string;
     }
-  | { readonly type: 'result'; readonly status: ExecutionStatus; readonly stepId?: string };
+  | {
+      readonly type: 'discovery_started';
+      readonly capability: { readonly id: string; readonly version: string };
+      readonly goal: string;
+      readonly inputNames: readonly string[];
+      readonly targetUrl: string;
+      readonly reasoner: ReasonerInfo;
+      readonly limits: DiscoveryLimits;
+    }
+  // The redacted observation itself is in snapshots/.
+  | { readonly type: 'observation'; readonly stepId: string; readonly observationId: number; readonly url: string; readonly elements: number }
+  | {
+      readonly type: 'decision';
+      readonly stepId: string;
+      readonly verb: Verb;
+      readonly target: string | null;
+      readonly argument: string | null;
+      readonly rationale: string;
+      readonly latencyMs: number;
+      readonly reasoner: ReasonerInfo;
+    }
+  | { readonly type: 'grounding_rejected'; readonly stepId: string; readonly target: string | null }
+  | { readonly type: 'progress'; readonly stepId: string; readonly progressed: boolean }
+  | { readonly type: 'feedback'; readonly stepId: string; readonly feedback: string; readonly stalls: number }
+  | { readonly type: 'artifact'; readonly capability: { readonly id: string; readonly version: string }; readonly steps: number }
+  | {
+      readonly type: 'result';
+      readonly status: ExecutionStatus;
+      readonly stepId?: string;
+      readonly reason?: DiscoveryFailureReason | DiscoveryEscalationReason;
+    };
 
 export type RunEventType = RunEvent['type'];

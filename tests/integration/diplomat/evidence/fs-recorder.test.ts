@@ -22,7 +22,7 @@ describe('filesystem evidence recorder', () => {
     await recorder.event({ type: 'checkpoint', stepId: 'enter-member-id', holds: false, expected: 'hunter2', observed: 'value 4,812.37' });
     recorder.protect([{ value: '4,812.37', sensitivity: 'financial' }]);
     const snapshot = { ...loginObservation(), url: 'http://localhost:8080/?note=4,812.37' };
-    const paths = await recorder.failureCapture('enter-member-id', { screenshot: new Uint8Array([137, 80, 78, 71]), snapshot });
+    const paths = await recorder.capture('enter-member-id', { screenshot: new Uint8Array([137, 80, 78, 71]), snapshot });
     const result: ExecutionResult = {
       runId: run.runId,
       capability: { id: 'member.read-account-balance', version: '1.0.0' },

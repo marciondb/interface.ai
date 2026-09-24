@@ -138,8 +138,8 @@ function pathOf(url: string): string {
 function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog: OutcomeCatalog, provenance: Provenance): unknown {
   const parameterize = parameterizer(request);
   const outcomes: Outcome[] = request.outcomes.flatMap((id) => catalog.outcomes.filter((outcome) => outcome.id === id));
+  const recoveryTargets = new Set(outcomes.flatMap(outcomeTargets));
   const targets: Record<string, TargetSpec> = {};
-  for (const name of outcomes.flatMap(outcomeTargets)) targets[name] = catalog.targets[name];
   const targetBySpec = new Map<string, string>();
   const steps: Step[] = [];
   const produced = new Set<string>();
@@ -155,7 +155,11 @@ function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog:
     const key = JSON.stringify(spec);
     const existing = targetBySpec.get(key);
     if (existing !== undefined) return existing;
-    const name = unique(`${camel(words(element.node.frame ?? 'page'))}.${camel(nameWords(element, spec))}`, new Set(Object.keys(targets)), '');
+    const name = unique(
+      `${camel(words(element.node.frame ?? 'page'))}.${camel(nameWords(element, spec))}`,
+      new Set([...Object.keys(targets), ...recoveryTargets]),
+      '',
+    );
     targets[name] = spec;
     targetBySpec.set(key, name);
     return name;
@@ -223,6 +227,7 @@ function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog:
     if (!produced.has(output)) fail('output_not_read', `output ${output} was never read`);
   }
   const used = JSON.stringify({ targets, steps });
+  for (const name of recoveryTargets) targets[name] = catalog.targets[name];
   for (const input of Object.keys(request.inputs)) {
     if (!used.includes(`{{inputs.${input}}}`)) fail('input_not_used', `input ${input} (example ${JSON.stringify(request.inputs[input].example)}) appears in no step`);
   }

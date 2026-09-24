@@ -31,7 +31,6 @@ export type Setback =
   | { readonly kind: 'action_failed'; readonly decision: AgentDecision; readonly node?: ObservationNode; readonly detail: string }
   | { readonly kind: 'unknown_output'; readonly decision: AgentDecision; readonly outputs: readonly string[] }
   | { readonly kind: 'goal_not_met'; readonly missing: readonly string[] }
-  | { readonly kind: 'declined' }
   | { readonly kind: 'no_elements' };
 
 // Refs change with every observation, so the element is named by what it shows.
@@ -56,8 +55,6 @@ export function feedbackFor(setback: Setback): string {
       return `${JSON.stringify(setback.decision.argument)} is not an output of the goal; read into one of: ${setback.outputs.join(', ')}`;
     case 'goal_not_met':
       return `the goal is not complete: not read yet: ${setback.missing.join(', ')}`;
-    case 'declined':
-      return 'the operator declined the previous action';
     case 'no_elements':
       return 'the screen had no elements to act on';
     default: {

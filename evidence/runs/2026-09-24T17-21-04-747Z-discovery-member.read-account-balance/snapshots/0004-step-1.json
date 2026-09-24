@@ -1,0 +1,87 @@
+{
+  "observationId": 1,
+  "url": "http://localhost:8080/",
+  "frames": [
+    {
+      "name": null,
+      "url": "http://localhost:8080/"
+    },
+    {
+      "name": "content",
+      "url": "http://localhost:8080/welcome"
+    }
+  ],
+  "nodes": [
+    {
+      "role": "cell",
+      "name": "Bank Test Member Services Console | Internal Use Only",
+      "frame": null,
+      "ref": "e1"
+    },
+    {
+      "role": "generic",
+      "name": "Bank Test",
+      "frame": null,
+      "ref": "e2"
+    },
+    {
+      "role": "text",
+      "name": "Member Services Console | Internal Use Only",
+      "frame": null
+    },
+    {
+      "role": "text",
+      "name": "Signed on: operator |",
+      "frame": null
+    },
+    {
+      "role": "link",
+      "name": "Sign Off",
+      "frame": null,
+      "ref": "e3"
+    },
+    {
+      "role": "cell",
+      "name": "MAIN MENU",
+      "frame": null,
+      "ref": "e4"
+    },
+    {
+      "role": "link",
+      "name": "Home",
+      "frame": null,
+      "ref": "e5"
+    },
+    {
+      "role": "link",
+      "name": "Member Lookup",
+      "frame": null,
+      "ref": "e6"
+    },
+    {
+      "role": "cell",
+      "name": "Welcome Select a function from the menu at left. Content screen: Home (Stage 2 stub)",
+      "frame": "content",
+      "ref": "e7"
+    },
+    {
+      "role": "generic",
+      "name": "Welcome",
+      "frame": "content",
+      "ref": "e8"
+    },
+    {
+      "role": "generic",
+      "name": "Select a function from the menu at left. Content screen: Home (Stage 2 stub)",
+      "frame": "content",
+      "ref": "e9"
+    },
+    {
+      "role": "cell",
+      "name": "Bank Test — Confidential — Unauthorized access prohibited",
+      "frame": null,
+      "ref": "e10"
+    }
+  ],
+  "dialog": null
+}

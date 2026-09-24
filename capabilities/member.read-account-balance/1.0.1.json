@@ -1,0 +1,251 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "member.read-account-balance",
+    "version": "1.0.1",
+    "description": "Look up a member by ID and read the balance of one of their accounts",
+    "app": {
+      "product": "legacy-member-console",
+      "surface": "web"
+    }
+  },
+  "preconditions": [
+    {
+      "kind": "authenticated_session"
+    }
+  ],
+  "inputs": {
+    "memberId": {
+      "type": "string",
+      "description": "Member ID, digits only (the lookup field accepts up to 12)",
+      "pattern": "^[0-9]{1,12}$",
+      "sensitivity": "internal"
+    },
+    "accountType": {
+      "type": "string",
+      "description": "Type of the account whose balance is read",
+      "enum": [
+        "Checking",
+        "Savings",
+        "Money Market"
+      ],
+      "sensitivity": "none"
+    }
+  },
+  "outputs": {
+    "balance": {
+      "type": "string",
+      "description": "Account balance as displayed, e.g. 4,812.37",
+      "sensitivity": "financial"
+    }
+  },
+  "targets": {
+    "page.memberLookup": {
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "link",
+          "name": "Member Lookup"
+        },
+        {
+          "strategy": "text",
+          "text": "Member Lookup"
+        }
+      ]
+    },
+    "content.memberId": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "label",
+          "text": "Member ID:"
+        },
+        {
+          "strategy": "attribute",
+          "name": "name",
+          "value": "ctl00$ContentPlaceHolder1$txtMemberId"
+        },
+        {
+          "strategy": "attribute",
+          "name": "id",
+          "value": "ctl00_ContentPlaceHolder1_txtMemberId"
+        }
+      ]
+    },
+    "content.search": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "button",
+          "name": "Search"
+        },
+        {
+          "strategy": "attribute",
+          "name": "name",
+          "value": "ctl00$ContentPlaceHolder1$btnPrimary"
+        },
+        {
+          "strategy": "attribute",
+          "name": "id",
+          "value": "ctl00_ContentPlaceHolder1_btnPrimary"
+        }
+      ]
+    },
+    "content.name": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "table_cell",
+          "row": {
+            "column": "Member ID",
+            "equals": "{{inputs.memberId}}"
+          },
+          "column": "Name",
+          "role": "link"
+        }
+      ]
+    },
+    "content.balance": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "table_cell",
+          "row": {
+            "column": "Acct Type",
+            "equals": "{{inputs.accountType}}"
+          },
+          "column": "Balance"
+        }
+      ]
+    },
+    "interstitial.continue": {
+      "frame": "content",
+      "candidates": [
+        {
+          "strategy": "role",
+          "role": "button",
+          "name": "Continue"
+        },
+        {
+          "strategy": "attribute",
+          "name": "value",
+          "value": "Continue"
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "id": "click-member-lookup",
+      "action": {
+        "kind": "click",
+        "target": "page.memberLookup"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "text_visible",
+        "text": "Member ID:",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "fill-member-id",
+      "action": {
+        "kind": "fill",
+        "target": "content.memberId",
+        "value": "{{inputs.memberId}}"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "value_equals",
+        "target": "content.memberId",
+        "value": "{{inputs.memberId}}"
+      }
+    },
+    {
+      "id": "click-search",
+      "action": {
+        "kind": "click",
+        "target": "content.search"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "text_visible",
+        "text": "Member Search Results",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "click-name",
+      "action": {
+        "kind": "click",
+        "target": "content.name"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "text_visible",
+        "text": "Member Detail",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "read-balance",
+      "action": {
+        "kind": "read",
+        "target": "content.balance",
+        "output": "balance"
+      },
+      "risk": "safe",
+      "checkpoint": {
+        "kind": "target_visible",
+        "target": "content.balance"
+      }
+    }
+  ],
+  "outcomes": [
+    {
+      "id": "member_not_found",
+      "kind": "business",
+      "description": "No member has this ID",
+      "when": {
+        "kind": "text_visible",
+        "text": "No records found.",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "member_restricted",
+      "kind": "business",
+      "description": "The operator is not authorized to view this member",
+      "when": {
+        "kind": "text_visible",
+        "text": "not authorized",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "interstitial",
+      "kind": "recoverable",
+      "description": "Maintenance notice shown before the requested screen",
+      "when": {
+        "kind": "text_visible",
+        "text": "Click Continue to proceed",
+        "frame": "content"
+      },
+      "recover": {
+        "kind": "click",
+        "target": "interstitial.continue"
+      }
+    }
+  ],
+  "provenance": {
+    "method": "discovered",
+    "createdAt": "2026-09-24T17:21:31.946Z",
+    "runId": "2026-09-24T17-21-04-747Z-discovery-member.read-account-balance",
+    "reasoner": {
+      "adapter": "local",
+      "model": "qwen3:14b"
+    }
+  }
+}

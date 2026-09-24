@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ExecutionResultSchema, type ExecutionResult } from '../../../src/models/execution-result';
 import { evidenceText, readEvents as events } from '../../support/evidence';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
-import { PASSWORD, runReplay, STEP_TIMEOUT_MS, type HarnessOptions, type HarnessRun } from '../../support/replay-harness';
+import { PASSWORD, referenceCapabilities, runReplay, STEP_TIMEOUT_MS, type HarnessOptions, type HarnessRun } from '../../support/replay-harness';
 
 const MARIA = { memberId: '10001', accountType: 'Savings' };
 
@@ -16,9 +16,11 @@ function failure(result: ExecutionResult) {
 
 describe('replay of member.read-account-balance@1 against the fixture', { timeout: 30_000 }, () => {
   let fixture: FixtureHandle | undefined;
+  let capabilitiesDir = '';
 
   beforeAll(async () => {
     fixture = await startFixture();
+    capabilitiesDir = await referenceCapabilities();
   }, 30_000);
 
   afterAll(async () => {
@@ -27,7 +29,7 @@ describe('replay of member.read-account-balance@1 against the fixture', { timeou
 
   function run(inputs: Record<string, string>, options?: HarnessOptions): Promise<HarnessRun> {
     if (fixture === undefined) throw new Error('fixture not started');
-    return runReplay(fixture, inputs, options);
+    return runReplay(fixture, inputs, { capabilitiesDir, ...options });
   }
 
   it('reads the savings balance of 10001', async () => {

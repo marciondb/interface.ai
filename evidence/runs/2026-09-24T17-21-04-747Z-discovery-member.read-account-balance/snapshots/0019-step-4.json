@@ -1,0 +1,123 @@
+{
+  "observationId": 7,
+  "url": "http://localhost:8080/",
+  "frames": [
+    {
+      "name": null,
+      "url": "http://localhost:8080/"
+    },
+    {
+      "name": "content",
+      "url": "http://localhost:8080/member/results?memberId=[REDACTED:internal]"
+    }
+  ],
+  "nodes": [
+    {
+      "role": "cell",
+      "name": "Bank Test Member Services Console | Internal Use Only",
+      "frame": null,
+      "ref": "e1"
+    },
+    {
+      "role": "generic",
+      "name": "Bank Test",
+      "frame": null,
+      "ref": "e2"
+    },
+    {
+      "role": "text",
+      "name": "Member Services Console | Internal Use Only",
+      "frame": null
+    },
+    {
+      "role": "text",
+      "name": "Signed on: operator |",
+      "frame": null
+    },
+    {
+      "role": "link",
+      "name": "Sign Off",
+      "frame": null,
+      "ref": "e3"
+    },
+    {
+      "role": "cell",
+      "name": "MAIN MENU",
+      "frame": null,
+      "ref": "e4"
+    },
+    {
+      "role": "link",
+      "name": "Home",
+      "frame": null,
+      "ref": "e5"
+    },
+    {
+      "role": "link",
+      "name": "Member Lookup",
+      "frame": null,
+      "ref": "e6"
+    },
+    {
+      "role": "cell",
+      "name": "Member Search Results Member ID Name Status [REDACTED:internal] Maria Santos Active New Search",
+      "frame": "content",
+      "ref": "e7"
+    },
+    {
+      "role": "generic",
+      "name": "Member Search Results",
+      "frame": "content",
+      "ref": "e8"
+    },
+    {
+      "role": "cell",
+      "name": "Member ID",
+      "frame": "content",
+      "ref": "e9"
+    },
+    {
+      "role": "cell",
+      "name": "Name",
+      "frame": "content",
+      "ref": "e10"
+    },
+    {
+      "role": "cell",
+      "name": "Status",
+      "frame": "content",
+      "ref": "e11"
+    },
+    {
+      "role": "cell",
+      "name": "[REDACTED:internal]",
+      "frame": "content",
+      "ref": "e12"
+    },
+    {
+      "role": "link",
+      "name": "Maria Santos",
+      "frame": "content",
+      "ref": "e13"
+    },
+    {
+      "role": "cell",
+      "name": "Active",
+      "frame": "content",
+      "ref": "e14"
+    },
+    {
+      "role": "link",
+      "name": "New Search",
+      "frame": "content",
+      "ref": "e15"
+    },
+    {
+      "role": "cell",
+      "name": "Bank Test — Confidential — Unauthorized access prohibited",
+      "frame": null,
+      "ref": "e16"
+    }
+  ],
+  "dialog": null
+}

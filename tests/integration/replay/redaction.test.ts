@@ -3,15 +3,17 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { evidenceText, readEvents, runDir } from '../../support/evidence';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
-import { runReplay, type HarnessOptions, type HarnessRun } from '../../support/replay-harness';
+import { referenceCapabilities, runReplay, type HarnessOptions, type HarnessRun } from '../../support/replay-harness';
 
 const MARIA = { memberId: '10001', accountType: 'Savings' };
 
 describe('replay evidence redaction against the fixture', { timeout: 30_000 }, () => {
   let fixture: FixtureHandle | undefined;
+  let capabilitiesDir = '';
 
   beforeAll(async () => {
     fixture = await startFixture();
+    capabilitiesDir = await referenceCapabilities();
   }, 30_000);
 
   afterAll(async () => {
@@ -20,7 +22,7 @@ describe('replay evidence redaction against the fixture', { timeout: 30_000 }, (
 
   function run(options?: HarnessOptions): Promise<HarnessRun> {
     if (fixture === undefined) throw new Error('fixture not started');
-    return runReplay(fixture, MARIA, options);
+    return runReplay(fixture, MARIA, { capabilitiesDir, ...options });
   }
 
   it('returns the balance to the caller but masks it and the member id in the evidence', async () => {

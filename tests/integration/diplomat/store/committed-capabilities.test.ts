@@ -25,8 +25,8 @@ describe('committed capabilities', () => {
     expect(text).toBe(`${JSON.stringify(toCapabilityFile(result.capability), null, 2)}\n`);
   });
 
-  it('resolve read-account-balance@1 to the reference steps', async () => {
-    const result = await createFsArtifactStore(ROOT).loadLatest('member.read-account-balance', 1);
+  it('keep the hand-written reference steps in read-account-balance@1.0.0', async () => {
+    const result = await createFsArtifactStore(ROOT).load('member.read-account-balance', '1.0.0');
     expect(result.ok && result.capability.steps.map((step) => step.id)).toEqual([
       'open-member-lookup',
       'enter-member-id',
@@ -34,5 +34,19 @@ describe('committed capabilities', () => {
       'open-member-detail',
       'read-balance',
     ]);
+  });
+
+  it('resolve read-account-balance@1 to the discovered patch, with the same contract', async () => {
+    const store = createFsArtifactStore(ROOT);
+    const [latest, reference] = await Promise.all([
+      store.loadLatest('member.read-account-balance', 1),
+      store.load('member.read-account-balance', '1.0.0'),
+    ]);
+    if (!latest.ok || !reference.ok) throw new Error('read-account-balance artifacts did not load');
+
+    expect(latest.capability.capability.version).toBe('1.0.1');
+    expect(latest.capability.provenance).toMatchObject({ method: 'discovered', reasoner: { adapter: 'local' } });
+    expect(latest.capability.inputs).toEqual(reference.capability.inputs);
+    expect(latest.capability.outputs).toEqual(reference.capability.outputs);
   });
 });

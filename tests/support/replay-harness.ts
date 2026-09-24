@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -70,6 +70,15 @@ export type HarnessOptions = {
   // Adjusts the committed policy.json (its origin already points at the fixture).
   readonly policy?: (policy: Policy) => Policy;
 };
+
+// A store holding only the hand-written read-account-balance@1.0.0, the reference the replay
+// tests are written against (the committed store also has discovered versions of it).
+export async function referenceCapabilities(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'reference-capabilities-'));
+  await mkdir(join(dir, 'member.read-account-balance'));
+  await copyFile(join(ROOT, 'capabilities/member.read-account-balance/1.0.0.json'), join(dir, 'member.read-account-balance/1.0.0.json'));
+  return dir;
+}
 
 // The real replay stack against a running fixture, with evidence in a fresh temp dir.
 export async function runReplay(

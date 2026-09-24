@@ -1,6 +1,7 @@
 import type { EvidenceRecorder, EvidenceRun } from '../diplomat/evidence/port';
 import type { ActionGateway, GatewayOutcome } from '../diplomat/gateway/port';
 import type { SessionProvider } from '../diplomat/session/port';
+import { isSurfaceError } from '../diplomat/surface/port';
 import type { ArtifactStore } from '../diplomat/store/port';
 import { DEFAULT_POLL_INTERVAL_MS, type Clock } from '../infrastructure/clock';
 import { bindInputs, validateInputs } from '../logic/capability-inputs';
@@ -19,7 +20,7 @@ import type { Dialog, Observation, Ref } from '../models/observation';
 import type { ReplayRequest } from '../models/replay-request';
 import type { Escalation } from './escalation';
 import { pollUntil } from './poll';
-import { endRun, guardSurface, openSurface, photograph, recordOutcome, SurfaceFailure, type ActionRecord } from './run-lifecycle';
+import { endRun, openSurface, photograph, recordOutcome, type ActionRecord } from './run-lifecycle';
 
 export type ReplayDeps = {
   readonly store: ArtifactStore;
@@ -84,7 +85,6 @@ type RunRecord = {
 
 // One run, once its artifact is loaded and its inputs are bound.
 type ReplayContext = {
-  // The gateway rejects only with SurfaceFailure (guardSurface).
   readonly deps: ReplayDeps;
   readonly request: ReplayRequest;
   readonly stepTimeoutMs: number;
@@ -174,7 +174,7 @@ async function captureFailure(ctx: ReplayContext, stepId: string, observation: O
     snapshot ??= await gateway.observe();
   } catch (error) {
     // Best effort: the failure itself is still reported.
-    if (!(error instanceof SurfaceFailure)) throw error;
+    if (!isSurfaceError(error)) throw error;
   }
   const screenshot = snapshot === undefined ? undefined : await photograph(ctx.deps, snapshot, maskTexts(ctx));
   const paths = await evidence.capture(stepId, { screenshot, snapshot });
@@ -304,7 +304,7 @@ async function readCheckpoint(ctx: ReplayContext, step: Step): Promise<Predicate
   try {
     return evaluatePredicate(step.checkpoint, await gatherFacts(ctx, step.id, await observe(ctx), [step.checkpoint]));
   } catch (error) {
-    if (!(error instanceof SurfaceFailure)) throw error;
+    if (!isSurfaceError(error)) throw error;
     return { holds: false, expected: 'the page to be readable', observed: error.message };
   }
 }
@@ -401,7 +401,7 @@ async function attemptOrTimeout(ctx: ReplayContext, step: Step): Promise<Attempt
   try {
     return await attemptStep(ctx, step);
   } catch (error) {
-    if (!(error instanceof SurfaceFailure) || !error.timedOut) throw error;
+    if (!isSurfaceError(error) || error.code !== 'timeout') throw error;
     return {
       kind: 'problem',
       trigger: 'action_timeout',
@@ -549,7 +549,7 @@ async function execute(ctx: ReplayContext): Promise<Ending> {
       if (notReopened !== undefined) return notReopened;
     }
   } catch (error) {
-    if (!(error instanceof SurfaceFailure)) throw error;
+    if (!isSurfaceError(error)) throw error;
     return failed(ctx, ctx.stepId, 'driver_error', 'the surface to respond', error.message);
   }
 }
@@ -592,7 +592,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
   }
 
   const ctx: ReplayContext = {
-    deps: { ...deps, gateway: guardSurface(deps.gateway) },
+    deps,
     request,
     stepTimeoutMs: options.stepTimeoutMs,
     pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,

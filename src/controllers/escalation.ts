@@ -10,7 +10,6 @@ import type { EscalationReason } from '../models/execution-result';
 import type { DialogDecision, HandoffOutcome, HumanAction, InterventionReason, InterventionRequest, Verification } from '../models/intervention';
 import type { Observation } from '../models/observation';
 import type { RunMode } from '../models/run-event';
-import { SurfaceFailure } from './run-lifecycle';
 
 export type { Verification } from '../models/intervention';
 
@@ -133,7 +132,7 @@ export function createEscalationController(deps: EscalationDeps, options: Escala
     try {
       return await request.verify();
     } catch (error) {
-      if (!(error instanceof SurfaceFailure)) throw error;
+      if (!isSurfaceError(error)) throw error;
       return { held: false, expected: 'the page to be readable', observed: errorMessage(error) };
     }
   }

@@ -2,6 +2,7 @@ import type { EvidenceRecorder, EvidenceRun } from '../diplomat/evidence/port';
 import type { ActionGateway } from '../diplomat/gateway/port';
 import { isReasonerError, type Proposal, type Reasoner, type ReasonerAdapter } from '../diplomat/reasoner/port';
 import type { SessionProvider } from '../diplomat/session/port';
+import { isSurfaceError } from '../diplomat/surface/port';
 import type { ArtifactStore } from '../diplomat/store/port';
 import { DEFAULT_POLL_INTERVAL_MS, type Clock } from '../infrastructure/clock';
 import { errorMessage } from '../infrastructure/errors';
@@ -30,7 +31,7 @@ import type { Observation, ObservationNode } from '../models/observation';
 import type { OutcomeCatalog } from '../models/outcome-catalog';
 import type { Escalation } from './escalation';
 import { pollUntil } from './poll';
-import { endRun, guardSurface, openSurface, photograph, recordOutcome, SurfaceFailure, type OpenRefusal } from './run-lifecycle';
+import { endRun, openSurface, photograph, recordOutcome, type OpenRefusal } from './run-lifecycle';
 
 export type DiscoveryDeps = {
   readonly store: ArtifactStore;
@@ -73,7 +74,6 @@ type Ending =
 
 // One discovery run.
 type DiscoveryContext = {
-  // The gateway rejects only with SurfaceFailure (guardSurface).
   readonly deps: DiscoveryDeps;
   readonly run: DiscoveryRun;
   readonly limits: DiscoveryLimits;
@@ -448,7 +448,7 @@ async function exploreGuarded(ctx: DiscoveryContext): Promise<Ending> {
   try {
     return await explore(ctx);
   } catch (error) {
-    if (!(error instanceof SurfaceFailure)) throw error;
+    if (!isSurfaceError(error)) throw error;
     return failed('driver_error', error.message);
   }
 }
@@ -469,7 +469,7 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
   );
   evidence.protect(sensitive);
   const ctx: DiscoveryContext = {
-    deps: { ...deps, gateway: guardSurface(deps.gateway) },
+    deps,
     run,
     limits,
     stepTimeoutMs: options.stepTimeoutMs,

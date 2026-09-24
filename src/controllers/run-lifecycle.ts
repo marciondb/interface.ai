@@ -19,43 +19,6 @@ export type RunSurface = {
   readonly evidence: EvidenceRecorder;
 };
 
-// A rejection from the surface (a guardSurface gateway). Anything else a run throws is a bug, or
-// evidence that could not be written, and is rethrown rather than reported as a driver error.
-export class SurfaceFailure extends Error {
-  override readonly name = 'SurfaceFailure';
-
-  constructor(
-    // The page did not become readable in time (surface code `timeout`).
-    readonly timedOut: boolean,
-    cause: unknown,
-  ) {
-    super(errorMessage(cause), { cause });
-  }
-}
-
-async function guarded<T>(call: () => Promise<T>): Promise<T> {
-  try {
-    return await call();
-  } catch (error) {
-    if (!isSurfaceError(error)) throw error;
-    throw new SurfaceFailure(error.code === 'timeout', error);
-  }
-}
-
-// The gateway, with every rejection of the surface turned into a SurfaceFailure.
-export function guardSurface(gateway: ActionGateway): ActionGateway {
-  return {
-    checkOpen: (url) => gateway.checkOpen(url),
-    open: (url, cookies) => guarded(() => gateway.open(url, cookies)),
-    observe: () => guarded(() => gateway.observe()),
-    resolve: (target) => guarded(() => gateway.resolve(target)),
-    inspect: (ref) => guarded(() => gateway.inspect(ref)),
-    check: (action) => guarded(() => gateway.check(action)),
-    perform: (request) => guarded(() => gateway.perform(request)),
-    screenshot: (options) => guarded(() => gateway.screenshot(options)),
-  };
-}
-
 // Why the target was not opened; `expected` and `observed` as a replay failure reports them.
 export type OpenRefusal = {
   readonly code: 'policy_denied' | 'precondition_failed';
@@ -153,7 +116,7 @@ export async function recordOutcome(evidence: EvidenceRecorder, record: ActionRe
   });
 }
 
-// A PNG of the page with every element showing one of maskTexts covered, from a guardSurface
+// A PNG of the page with every element showing one of maskTexts covered
 // gateway. Never the sign-in page (it may show credentials); undefined when the surface fails.
 export async function photograph(
   { gateway, session }: Pick<RunSurface, 'gateway' | 'session'>,
@@ -164,7 +127,7 @@ export async function photograph(
   try {
     return await gateway.screenshot({ maskTexts });
   } catch (error) {
-    if (!(error instanceof SurfaceFailure)) throw error;
+    if (!isSurfaceError(error)) throw error;
     return undefined;
   }
 }

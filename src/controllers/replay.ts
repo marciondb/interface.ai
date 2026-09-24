@@ -91,7 +91,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
   const run = await evidence.startRun({ mode: 'replay', capabilityId: request.capabilityId });
   const recoveries: Recovery[] = [];
   const interventions: string[] = [];
-  let capabilityRef = { id: request.capabilityId, version: String(request.major) };
+  let capabilityRef: ExecutionResult['capability'] = { id: request.capabilityId, requestedMajor: request.major };
   let surfaceOpened = false;
   let currentStepId = 'artifact';
 
@@ -156,11 +156,11 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
 
   // Stops before a risky action with the page as it is and hands the same session to a human
   // (RFC-005). undefined when the human did it and `verify` confirmed it: the run goes on.
-  async function handOff(stepId: string, message: string, verify: () => Promise<Verification>): Promise<Ending | undefined> {
+  async function handOff(capability: Capability, stepId: string, message: string, verify: () => Promise<Verification>): Promise<Ending | undefined> {
     const outcome = await escalation.handOff({
       run,
       mode: 'replay',
-      capability: `${capabilityRef.id}@${capabilityRef.version}`,
+      capability: `${capability.capability.id}@${capability.capability.version}`,
       stepId,
       reason: 'risky_action',
       message,
@@ -433,7 +433,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
         return failed(stepId, 'policy_denied', `click on ${name} allowed by policy`, describeLanding(outcome));
       case 'requires_human': {
         const condition = capability.outcomes.find((declared) => declared.id === move.outcomeId)?.when;
-        return handOff(stepId, `click on ${name} needs a human: ${outcome.reason}`, async () => {
+        return handOff(capability, stepId, `click on ${name} needs a human: ${outcome.reason}`, async () => {
           if (condition === undefined) return { held: true };
           const shown = evaluateCheckpoint(condition, await gatherFacts(capability, stepId, await gateway.observe(), [condition]));
           return shown.holds ? { held: false, expected: `${move.outcomeId} to be dismissed`, observed: shown.observed } : { held: true };
@@ -468,7 +468,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
         }
         if (outcome.kind === 'failed') return end(await failed(step.id, outcome.code, outcome.expected, outcome.observed));
         if (outcome.kind === 'requires_human') {
-          const ended = await handOff(step.id, outcome.message, () => verifyStep(capability, step));
+          const ended = await handOff(capability, step.id, outcome.message, () => verifyStep(capability, step));
           if (ended !== undefined) return end(ended);
           break;
         }
@@ -481,14 +481,19 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
             return end({ status: 'business_outcome', outcome: move.outcomeId, stepId: step.id });
           case 'apply_recovery': {
             attempt += 1;
-            await recordRecovery({ stepId: step.id, condition: move.outcomeId, response: 'declared_recovery', attempt });
+            await recordRecovery({ stepId: step.id, condition: 'outcome', outcomeId: move.outcomeId, response: 'declared_recovery', attempt });
             const recoveryFailed = await applyRecovery(capability, step.id, move);
             if (recoveryFailed !== undefined) return end(recoveryFailed);
             break;
           }
           case 'retry_after':
             attempt += 1;
-            await recordRecovery({ stepId: step.id, condition: move.condition, response: 'retry', attempt }, move.delayMs);
+            await recordRecovery(
+              move.condition === 'timeout'
+                ? { stepId: step.id, condition: 'timeout', response: 'retry', attempt }
+                : { stepId: step.id, condition: 'outcome', outcomeId: move.outcomeId, response: 'retry', attempt },
+              move.delayMs,
+            );
             await clock.sleep(move.delayMs);
             break;
           case 'reauthenticate_and_restart':
@@ -573,13 +578,14 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
       ),
     );
   }
-  capabilityRef = { id: loaded.capability.capability.id, version: loaded.capability.capability.version };
+  const { id, version } = loaded.capability.capability;
+  capabilityRef = { id, requestedMajor: request.major, version };
   // Raw values, so they are masked even when validation rejects them.
   evidence.protect(sensitiveValuesOf(loaded.capability, request.inputs, {}));
 
   const validation = validateInputs(loaded.capability, request.inputs);
   if (!validation.ok) {
-    const contract = `${capabilityRef.id}@${capabilityRef.version}`;
+    const contract = `${id}@${version}`;
     return finish(
       await failed('inputs', 'invalid_input', `inputs matching the ${contract} contract`, validation.errors.map((error) => error.message).join('; ')),
     );

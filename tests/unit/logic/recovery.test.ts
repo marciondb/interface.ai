@@ -26,7 +26,7 @@ describe('nextMove', () => {
 
     expect(nextMove(interstitial, FRESH)).toEqual({ move: 'apply_recovery', outcomeId: 'interstitial', recover: interstitial.recover });
     expect(nextMove(interstitial, { attempt: 2, reauthUsed: false })).toEqual({ move: 'fail', code: 'recovery_exhausted' });
-    expect(nextMove({ kind: 'recoverable', outcomeId: 'banner' }, FRESH)).toEqual({ move: 'retry_after', delayMs: 500, condition: 'banner' });
+    expect(nextMove({ kind: 'recoverable', outcomeId: 'banner' }, FRESH)).toEqual({ move: 'retry_after', delayMs: 500, condition: 'outcome', outcomeId: 'banner' });
   });
 
   it('re-authenticates once per run, then fails on the second expiry', () => {

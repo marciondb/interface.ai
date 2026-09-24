@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { createActionGateway } from '../../../../src/diplomat/gateway/action-gateway';
+import { CONTROL_OWNED_BY_HUMAN } from '../../../../src/diplomat/gateway/port';
 import type { SurfaceDriver } from '../../../../src/diplomat/surface/port';
 import type { SurfaceAction } from '../../../../src/models/action';
 import type { ControlOwner } from '../../../../src/models/control';
@@ -214,9 +215,9 @@ describe('action gateway', () => {
 
     expect(await gateway.perform({ stepId: 's', purpose: 'step', action: click(), timeoutMs: 1 })).toEqual({
       status: 'denied',
-      reason: 'control_owned_by_human',
+      reason: CONTROL_OWNED_BY_HUMAN,
     });
-    expect(await gateway.open('http://localhost:8080/', [])).toEqual({ decision: 'deny', reason: 'control_owned_by_human' });
+    expect(await gateway.open('http://localhost:8080/', [])).toEqual({ decision: 'deny', reason: CONTROL_OWNED_BY_HUMAN });
     expect(described).toHaveBeenCalledTimes(0);
     expect(calls).toEqual([]);
     expect(await gateway.perform({ stepId: 's', purpose: 'checkpoint', action: read, timeoutMs: 1 })).toMatchObject({ status: 'done' });

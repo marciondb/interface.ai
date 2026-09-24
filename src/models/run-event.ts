@@ -1,5 +1,5 @@
 import type { SurfaceActionKind, Verb } from './action';
-import type { Candidate } from './capability';
+import type { Candidate, ReasonerInfo, StepAction } from './capability';
 import type { Classification, ClassificationTrigger } from './classification';
 import type { DiscoveryFailureReason, DiscoveryLimits } from './discovery';
 import type { EscalationReason, ExecutionStatus, Recovery } from './execution-result';
@@ -7,8 +7,6 @@ import type { HumanAction, InterventionReason } from './intervention';
 import type { Navigation } from './resolution';
 
 export type RunMode = 'replay' | 'discovery';
-
-export type ReasonerInfo = { readonly adapter: 'local' | 'hosted'; readonly model: string };
 
 export type ActionPurpose = 'step' | 'recovery' | 'checkpoint';
 
@@ -22,7 +20,7 @@ export type RunEvent =
       readonly targetUrl: string;
     }
   | { readonly type: 'session'; readonly event: 'established' | 'reauthenticated' | 'opened' }
-  | { readonly type: 'step_started'; readonly stepId: string; readonly attempt: number; readonly action: string }
+  | { readonly type: 'step_started'; readonly stepId: string; readonly attempt: number; readonly action: StepAction['kind'] }
   | {
       readonly type: 'target_resolved';
       readonly stepId: string;
@@ -125,5 +123,3 @@ export type RunEvent =
       readonly stepId?: string;
       readonly reason?: DiscoveryFailureReason | EscalationReason;
     };
-
-export type RunEventType = RunEvent['type'];

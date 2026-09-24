@@ -1,7 +1,5 @@
 import { z } from 'zod';
-import { CapabilityInfoSchema, InputSpecSchema, OutputSpecSchema } from './capability';
-
-const FieldNameSchema = z.string().regex(/^[a-zA-Z][a-zA-Z0-9]*$/, 'field names must be alphanumeric identifiers');
+import { CapabilityInfoSchema, FieldNameSchema, InputSpecSchema, OutputSpecSchema } from './capability';
 
 export const GOAL_PARAMETER = /\{\{([a-zA-Z][a-zA-Z0-9]*)\}\}/g;
 

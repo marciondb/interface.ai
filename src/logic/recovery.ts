@@ -18,7 +18,7 @@ export type Move =
       readonly outcomeId: string;
       readonly recover: NonNullable<Extract<Classification, { kind: 'recoverable' }>['recover']>;
     }
-  | { readonly move: 'retry_after'; readonly delayMs: number; readonly condition: string }
+  | ({ readonly move: 'retry_after'; readonly delayMs: number } & ({ readonly condition: 'timeout' } | { readonly condition: 'outcome'; readonly outcomeId: string }))
   | { readonly move: 'reauthenticate_and_restart' }
   | { readonly move: 'fail'; readonly code: FailureCode };
 
@@ -31,7 +31,7 @@ export function nextMove(classification: Classification, budget: RecoveryBudget)
     case 'recoverable':
       if (exhausted) return { move: 'fail', code: 'recovery_exhausted' };
       return classification.recover === undefined
-        ? { move: 'retry_after', delayMs: RETRY_BACKOFF_MS[budget.attempt], condition: classification.outcomeId }
+        ? { move: 'retry_after', delayMs: RETRY_BACKOFF_MS[budget.attempt], condition: 'outcome', outcomeId: classification.outcomeId }
         : { move: 'apply_recovery', outcomeId: classification.outcomeId, recover: classification.recover };
     case 'timeout':
       if (exhausted) return { move: 'fail', code: 'timeout' };

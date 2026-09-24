@@ -13,6 +13,7 @@ import { describeLanding } from '../logic/policy';
 import { redactDeep, redactObservation, type RedactionRules, type SensitiveValue } from '../logic/redaction';
 import { actionArgument, actionRef } from '../logic/step-action';
 import type { AgentDecision, SurfaceAction } from '../models/action';
+import type { ReasonerInfo } from '../models/capability';
 import type { CapabilityRequest } from '../models/capability-request';
 import {
   DEFAULT_DISCOVERY_LIMITS,
@@ -26,7 +27,6 @@ import type { EscalationReason } from '../models/execution-result';
 import type { HumanTarget, InterventionReason } from '../models/intervention';
 import type { Observation } from '../models/observation';
 import type { OutcomeCatalog } from '../models/outcome-catalog';
-import type { ReasonerInfo } from '../models/run-event';
 import type { Escalation } from './escalation';
 
 export type DiscoveryDeps = {

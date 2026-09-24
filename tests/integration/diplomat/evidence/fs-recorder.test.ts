@@ -25,7 +25,7 @@ describe('filesystem evidence recorder', () => {
     const paths = await recorder.capture('enter-member-id', { screenshot: new Uint8Array([137, 80, 78, 71]), snapshot });
     const result: ExecutionResult = {
       runId: run.runId,
-      capability: { id: 'member.read-account-balance', version: '1.0.0' },
+      capability: { id: 'member.read-account-balance', requestedMajor: 1, version: '1.0.0' },
       durationMs: 5,
       recoveries: [],
       interventions: [],

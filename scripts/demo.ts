@@ -53,7 +53,7 @@ const SCENARIOS: readonly Scenario[] = [
     holds: (result) =>
       result.status === 'succeeded' &&
       result.outputs.balance === '4,812.37' &&
-      result.recoveries.some((recovery) => recovery.condition === 'interstitial'),
+      result.recoveries.some((recovery) => recovery.condition === 'outcome' && recovery.outcomeId === 'interstitial'),
   },
   {
     name: 'hard failure',
@@ -88,7 +88,7 @@ const SCENARIOS: readonly Scenario[] = [
 function describe(result: ExecutionResult): string {
   switch (result.status) {
     case 'succeeded': {
-      const recoveries = result.recoveries.map((recovery) => `+recovery:${recovery.condition}`).join('');
+      const recoveries = result.recoveries.map((recovery) => `+recovery:${recovery.condition === 'outcome' ? recovery.outcomeId : recovery.condition}`).join('');
       return `succeeded${recoveries}${result.interventions.length > 0 ? '+intervention' : ''}`;
     }
     case 'business_outcome':

@@ -1,9 +1,5 @@
 import { z } from 'zod';
-import { OutcomeSchema, predicateTarget, TargetSpecSchema, type Outcome } from './capability';
-
-const TargetNameSchema = z
-  .string()
-  .regex(/^[a-zA-Z][a-zA-Z0-9]*(\.[a-zA-Z][a-zA-Z0-9]*)*$/, 'target names must be dotted identifiers like lookup.memberId');
+import { OutcomeSchema, predicateTarget, TargetNameSchema, TargetSpecSchema, type Outcome } from './capability';
 
 // Outcomes known for one app, written from its visible texts; discovery copies the ones a
 // request lists instead of guessing them (RFC-003). `targets` holds the recovery controls.

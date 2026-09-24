@@ -36,10 +36,20 @@ the intervention request (RFC-005) and the `message`.
 
 `failure.evidence` is the path to the screenshot/snapshot captured at the failing step.
 
-Every result also carries `runId`, `capability` (id + version), `durationMs`,
-`recoveries[]` — the recoverable conditions handled along the way (interstitial
-dismissed, slow load retried) — and `interventions: string[]`, the ids of handoffs
-that happened during the run.
+Every result also carries `runId`, `capability`, `durationMs`, `recoveries[]` —
+the recoverable conditions handled along the way (interstitial dismissed, slow load
+retried) — and `interventions: string[]`, the ids of handoffs that happened during
+the run:
+
+```ts
+capability: { id: string; requestedMajor: number; version?: string }  // version: the loaded artifact's
+
+type Recovery = { stepId: string; attempt: number } & (
+  | { condition: "outcome"; outcomeId: string; response: "declared_recovery" | "retry" }
+  | { condition: "timeout"; response: "retry" }
+  | { condition: "session_expired"; response: "reauthenticate" }
+)
+```
 
 The CLI maps `status` to exit codes: `0` succeeded, `2` business_outcome, `3`
 failed, `4` escalated; `1` is a usage/config error.

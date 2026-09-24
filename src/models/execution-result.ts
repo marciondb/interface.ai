@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SemverSchema } from './capability';
 
 export const FAILURE_CODES = [
   'invalid_input',
@@ -17,13 +18,15 @@ export const FAILURE_CODES = [
 
 export const FailureCodeSchema = z.enum(FAILURE_CODES);
 
-export const RecoverySchema = z.strictObject({
-  stepId: z.string(),
-  // Declared recoverable outcome id, `timeout` or `session_expired`.
-  condition: z.string(),
-  response: z.enum(['declared_recovery', 'retry', 'reauthenticate']),
-  attempt: z.number().int().positive(),
-});
+const recoveryBase = { stepId: z.string(), attempt: z.number().int().positive() };
+
+// What was recovered from and how (RFC-004): a declared recoverable outcome by its recovery
+// or a retry, a timeout by a retry, an expired session by signing in again.
+export const RecoverySchema = z.discriminatedUnion('condition', [
+  z.strictObject({ ...recoveryBase, condition: z.literal('outcome'), outcomeId: z.string(), response: z.enum(['declared_recovery', 'retry']) }),
+  z.strictObject({ ...recoveryBase, condition: z.literal('timeout'), response: z.literal('retry') }),
+  z.strictObject({ ...recoveryBase, condition: z.literal('session_expired'), response: z.literal('reauthenticate') }),
+]);
 
 // How the human handoff ended without the run resuming (RFC-005); what triggered it is in the
 // intervention request and the message.
@@ -32,8 +35,8 @@ export const EscalationReasonSchema = z.enum(['no_operator_surface', 'aborted', 
 const base = {
   // Name of the run's evidence folder.
   runId: z.string(),
-  // Resolved version, or the requested major when the artifact could not be loaded.
-  capability: z.strictObject({ id: z.string(), version: z.string() }),
+  // `version` is the loaded artifact's; absent when no artifact could be loaded.
+  capability: z.strictObject({ id: z.string(), requestedMajor: z.number().int().nonnegative(), version: SemverSchema.optional() }),
   durationMs: z.number().nonnegative(),
   recoveries: z.array(RecoverySchema),
   interventions: z.array(z.string()),

@@ -6,9 +6,9 @@ export const CapabilityIdSchema = z
 
 export const SemverSchema = z.string().regex(/^[0-9]+\.[0-9]+\.[0-9]+$/, 'version must be semver MAJOR.MINOR.PATCH');
 
-const FieldNameSchema = z.string().regex(/^[a-zA-Z][a-zA-Z0-9]*$/, 'field names must be alphanumeric identifiers');
+export const FieldNameSchema = z.string().regex(/^[a-zA-Z][a-zA-Z0-9]*$/, 'field names must be alphanumeric identifiers');
 
-const TargetNameSchema = z
+export const TargetNameSchema = z
   .string()
   .regex(/^[a-zA-Z][a-zA-Z0-9]*(\.[a-zA-Z][a-zA-Z0-9]*)*$/, 'target names must be dotted identifiers like lookup.memberId');
 
@@ -121,6 +121,9 @@ export const OutcomeSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
+// Which model discovered an artifact: local (Ollama) or hosted (OpenAI-compatible).
+export const ReasonerInfoSchema = z.strictObject({ adapter: z.enum(['local', 'hosted']), model: z.string().min(1) });
+
 export const ProvenanceSchema = z.discriminatedUnion('method', [
   z.strictObject({ method: z.literal('hand_written'), createdAt: z.iso.datetime() }),
   z.strictObject({
@@ -128,7 +131,7 @@ export const ProvenanceSchema = z.discriminatedUnion('method', [
     createdAt: z.iso.datetime(),
     // Discovery run id; its evidence lives under evidence/runs/.
     runId: z.string().min(1),
-    reasoner: z.strictObject({ adapter: z.enum(['local', 'hosted']), model: z.string().min(1) }),
+    reasoner: ReasonerInfoSchema,
   }),
 ]);
 
@@ -279,5 +282,6 @@ export type StepAction = z.infer<typeof StepActionSchema>;
 export type Risk = z.infer<typeof RiskSchema>;
 export type Step = z.infer<typeof StepSchema>;
 export type Outcome = z.infer<typeof OutcomeSchema>;
+export type ReasonerInfo = z.infer<typeof ReasonerInfoSchema>;
 export type Provenance = z.infer<typeof ProvenanceSchema>;
 export type Capability = z.infer<typeof CapabilitySchema>;

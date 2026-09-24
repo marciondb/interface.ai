@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { SurfaceDecision } from './action';
+import { ReasonerInfoSchema } from './capability';
 import type { ElementDescriptor } from './element-descriptor';
 import { EscalationReasonSchema } from './execution-result';
 import type { HumanAction } from './intervention';
@@ -60,7 +61,7 @@ const base = {
   // Name of the run's evidence folder.
   runId: z.string(),
   capability: z.strictObject({ id: z.string(), version: z.string() }),
-  reasoner: z.strictObject({ adapter: z.enum(['local', 'hosted']), model: z.string() }),
+  reasoner: ReasonerInfoSchema,
   durationMs: z.number().nonnegative(),
   // Model turns taken.
   steps: z.number().int().nonnegative(),

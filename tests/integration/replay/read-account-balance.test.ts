@@ -38,7 +38,7 @@ describe('replay of member.read-account-balance@1 against the fixture', { timeou
     expect(result).toMatchObject({
       status: 'succeeded',
       outputs: { balance: '4,812.37' },
-      capability: { id: 'member.read-account-balance', version: '1.0.0' },
+      capability: { id: 'member.read-account-balance', requestedMajor: 1, version: '1.0.0' },
       recoveries: [],
       interventions: [],
     });
@@ -77,6 +77,7 @@ describe('replay of member.read-account-balance@1 against the fixture', { timeou
     const { result } = await run(MARIA, { capability: 'member.does-not-exist' });
 
     expect(failure(result)).toMatchObject({ stepId: 'artifact', code: 'artifact_unavailable' });
+    expect(result.capability).toEqual({ id: 'member.does-not-exist', requestedMajor: 1 });
   });
 
   it('retries a slow load after the step timeout', async () => {
@@ -95,7 +96,7 @@ describe('replay of member.read-account-balance@1 against the fixture', { timeou
     expect(result).toMatchObject({
       status: 'succeeded',
       outputs: { balance: '4,812.37' },
-      recoveries: [{ stepId: 'open-member-lookup', condition: 'interstitial', response: 'declared_recovery', attempt: 1 }],
+      recoveries: [{ stepId: 'open-member-lookup', condition: 'outcome', outcomeId: 'interstitial', response: 'declared_recovery', attempt: 1 }],
     });
   });
 

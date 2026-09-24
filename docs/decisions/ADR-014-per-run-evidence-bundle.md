@@ -28,10 +28,13 @@ evidence/runs/<timestamp>-<mode>-<capability-id>/
 └── snapshots/         # accessibility snapshots, redacted
 ```
 
-- The evidence root is configurable via `EVIDENCE_DIR` (default `evidence/runs`)
+- The evidence root is configurable via `EVIDENCE_DIR` (default `evidence/runs`,
+  git-ignored except for the curated runs)
 - Every event has `runId`, `seq`, `timestamp`, and `stepId` where applicable
 - Discovery events include the model's `rationale`
-- Redaction runs **before** writing, inside the recorder
+- Redaction runs **before** writing, inside the recorder; when the run finishes,
+  the recorder redacts every JSON file of the run again with the final set of
+  values, so a value learned late is masked in earlier snapshots too
 - Declared-sensitive outputs are masked in evidence (`[REDACTED:<sensitivity>]`)
   while still being returned unmasked to the caller
 - Curated sample runs are committed under `/evidence/` and indexed in
@@ -45,8 +48,9 @@ evidence/runs/<timestamp>-<mode>-<capability-id>/
 - Redaction has a single enforcement point
 
 **Negative**
-- Screenshots can show sensitive values; mitigated by capturing only on the fixture
-  with synthetic data, and noted as a production gap (masking at capture time)
+- Screenshots can show sensitive values, and snapshots show undeclared page data
+  (other balances, names); mitigated by capturing only on the fixture with
+  synthetic data, and noted as a production gap (masking at capture time)
 - No retention or indexing beyond the filesystem
 
 ## Alternatives

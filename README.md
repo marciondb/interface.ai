@@ -238,9 +238,9 @@ loads `.env` automatically, so export what you change (e.g.
 | Variable | Default | Used by |
 |---|---|---|
 | `TARGET_USERNAME`, `TARGET_PASSWORD` | the fixture's demo credentials ([`fixture/README.md`](fixture/README.md)) | sign-in over HTTP before each run (ADR-013) |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | `discover` (local) |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | `discover` (local); must be a loopback address so observations stay on the machine |
 | `REASONER_MODEL` | `qwen3:14b` | `discover` (local) |
-| `HOSTED_BASE_URL`, `HOSTED_MODEL`, `HOSTED_API_KEY` | unset | `discover --reasoner hosted` |
+| `HOSTED_BASE_URL`, `HOSTED_MODEL`, `HOSTED_API_KEY` | unset | `discover --reasoner hosted`; the base URL must be `https:` unless it is loopback |
 | `EVIDENCE_DIR` | `evidence/runs` | where each run's evidence folder is written |
 | `REPLAY_STEP_TIMEOUT_MS` | `5000` | per-step budget in replay |
 | `HANDOFF_TTL_MS` | `600000` (10 min) | how long a handoff waits for the operator |

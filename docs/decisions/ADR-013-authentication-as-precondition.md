@@ -20,10 +20,15 @@ inside every artifact and tie each capability to one tenant's login flow.
 
 - Artifacts declare `preconditions: [{ "kind": "authenticated_session" }]`
 - A **session provider** Diplomat establishes the session before discovery or
-  replay, reading credentials from environment variables
+  replay, reading credentials from environment variables. It logs in over HTTP
+  (posting the login form) and injects the session cookie into the browser
+  context, so the password never appears in the browser, the accessibility
+  snapshot, screenshots, or evidence
 - Credentials never appear in artifacts, observations sent to the model, or evidence
 - Session expiry during replay is a **recoverable condition**: re-authenticate
-  once, re-run the current step; a second expiry is a hard failure
+  once and restart the capability from its first step (a fresh login lands on the
+  home screen, so re-running only the current step is not possible); a second
+  expiry is a hard failure
 
 ## Consequences
 

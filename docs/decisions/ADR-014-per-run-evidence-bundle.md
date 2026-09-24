@@ -23,14 +23,19 @@ evidence/runs/<timestamp>-<mode>-<capability-id>/
 ├── run.jsonl          # one event per line: observation, decision, action, policy, checkpoint, recovery, handoff
 ├── result.json        # the ExecutionResult (ADR-009)
 ├── artifact.json      # discovery only: the produced capability
+├── intervention.json  # only when the run had a handoff
 ├── screenshots/       # per step on discovery, on failure and handoff on replay
 └── snapshots/         # accessibility snapshots, redacted
 ```
 
+- The evidence root is configurable via `EVIDENCE_DIR` (default `evidence/runs`)
 - Every event has `runId`, `seq`, `timestamp`, and `stepId` where applicable
 - Discovery events include the model's `rationale`
 - Redaction runs **before** writing, inside the recorder
-- Sample runs are committed under `/evidence/`
+- Declared-sensitive outputs are masked in evidence (`[REDACTED:<sensitivity>]`)
+  while still being returned unmasked to the caller
+- Curated sample runs are committed under `/evidence/` and indexed in
+  `evidence/README.md`
 
 ## Consequences
 
@@ -53,4 +58,5 @@ evidence/runs/<timestamp>-<mode>-<capability-id>/
 ## Related
 
 - ADR-009 — Discriminated-Union Execution Result Contract
+- ADR-012 — Same-Session Control Transfer for Human Handoff
 - RFC-006 — Safety, Guardrails & Regulated Data Handling

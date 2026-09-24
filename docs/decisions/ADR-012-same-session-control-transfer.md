@@ -19,16 +19,25 @@ in control.
 
 ## Decision
 
-- The browser runs **headed**; its window is the operator surface in v1
+- The browser runs **headed** only when the CLI gets `--headed`; its window is the
+  operator surface in v1. Without an operator window, an escalation ends
+  immediately with an `escalated` result (`no_operator_surface`)
 - A **control owner** value (`automation | human`) is held by the escalation
   controller; the gateway rejects automation actions unless the owner is
   `automation`
 - On escalation: write an intervention request, set owner to `human`, start
   capturing human actions, and wait
 - Human actions are captured by page-level listeners (clicks, inputs, navigations)
-  plus before/after snapshots, with input values redacted
-- The operator signals resume through the CLI; the run re-observes the page,
+  plus before/after snapshots; captured input values are redacted in the page
+  before they reach the system
+- The operator controls the handoff by typing `take`, `resume`, or `abort` at a
+  stdin prompt of the running process; on resume the run re-observes the page,
   verifies the current step's checkpoint, and continues or reports
+- A TTL (default 10 minutes, `HANDOFF_TTL_MS`) and a closed browser window both end
+  the handoff
+- Native dialogs: dismissed while automation holds control and surfaced in the
+  next observation; while a human holds control, the operator answers them at the
+  terminal and the answer is recorded as a human action
 
 ## Consequences
 
@@ -51,4 +60,5 @@ in control.
 
 - ADR-003 — Single Process, CLI-First Composition
 - ADR-006 — Playwright as the Computer-Use Driver
+- ADR-009 — Discriminated-Union Execution Result Contract
 - RFC-005 — Human-in-the-Loop Escalation & Session Handoff

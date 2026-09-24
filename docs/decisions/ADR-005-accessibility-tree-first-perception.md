@@ -35,6 +35,11 @@ Secondary signals:
 Browsers compute implicit roles (textbox, button, link, cell) even when markup
 declares none, so the tree is populated on surfaces with no semantic markup at all.
 
+Observations are captured with Playwright's `ariaSnapshot` in AI mode, in its JSON
+form, which includes iframe content. Controls with no accessible name (e.g. inputs
+with no associated `<label>`, common in the target) carry a `label` taken from
+adjacent visible text in the tree; this maps to the label candidate in ADR-008.
+
 ## Consequences
 
 **Positive**

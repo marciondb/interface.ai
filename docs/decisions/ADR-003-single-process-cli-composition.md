@@ -38,13 +38,16 @@ The system runs as a **single Node process** with a **command-line entry point**
 
 | Concern | Choice |
 |---|---|
-| Entry point | CLI commands: `discover`, `replay`, and an operator command for handoff |
+| Entry point | CLI commands: `discover` and `replay` |
+| Handoff control | The operator types `take`, `resume`, or `abort` at a prompt on the running process's stdin |
 | Artifact storage | Filesystem, one versioned JSON file per capability |
 | Evidence storage | Filesystem, one directory per run |
 | Run state | In-memory for the duration of a run |
 | Composition | Explicit wiring in a composition root; no dependency-injection container |
 
 There is no HTTP server, no message broker, no database, and no worker pool.
+Because run state lives in that single process, handoff is controlled from the
+same process's stdin rather than through a separate command.
 
 ### The seam that is preserved
 
@@ -120,5 +123,6 @@ control-transfer model is worth more than a polished console.
 
 - ADR-001 — Diplomat Architecture as Service Structure
 - ADR-002 — TypeScript on Node as Language and Runtime
+- ADR-012 — Same-Session Control Transfer for Human Handoff
 - RFC-001 — System Scope & Component Landscape
 - RFC-005 — Human-in-the-Loop Escalation & Session Handoff

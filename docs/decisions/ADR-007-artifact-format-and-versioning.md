@@ -31,6 +31,9 @@ and invoked by agents that depend on their input/output contract.
 
 Callers pin a capability major version; locator fixes never break them.
 
+A published version is immutable: changes produce a new version file, and the
+store refuses to overwrite an existing one.
+
 ## Consequences
 
 **Positive**

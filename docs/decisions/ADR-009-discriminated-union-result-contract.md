@@ -23,13 +23,22 @@ most common mistake in this kind of system.
 type ExecutionResult =
   | { status: "succeeded"; outputs: Record<string, unknown> }
   | { status: "business_outcome"; outcome: string; details?: Record<string, unknown> }
-  | { status: "failed"; failure: { stepId: string; code: FailureCode; expected: string; observed: string } }
-  | { status: "escalated"; interventionId: string; reason: string }
+  | { status: "failed"; failure: { stepId: string; code: FailureCode; expected: string; observed: string; evidence: string } }
+  | { status: "escalated"; interventionId: string; stepId: string; reason: EscalationReason; message: string }
+
+type EscalationReason =
+  | "risky_action" | "unrecoverable" | "no_operator_surface" | "aborted" | "ttl_expired"
 ```
 
-Every result also carries `runId`, `capability` (id + version), `durationMs`, and
+`failure.evidence` is the path to the screenshot/snapshot captured at the failing step.
+
+Every result also carries `runId`, `capability` (id + version), `durationMs`,
 `recoveries[]` — the recoverable conditions handled along the way (interstitial
-dismissed, slow load retried).
+dismissed, slow load retried) — and `interventions: string[]`, the ids of handoffs
+that happened during the run.
+
+The CLI maps `status` to exit codes: `0` succeeded, `2` business_outcome, `3`
+failed, `4` escalated; `1` is a usage/config error.
 
 Rules:
 - Business outcomes are **declared in the artifact**; an undeclared state is never

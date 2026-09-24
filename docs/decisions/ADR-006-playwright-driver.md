@@ -7,7 +7,7 @@
 | **Contributors** | N/A |
 | **Started at** | 2026-09-24 |
 | **Status** | ACCEPTED |
-| **Description** | Playwright is the implementation behind the surface driver port for web surfaces, chosen for accessibility-tree access, frame handling, and control over a live, headed browser session. |
+| **Description** | Playwright is the implementation behind the surface driver port for web surfaces, chosen for accessibility-tree access, frame handling, and control over a live browser session that can be headed for human handoff. |
 
 ---
 
@@ -27,7 +27,7 @@ Playwright type crosses into the Domain.
 **Positive**
 - Accessibility snapshots and frame-aware locators out of the box
 - Native dialog handling (`confirm()`), which the target uses
-- Headed mode gives a human a real window to take over (ADR-012)
+- Headed mode (`--headed`) gives a human a real window to take over (ADR-012)
 - Auto-waiting reduces hand-written timing code
 
 **Negative**

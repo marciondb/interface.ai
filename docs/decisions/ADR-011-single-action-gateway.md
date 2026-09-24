@@ -22,13 +22,19 @@ easy to bypass by accident. The policy also needs to be testable and configurabl
   the raw driver
 - **Policy is pure Logic**: `evaluate(action, target, currentUrl, policy) →
   allow | deny(reason) | requires_human(reason)`
-- **Policy is a config file** (`policy.json`): allowed origins, allowed route
-  prefixes, allowed action types, and risky-action rules (by route and by control
+- **Policy is a config file** (`policy.json`): allowed origins, allowed routes,
+  allowed action types, and risky-action rules (by route and by control
   text, e.g. `Close Account`, `Post Adjustment`)
 
+- **Precedence:** `deny` > `requires_human` > `allow`
+- **Matching:** routes match exactly, and a trailing `*` means prefix (e.g.
+  `/member/*`); risky control text is compared as a normalized exact match
+
 Risky-action policy: **block for automation, allow only through human handoff.**
-In discovery, a denial is returned to the model as an observation. In replay, a
-step marked risky escalates instead of executing.
+In discovery, `deny` is returned to the model as feedback, while `requires_human`
+triggers the human handoff. In replay, a step marked `risky` in the artifact
+escalates instead of executing, even if the policy would allow it. The gateway
+also rejects every automation action while a human owns control (ADR-012).
 
 ## Consequences
 
@@ -50,5 +56,6 @@ step marked risky escalates instead of executing.
 
 ## Related
 
+- ADR-012 — Same-Session Control Transfer for Human Handoff
 - ADR-015 — Local Reasoner with Schema-Constrained Output
 - RFC-006 — Safety, Guardrails & Regulated Data Handling

@@ -11,6 +11,8 @@ export const CONTROL_EVENTS = [
   'ttl_expired',
   'surface_closed',
   'no_operator_surface',
+  // The handoff itself broke (e.g. its evidence could not be written): nobody may act any more.
+  'handoff_failed',
 ] as const;
 
 export type ControlState = (typeof CONTROL_STATES)[number];

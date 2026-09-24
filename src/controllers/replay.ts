@@ -1,31 +1,32 @@
-import type { EvidenceRecorder } from '../diplomat/evidence/port';
-import type { ActionGateway, GatewayOutcome, OpenDecision } from '../diplomat/gateway/port';
-import { isSessionError, type SessionCookie, type SessionProvider } from '../diplomat/session/port';
+import type { EvidenceRecorder, EvidenceRun } from '../diplomat/evidence/port';
+import type { ActionGateway, GatewayOutcome } from '../diplomat/gateway/port';
+import type { SessionProvider } from '../diplomat/session/port';
 import type { ArtifactStore } from '../diplomat/store/port';
 import { DEFAULT_POLL_INTERVAL_MS, type Clock } from '../infrastructure/clock';
-import { errorMessage } from '../infrastructure/errors';
 import { bindInputs, validateInputs } from '../logic/capability-inputs';
-import { describeCounts, evaluatePredicate, factsNeeded, type Facts, type TargetFact } from '../logic/checkpoint';
+import { describeCounts, evaluatePredicate, factsNeeded, type Facts, type PredicateResult, type TargetFact } from '../logic/checkpoint';
 import { classify, describeClassification, isDefinitive } from '../logic/outcome-classifier';
-import { describeLanding } from '../logic/policy';
-import { nextMove, type Move } from '../logic/recovery';
-import { sensitiveValuesOf } from '../logic/redaction';
-import { actionArgument, navigateAction, toSurfaceAction } from '../logic/step-action';
+import { dialogRecovery, humanCanRecover, nextMove, withDismissedDialogs, type Move, type RecoveryBudget } from '../logic/recovery';
+import { sensitiveValuesOf, type SensitiveValue } from '../logic/redaction';
+import { describeStepAction, navigateAction, toSurfaceAction } from '../logic/step-action';
+import { afterAction, afterLanding, afterRecoveryAction, conditionDismissed, gateRiskyStep, type HumanNeeded, type StepFailure } from '../logic/step-attempt';
 import type { SurfaceAction } from '../models/action';
 import type { Capability, Predicate, Step, TargetSpec } from '../models/capability';
 import type { Classification, ClassificationTrigger } from '../models/classification';
-import type { EscalationReason, ExecutionResult, Failure, FailureCode, Recovery } from '../models/execution-result';
-import type { Observation, Ref } from '../models/observation';
+import type { EscalationReason, ExecutionResult, FailureCode, Recovery } from '../models/execution-result';
+import type { InterventionReason, Verification } from '../models/intervention';
+import type { Dialog, Observation, Ref } from '../models/observation';
 import type { ReplayRequest } from '../models/replay-request';
-import type { ActionPurpose } from '../models/run-event';
-import type { Escalation, Verification } from './escalation';
+import type { Escalation } from './escalation';
+import { pollUntil } from './poll';
+import { endRun, guardSurface, openSurface, photograph, recordOutcome, SurfaceFailure, type ActionRecord } from './run-lifecycle';
 
 export type ReplayDeps = {
   readonly store: ArtifactStore;
   readonly session: SessionProvider;
   readonly gateway: ActionGateway;
   readonly evidence: EvidenceRecorder;
-  // Hands the live session to a human at a risky step (RFC-005).
+  // Hands the live session to a human at a risky step, or at a failure a human may get past (RFC-005).
   readonly escalation: Escalation;
   readonly clock: Clock;
 };
@@ -39,7 +40,7 @@ export type ReplayOptions = {
 type Ending =
   | { readonly status: 'succeeded'; readonly outputs: Record<string, string> }
   | { readonly status: 'business_outcome'; readonly outcome: string; readonly stepId: string }
-  | { readonly status: 'failed'; readonly failure: Failure }
+  | { readonly status: 'failed'; readonly failure: Extract<ExecutionResult, { status: 'failed' }>['failure'] }
   | {
       readonly status: 'escalated';
       readonly interventionId: string;
@@ -55,22 +56,59 @@ type Problem = {
   readonly classification: Classification;
   readonly expected: string;
   readonly observed: string;
-  readonly observation: Observation;
+  // The page it was classified on, for the failure evidence.
+  readonly observation?: Observation;
 };
 
-type HardFailure = {
-  readonly kind: 'failed';
-  readonly code: FailureCode;
-  readonly expected: string;
-  readonly observed: string;
-};
+type AttemptOutcome = { readonly kind: 'done'; readonly value?: string } | Problem | StepFailure | HumanNeeded;
 
-// A risky action automation must not perform (ADR-011).
-type HumanNeeded = { readonly kind: 'requires_human'; readonly message: string };
+// A step failure with the page it was seen on.
+type Failure = StepFailure & { readonly observation?: Observation };
 
-type AttemptOutcome = { readonly kind: 'done'; readonly value?: string } | Problem | HardFailure | HumanNeeded;
-
+// How a pass over the steps ended: a restart after re-authenticating, or the run's ending.
 type Pass = { readonly kind: 'restart' } | { readonly kind: 'end'; readonly ending: Ending };
+
+type StepEnd = { readonly kind: 'next' } | Pass;
+
+// How the run answers a classified problem: attempt the step again, end the pass, or fail the step.
+type Response = { readonly kind: 'retry' } | Pass | Failure;
+
+// What the result reports, whatever point the run reached.
+type RunRecord = {
+  readonly evidenceRun: EvidenceRun;
+  readonly startedAt: number;
+  capability: ExecutionResult['capability'];
+  readonly recoveries: Recovery[];
+  readonly interventions: string[];
+};
+
+// One run, once its artifact is loaded and its inputs are bound.
+type ReplayContext = {
+  // The gateway rejects only with SurfaceFailure (guardSurface).
+  readonly deps: ReplayDeps;
+  readonly request: ReplayRequest;
+  readonly stepTimeoutMs: number;
+  readonly pollIntervalMs: number;
+  readonly capability: Capability;
+  readonly record: RunRecord;
+  // Inputs and outputs masked in the evidence and in screenshots so far.
+  readonly sensitive: SensitiveValue[];
+  // Outputs read in the current pass over the steps.
+  outputs: Record<string, string>;
+  // The step being run, blamed for a surface failure.
+  stepId: string;
+  surfaceOpened: boolean;
+  // A risky step is done: a restart would ask for it again.
+  riskyStepDone: boolean;
+  // Dialogs automation dismissed during the current step, as observations showed them.
+  dialogs: Dialog[];
+};
+
+const NEXT: StepEnd = { kind: 'next' };
+
+function end(ending: Ending): Pass {
+  return { kind: 'end', ending };
+}
 
 // CapabilitySchema guarantees every target an artifact refers to is declared.
 function specOf(capability: Capability, name: string): TargetSpec {
@@ -79,484 +117,452 @@ function specOf(capability: Capability, name: string): TargetSpec {
   return spec;
 }
 
-// Executes a capability without a model (RFC-004): every step is resolved, performed through
-// the gateway and verified; anything else is classified against the artifact's declared outcomes.
-export async function replay(deps: ReplayDeps, request: ReplayRequest, options: ReplayOptions): Promise<ExecutionResult> {
-  const { store, session, gateway, evidence, escalation, clock } = deps;
-  const { stepTimeoutMs } = options;
-  const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-  const startedAt = clock.now();
-  const run = await evidence.startRun({ mode: 'replay', capabilityId: request.capabilityId });
-  const recoveries: Recovery[] = [];
-  const interventions: string[] = [];
-  let capabilityRef: ExecutionResult['capability'] = { id: request.capabilityId, requestedMajor: request.major };
-  let surfaceOpened = false;
-  let currentStepId = 'artifact';
+function maskTexts(ctx: ReplayContext): string[] {
+  return ctx.sensitive.map(({ value }) => value);
+}
 
-  async function finish(ending: Ending): Promise<ExecutionResult> {
-    const base = {
-      runId: run.runId,
-      capability: capabilityRef,
-      durationMs: clock.now() - startedAt,
-      recoveries,
-      interventions,
-    };
-    let result: ExecutionResult;
-    switch (ending.status) {
-      case 'succeeded':
-        result = { ...base, status: 'succeeded', outputs: ending.outputs };
-        break;
-      case 'business_outcome':
-        result = { ...base, status: 'business_outcome', outcome: ending.outcome, details: { stepId: ending.stepId } };
-        break;
-      case 'failed':
-        result = { ...base, status: 'failed', failure: ending.failure };
-        break;
-      case 'escalated':
-        result = { ...base, ...ending };
-        break;
-      default: {
-        const unhandled: never = ending;
-        return unhandled;
-      }
-    }
-    const stepId = ending.status === 'succeeded' ? undefined : ending.status === 'failed' ? ending.failure.stepId : ending.stepId;
-    await evidence.event(stepId === undefined ? { type: 'result', status: result.status } : { type: 'result', status: result.status, stepId });
-    await evidence.finish(result);
-    return result;
-  }
+function protect(ctx: ReplayContext, values: readonly SensitiveValue[]): void {
+  ctx.deps.evidence.protect(values);
+  ctx.sensitive.push(...values);
+}
 
-  // Screenshot and snapshot of the failing state; the sign-in screen is never photographed (it may show credentials).
-  async function captureEvidence(stepId: string, observation: Observation | undefined): Promise<string> {
-    if (!surfaceOpened) return run.dir;
-    let snapshot = observation;
-    let screenshot: Uint8Array | undefined;
-    try {
-      snapshot ??= await gateway.observe();
-      if (!session.isExpired(snapshot)) screenshot = await gateway.screenshot();
-    } catch {
-      // Best effort: the failure itself is still reported.
-    }
-    const paths = await evidence.capture(stepId, { screenshot, snapshot });
-    return paths.screenshot ?? paths.snapshot ?? run.dir;
-  }
-
-  async function failed(
-    stepId: string,
-    code: FailureCode,
-    expected: string,
-    observed: string,
-    observation?: Observation,
-  ): Promise<Ending> {
-    const evidencePath = await captureEvidence(stepId, observation);
-    return { status: 'failed', failure: { stepId, code, expected, observed, evidence: evidencePath } };
-  }
-
-  // Stops before a risky action with the page as it is and hands the same session to a human
-  // (RFC-005). undefined when the human did it and `verify` confirmed it: the run goes on.
-  async function handOff(capability: Capability, stepId: string, message: string, verify: () => Promise<Verification>): Promise<Ending | undefined> {
-    const outcome = await escalation.handOff({
-      run,
-      mode: 'replay',
-      capability: `${capability.capability.id}@${capability.capability.version}`,
-      stepId,
-      reason: 'risky_action',
-      message,
-      verify,
-    });
-    interventions.push(outcome.interventionId);
-    if (outcome.status === 'resumed') return undefined;
-    return { status: 'escalated', interventionId: outcome.interventionId, stepId, reason: outcome.cause, message: `${message} (handoff ${outcome.cause})` };
-  }
-
-  // The human performed the step: its checkpoint must hold within the step timeout.
-  async function verifyStep(capability: Capability, step: Step): Promise<Verification> {
-    const deadline = clock.now() + stepTimeoutMs;
-    for (;;) {
-      let checkpoint: { holds: boolean; expected: string; observed: string };
-      try {
-        const facts = await gatherFacts(capability, step.id, await gateway.observe(), [step.checkpoint]);
-        checkpoint = evaluatePredicate(step.checkpoint, facts);
-      } catch (error) {
-        checkpoint = { holds: false, expected: 'the page to be readable', observed: errorMessage(error) };
-      }
-      if (checkpoint.holds || clock.now() >= deadline) {
-        await evidence.event({ type: 'checkpoint', stepId: step.id, ...checkpoint, performedBy: 'human' });
-        return checkpoint.holds ? { held: true } : { held: false, expected: checkpoint.expected, observed: checkpoint.observed };
-      }
-      await clock.sleep(pollIntervalMs);
+async function finish(evidence: EvidenceRecorder, clock: Clock, record: RunRecord, ending: Ending): Promise<ExecutionResult> {
+  const base = {
+    runId: record.evidenceRun.runId,
+    capability: record.capability,
+    durationMs: clock.now() - record.startedAt,
+    recoveries: record.recoveries,
+    interventions: record.interventions,
+  };
+  let result: ExecutionResult;
+  switch (ending.status) {
+    case 'succeeded':
+      result = { ...base, status: 'succeeded', outputs: ending.outputs };
+      break;
+    case 'business_outcome':
+      result = { ...base, status: 'business_outcome', outcome: ending.outcome, details: { stepId: ending.stepId } };
+      break;
+    case 'failed':
+      result = { ...base, status: 'failed', failure: ending.failure };
+      break;
+    case 'escalated':
+      result = { ...base, ...ending };
+      break;
+    default: {
+      const unhandled: never = ending;
+      return unhandled;
     }
   }
+  const stepId = ending.status === 'succeeded' ? undefined : ending.status === 'failed' ? ending.failure.stepId : ending.stepId;
+  return endRun(evidence, stepId === undefined ? { type: 'result', status: result.status } : { type: 'result', status: result.status, stepId }, result);
+}
 
-  async function recordRecovery(recovery: Recovery, delayMs?: number): Promise<void> {
-    recoveries.push(recovery);
-    await evidence.event(
-      delayMs === undefined
-        ? { type: 'recovery', stepId: recovery.stepId, recovery }
-        : { type: 'recovery', stepId: recovery.stepId, recovery, delayMs },
-    );
+// Before the surface is open there is nothing to capture: the evidence is the run folder.
+function failedBeforeSurface(record: RunRecord, stepId: string, code: FailureCode, expected: string, observed: string): Ending {
+  return { status: 'failed', failure: { stepId, code, expected, observed, evidence: record.evidenceRun.dir } };
+}
+
+// Screenshot and snapshot of the failing state; returns the most telling path.
+async function captureFailure(ctx: ReplayContext, stepId: string, observation: Observation | undefined): Promise<string> {
+  const { gateway, evidence } = ctx.deps;
+  if (!ctx.surfaceOpened) return ctx.record.evidenceRun.dir;
+  let snapshot = observation;
+  try {
+    snapshot ??= await gateway.observe();
+  } catch (error) {
+    // Best effort: the failure itself is still reported.
+    if (!(error instanceof SurfaceFailure)) throw error;
   }
+  const screenshot = snapshot === undefined ? undefined : await photograph(ctx.deps, snapshot, maskTexts(ctx));
+  const paths = await evidence.capture(stepId, { screenshot, snapshot });
+  return paths.screenshot ?? paths.snapshot ?? ctx.record.evidenceRun.dir;
+}
 
-  // `output` is the name a read captures into, recorded as its argument.
-  async function perform(stepId: string, purpose: ActionPurpose, action: SurfaceAction, target?: string, output?: string): Promise<GatewayOutcome> {
-    const outcome = await gateway.perform({ stepId, purpose, action, timeoutMs: stepTimeoutMs });
-    const policy = { type: 'policy', stepId, purpose, verb: action.kind } as const;
-    switch (outcome.status) {
-      case 'denied':
-        await evidence.event({ ...policy, decision: 'deny', reason: outcome.reason });
-        return outcome;
-      case 'landed_outside_policy':
-        await evidence.event({ ...policy, decision: 'deny', reason: describeLanding(outcome) });
-        return outcome;
-      case 'requires_human':
-        await evidence.event({ ...policy, decision: 'requires_human', reason: outcome.reason });
-        return outcome;
-      case 'done':
-      case 'timeout':
-      case 'error':
-        break;
-      default: {
-        const unhandled: never = outcome;
-        return unhandled;
-      }
+async function failed(ctx: ReplayContext, stepId: string, code: FailureCode, expected: string, observed: string, observation?: Observation): Promise<Ending> {
+  const evidencePath = await captureFailure(ctx, stepId, observation);
+  return { status: 'failed', failure: { stepId, code, expected, observed, evidence: evidencePath } };
+}
+
+async function recordRecovery(ctx: ReplayContext, recovery: Recovery, delayMs?: number): Promise<void> {
+  ctx.record.recoveries.push(recovery);
+  await ctx.deps.evidence.event(
+    delayMs === undefined ? { type: 'recovery', stepId: recovery.stepId, recovery } : { type: 'recovery', stepId: recovery.stepId, recovery, delayMs },
+  );
+}
+
+// Every observation of a step goes through here, so a dialog automation dismissed is noticed.
+async function observe(ctx: ReplayContext): Promise<Observation> {
+  const observation = await ctx.deps.gateway.observe();
+  if (observation.dialog !== null) ctx.dialogs.push(observation.dialog);
+  return observation;
+}
+
+async function perform(ctx: ReplayContext, record: ActionRecord): Promise<GatewayOutcome> {
+  const { stepId, purpose, action } = record;
+  const outcome = await ctx.deps.gateway.perform({ stepId, purpose, action, timeoutMs: ctx.stepTimeoutMs });
+  await recordOutcome(ctx.deps.evidence, record, outcome);
+  return outcome;
+}
+
+async function gatherFacts(ctx: ReplayContext, stepId: string, observation: Observation, predicates: readonly Predicate[]): Promise<Facts> {
+  const targets: Record<string, TargetFact> = {};
+  for (const { target, needsValue } of factsNeeded(predicates)) {
+    const spec = specOf(ctx.capability, target);
+    const resolution = await ctx.deps.gateway.resolve(spec);
+    let value: string | undefined;
+    if (resolution.status === 'resolved' && needsValue) {
+      const outcome = await perform(ctx, { stepId, purpose: 'checkpoint', action: { kind: 'read', ref: resolution.ref } });
+      if (outcome.status === 'done') value = outcome.value;
     }
-    if (purpose === 'checkpoint') return outcome;
-    await evidence.event({ ...policy, decision: 'allow' });
-    const argument = output ?? actionArgument(action);
-    await evidence.event({
-      type: 'action',
-      stepId,
-      purpose,
-      verb: action.kind,
-      ...(target === undefined ? {} : { target }),
-      ...(argument === undefined ? {} : { argument }),
-      outcome: outcome.status,
-      ...(outcome.status === 'done' ? { navigations: outcome.navigations } : {}),
-      ...(outcome.status === 'error' ? { message: outcome.message } : {}),
-    });
-    return outcome;
+    targets[target] = { candidates: spec.candidates, counts: resolution.counts, resolved: resolution.status === 'resolved', value };
   }
+  return { observation, targets };
+}
 
-  async function gatherFacts(
-    capability: Capability,
-    stepId: string,
-    observation: Observation,
-    predicates: readonly Predicate[],
-  ): Promise<Facts> {
-    const targets: Record<string, TargetFact> = {};
-    for (const { target, needsValue } of factsNeeded(predicates)) {
-      const spec = specOf(capability, target);
-      const resolution = await gateway.resolve(spec);
-      let value: string | undefined;
-      if (resolution.status === 'resolved' && needsValue) {
-        const outcome = await perform(stepId, 'checkpoint', { kind: 'read', ref: resolution.ref });
-        if (outcome.status === 'done') value = outcome.value;
-      }
-      targets[target] = { candidates: spec.candidates, counts: resolution.counts, resolved: resolution.status === 'resolved', value };
-    }
-    return { observation, targets };
-  }
+async function classifyNow(
+  ctx: ReplayContext,
+  stepId: string,
+  trigger: ClassificationTrigger,
+  serverError: boolean,
+  counts?: readonly number[],
+): Promise<{ observation: Observation; classification: Classification }> {
+  const { outcomes } = ctx.capability;
+  const observation = await observe(ctx);
+  const facts = await gatherFacts(
+    ctx,
+    stepId,
+    observation,
+    outcomes.map((outcome) => outcome.when),
+  );
+  const classification = classify({ trigger, facts, outcomes, sessionExpired: ctx.deps.session.isExpired(observation), serverError, counts });
+  return { observation, classification };
+}
 
-  async function classifyNow(
-    capability: Capability,
-    stepId: string,
-    trigger: ClassificationTrigger,
-    serverError: boolean,
-    counts?: readonly number[],
-  ): Promise<{ observation: Observation; classification: Classification }> {
-    const observation = await gateway.observe();
-    const facts = await gatherFacts(
-      capability,
-      stepId,
-      observation,
-      capability.outcomes.map((outcome) => outcome.when),
-    );
-    const classification = classify({
-      trigger,
-      facts,
-      outcomes: capability.outcomes,
-      sessionExpired: session.isExpired(observation),
-      serverError,
-      counts,
-    });
-    return { observation, classification };
-  }
+function deadline(ctx: ReplayContext): number {
+  return ctx.deps.clock.now() + ctx.stepTimeoutMs;
+}
 
-  // Polls until the target resolves, a definitive condition shows, or the step timeout passes.
-  async function waitForTarget(
-    capability: Capability,
-    step: Step,
-    name: string,
-  ): Promise<{ kind: 'resolved'; ref: Ref } | Problem> {
-    const spec = specOf(capability, name);
-    const deadline = clock.now() + stepTimeoutMs;
-    for (;;) {
+// Until the target resolves, a definitive condition shows, or the step timeout passes.
+async function waitForTarget(ctx: ReplayContext, step: Step, name: string): Promise<{ readonly kind: 'resolved'; readonly ref: Ref } | Problem> {
+  const { gateway, evidence, clock } = ctx.deps;
+  const spec = specOf(ctx.capability, name);
+  const lookup = await pollUntil<{ readonly ref: Ref } | { readonly problem: Problem; readonly counts: readonly number[] }>(
+    clock,
+    deadline(ctx),
+    ctx.pollIntervalMs,
+    async () => {
       const resolution = await gateway.resolve(spec);
       if (resolution.status === 'resolved') {
         const { ref, candidateIndex, strategy, counts } = resolution;
         await evidence.event({ type: 'target_resolved', stepId: step.id, target: name, candidateIndex, strategy, counts });
-        return { kind: 'resolved', ref };
+        return { done: true, value: { ref } };
       }
-      const { observation, classification } = await classifyNow(capability, step.id, 'target_unresolved', false, resolution.counts);
-      if (isDefinitive(classification) || clock.now() >= deadline) {
-        await evidence.event({ type: 'target_unresolved', stepId: step.id, target: name, counts: resolution.counts });
-        return {
-          kind: 'problem',
-          trigger: 'target_unresolved',
-          classification,
-          expected: `${name} matches exactly one element`,
-          observed: `${name} did not resolve: ${describeCounts(spec.candidates, resolution.counts)}`,
-          observation,
-        };
-      }
-      await clock.sleep(pollIntervalMs);
-    }
-  }
+      const { observation, classification } = await classifyNow(ctx, step.id, 'target_unresolved', false, resolution.counts);
+      const problem: Problem = {
+        kind: 'problem',
+        trigger: 'target_unresolved',
+        classification,
+        expected: `${name} matches exactly one element`,
+        observed: `${name} did not resolve: ${describeCounts(spec.candidates, resolution.counts)}`,
+        observation,
+      };
+      return { done: isDefinitive(classification), value: { problem, counts: resolution.counts } };
+    },
+  );
+  if ('ref' in lookup) return { kind: 'resolved', ref: lookup.ref };
+  await evidence.event({ type: 'target_unresolved', stepId: step.id, target: name, counts: lookup.counts });
+  return lookup.problem;
+}
 
-  async function waitForCheckpoint(capability: Capability, step: Step, serverError: boolean): Promise<{ kind: 'holds' } | Problem> {
-    const predicates = [step.checkpoint, ...capability.outcomes.map((outcome) => outcome.when)];
-    const deadline = clock.now() + stepTimeoutMs;
-    for (;;) {
-      const observation = await gateway.observe();
-      const facts = await gatherFacts(capability, step.id, observation, predicates);
+// Until the checkpoint holds, a definitive condition shows, or the step timeout passes.
+async function waitForCheckpoint(ctx: ReplayContext, step: Step, serverError: boolean): Promise<{ readonly kind: 'holds' } | Problem> {
+  const { outcomes } = ctx.capability;
+  const predicates = [step.checkpoint, ...outcomes.map((outcome) => outcome.when)];
+  const { checkpoint, problem } = await pollUntil<{ readonly checkpoint: PredicateResult; readonly problem?: Problem }>(
+    ctx.deps.clock,
+    deadline(ctx),
+    ctx.pollIntervalMs,
+    async () => {
+      const observation = await observe(ctx);
+      const facts = await gatherFacts(ctx, step.id, observation, predicates);
       const checkpoint = evaluatePredicate(step.checkpoint, facts);
-      if (checkpoint.holds) {
-        await evidence.event({ type: 'checkpoint', stepId: step.id, ...checkpoint });
-        return { kind: 'holds' };
-      }
-      const classification = classify({
-        trigger: 'checkpoint_not_met',
-        facts,
-        outcomes: capability.outcomes,
-        sessionExpired: session.isExpired(observation),
-        serverError,
-      });
-      if (isDefinitive(classification) || clock.now() >= deadline) {
-        await evidence.event({ type: 'checkpoint', stepId: step.id, ...checkpoint });
-        return { kind: 'problem', trigger: 'checkpoint_not_met', classification, ...checkpoint, observation };
-      }
-      await clock.sleep(pollIntervalMs);
+      if (checkpoint.holds) return { done: true, value: { checkpoint } };
+      const sessionExpired = ctx.deps.session.isExpired(observation);
+      const classification = classify({ trigger: 'checkpoint_not_met', facts, outcomes, sessionExpired, serverError });
+      const problem: Problem = { kind: 'problem', trigger: 'checkpoint_not_met', classification, ...checkpoint, observation };
+      return { done: isDefinitive(classification), value: { checkpoint, problem } };
+    },
+  );
+  await ctx.deps.evidence.event({ type: 'checkpoint', stepId: step.id, ...checkpoint });
+  return problem ?? { kind: 'holds' };
+}
+
+async function readCheckpoint(ctx: ReplayContext, step: Step): Promise<PredicateResult> {
+  try {
+    return evaluatePredicate(step.checkpoint, await gatherFacts(ctx, step.id, await observe(ctx), [step.checkpoint]));
+  } catch (error) {
+    if (!(error instanceof SurfaceFailure)) throw error;
+    return { holds: false, expected: 'the page to be readable', observed: error.message };
+  }
+}
+
+// A human did the step: its checkpoint must hold within the step timeout.
+async function verifyStep(ctx: ReplayContext, step: Step): Promise<Verification> {
+  const checkpoint = await pollUntil(ctx.deps.clock, deadline(ctx), ctx.pollIntervalMs, async () => {
+    const result = await readCheckpoint(ctx, step);
+    return { done: result.holds, value: result };
+  });
+  await ctx.deps.evidence.event({ type: 'checkpoint', stepId: step.id, ...checkpoint, performedBy: 'human' });
+  return checkpoint.holds ? { held: true } : { held: false, expected: checkpoint.expected, observed: checkpoint.observed };
+}
+
+// A human clicked a recovery control automation may not: done once the condition no longer shows.
+async function recoveryVerified(ctx: ReplayContext, stepId: string, outcomeId: string): Promise<Verification> {
+  const condition = ctx.capability.outcomes.find((declared) => declared.id === outcomeId)?.when;
+  if (condition === undefined) return conditionDismissed(outcomeId, undefined);
+  return conditionDismissed(outcomeId, evaluatePredicate(condition, await gatherFacts(ctx, stepId, await observe(ctx), [condition])));
+}
+
+// Stops with the page as it is and hands the same session to a human (RFC-005). undefined when
+// the human did it and `verify` confirmed it: the run goes on.
+async function handOff(ctx: ReplayContext, stepId: string, reason: InterventionReason, message: string, verify: () => Promise<Verification>): Promise<Ending | undefined> {
+  const { id, version } = ctx.capability.capability;
+  const outcome = await ctx.deps.escalation.handOff({
+    run: ctx.record.evidenceRun,
+    mode: 'replay',
+    capability: `${id}@${version}`,
+    stepId,
+    reason,
+    message,
+    verify,
+    maskTexts: maskTexts(ctx),
+  });
+  ctx.record.interventions.push(outcome.interventionId);
+  if (outcome.status === 'resumed') return undefined;
+  return { status: 'escalated', interventionId: outcome.interventionId, stepId, reason: outcome.cause, message: `${message} (handoff ${outcome.cause})` };
+}
+
+// Finds the step's target, performs its action through the gateway and waits for its checkpoint.
+async function attemptStep(ctx: ReplayContext, step: Step): Promise<AttemptOutcome> {
+  let action: SurfaceAction;
+  let target: string | undefined;
+  if (step.action.kind === 'navigate') {
+    action = navigateAction(step.action.path, ctx.request.targetUrl);
+  } else {
+    target = step.action.target;
+    const found = await waitForTarget(ctx, step, target);
+    if (found.kind === 'problem') return found;
+    action = toSurfaceAction(step.action, found.ref);
+  }
+  const what = describeStepAction(action, target);
+  if (step.risk === 'risky') {
+    const decision = await ctx.deps.gateway.check(action);
+    if (decision.decision === 'deny') {
+      await ctx.deps.evidence.event({ type: 'policy', stepId: step.id, purpose: 'step', verb: action.kind, decision: 'deny', reason: decision.reason });
     }
+    return gateRiskyStep(step.id, what, decision);
   }
 
-  async function attemptStep(capability: Capability, step: Step): Promise<AttemptOutcome> {
-    let action: SurfaceAction;
-    let name: string | undefined;
-    if (step.action.kind === 'navigate') {
-      action = navigateAction(step.action.path, request.targetUrl);
-    } else {
-      name = step.action.target;
-      const found = await waitForTarget(capability, step, name);
-      if (found.kind === 'problem') return found;
-      action = toSurfaceAction(step.action, found.ref);
+  const output = step.action.kind === 'read' ? step.action.output : undefined;
+  const after = afterAction(await perform(ctx, { stepId: step.id, purpose: 'step', action, target, output }), what, ctx.stepTimeoutMs);
+  switch (after.kind) {
+    case 'failed':
+    case 'requires_human':
+      return after;
+    case 'landed': {
+      const observation = await observe(ctx);
+      const landed = afterLanding(ctx.deps.session.isExpired(observation), what, after.landing);
+      if (landed.kind === 'failed') return landed;
+      return { kind: 'problem', trigger: 'checkpoint_not_met', classification: { kind: 'session_expired' }, expected: landed.expected, observed: landed.observed, observation };
     }
-    const what = name === undefined ? action.kind : `${action.kind} on ${name}`;
-    // The artifact's risk holds even if policy.json changes (RFC-006): the gateway is only asked
-    // whether the policy denies the step, since deny wins over handing it to a human.
-    if (step.risk === 'risky') {
-      const decision = await gateway.check(action);
-      if (decision.decision === 'deny') {
-        await evidence.event({ type: 'policy', stepId: step.id, purpose: 'step', verb: action.kind, decision: 'deny', reason: decision.reason });
-        return { kind: 'failed', code: 'policy_denied', expected: `${what} allowed by policy`, observed: decision.reason };
-      }
-      return { kind: 'requires_human', message: `step ${step.id} is risky: ${what} needs a human` };
+    case 'timed_out': {
+      const { observation, classification } = await classifyNow(ctx, step.id, 'action_timeout', false);
+      return { kind: 'problem', trigger: 'action_timeout', classification, expected: after.expected, observed: after.observed, observation };
     }
-    const outcome = await perform(step.id, 'step', action, name, step.action.kind === 'read' ? step.action.output : undefined);
-    let serverError = false;
-    let value: string | undefined;
-    switch (outcome.status) {
-      case 'denied':
-        return { kind: 'failed', code: 'policy_denied', expected: `${what} allowed by policy`, observed: outcome.reason };
-      case 'landed_outside_policy': {
-        // The sign-in page is the one place off the allowlist a run recovers from: the session
-        // provider owns it (ADR-013), so an expired session is still reauthenticated.
-        const { observation, classification } = await classifyNow(capability, step.id, 'checkpoint_not_met', false);
-        if (classification.kind === 'session_expired') {
-          return { kind: 'problem', trigger: 'checkpoint_not_met', classification, expected: `${what} to keep the session`, observed: describeLanding(outcome), observation };
-        }
-        return { kind: 'failed', code: 'policy_denied', expected: `${what} to stay within the policy`, observed: describeLanding(outcome) };
-      }
-      case 'requires_human':
-        return { kind: 'requires_human', message: `${what} needs a human: ${outcome.reason}` };
-      case 'error':
-        return { kind: 'failed', code: 'driver_error', expected: `${what} to complete`, observed: outcome.message };
-      case 'timeout': {
-        const { observation, classification } = await classifyNow(capability, step.id, 'action_timeout', false);
-        return {
-          kind: 'problem',
-          trigger: 'action_timeout',
-          classification,
-          expected: `${what} to finish loading within ${String(stepTimeoutMs)} ms`,
-          observed: `still loading after ${String(stepTimeoutMs)} ms`,
-          observation,
-        };
-      }
-      case 'done':
-        serverError = outcome.navigations.some((navigation) => navigation.status >= 500);
-        value = outcome.value;
-        // Before the checkpoint, whose evidence may quote the value.
-        if (step.action.kind === 'read' && value !== undefined) {
-          evidence.protect(sensitiveValuesOf(capability, {}, { [step.action.output]: value }));
-        }
-        break;
-      default: {
-        const unhandled: never = outcome;
-        return unhandled;
-      }
+    case 'verify':
+      break;
+    default: {
+      const unhandled: never = after;
+      return unhandled;
     }
-
-    const checked = await waitForCheckpoint(capability, step, serverError);
-    if (checked.kind === 'problem') return checked;
-    return value === undefined ? { kind: 'done' } : { kind: 'done', value };
   }
+  // Before the checkpoint, whose evidence may quote the value.
+  if (output !== undefined && after.value !== undefined) protect(ctx, sensitiveValuesOf(ctx.capability, {}, { [output]: after.value }));
+  const checked = await waitForCheckpoint(ctx, step, after.serverError);
+  if (checked.kind === 'problem') return checked;
+  return after.value === undefined ? { kind: 'done' } : { kind: 'done', value: after.value };
+}
 
-  // Clicks the declared recovery control; the step is then attempted again.
-  async function applyRecovery(capability: Capability, stepId: string, move: Extract<Move, { move: 'apply_recovery' }>): Promise<Ending | undefined> {
-    const name = move.recover.target;
-    const spec = specOf(capability, name);
-    const resolution = await gateway.resolve(spec);
-    if (resolution.status === 'unresolved') {
-      return failed(
-        stepId,
-        'recovery_exhausted',
-        `${name} to dismiss ${move.outcomeId}`,
-        `${name} did not resolve: ${describeCounts(spec.candidates, resolution.counts)}`,
+// A page that does not become readable in time is a timeout like a slow action (RFC-004).
+async function attemptOrTimeout(ctx: ReplayContext, step: Step): Promise<AttemptOutcome> {
+  try {
+    return await attemptStep(ctx, step);
+  } catch (error) {
+    if (!(error instanceof SurfaceFailure) || !error.timedOut) throw error;
+    return {
+      kind: 'problem',
+      trigger: 'action_timeout',
+      classification: { kind: 'timeout' },
+      expected: `the page to be readable within ${String(ctx.stepTimeoutMs)} ms`,
+      observed: error.message,
+    };
+  }
+}
+
+// Clicks the declared recovery control; `retry` attempts the step again.
+async function applyRecovery(
+  ctx: ReplayContext,
+  stepId: string,
+  move: Extract<Move, { move: 'apply_recovery' }>,
+): Promise<{ readonly kind: 'retry' } | StepFailure | HumanNeeded> {
+  const name = move.recover.target;
+  const spec = specOf(ctx.capability, name);
+  const resolution = await ctx.deps.gateway.resolve(spec);
+  if (resolution.status === 'unresolved') {
+    return {
+      kind: 'failed',
+      code: 'recovery_exhausted',
+      expected: `${name} to dismiss ${move.outcomeId}`,
+      observed: `${name} did not resolve: ${describeCounts(spec.candidates, resolution.counts)}`,
+    };
+  }
+  return afterRecoveryAction(await perform(ctx, { stepId, purpose: 'recovery', action: toSurfaceAction(move.recover, resolution.ref), target: name }), name);
+}
+
+async function respond(ctx: ReplayContext, step: Step, problem: Problem, budget: RecoveryBudget): Promise<Response> {
+  const { clock, evidence } = ctx.deps;
+  const { trigger, classification } = problem;
+  const stepId = step.id;
+  const attempt = budget.attempt + 1;
+  await evidence.event({ type: 'classification', stepId, trigger, classification });
+  const move = nextMove(classification, budget);
+  switch (move.move) {
+    case 'return_business':
+      return end({ status: 'business_outcome', outcome: move.outcomeId, stepId });
+    case 'apply_recovery': {
+      await recordRecovery(ctx, { stepId, condition: 'outcome', outcomeId: move.outcomeId, response: 'declared_recovery', attempt });
+      const recovered = await applyRecovery(ctx, stepId, move);
+      if (recovered.kind !== 'requires_human') return recovered;
+      const ended = await handOff(ctx, stepId, 'risky_action', recovered.message, () => recoveryVerified(ctx, stepId, move.outcomeId));
+      if (ended !== undefined) return end(ended);
+      ctx.riskyStepDone = true;
+      return { kind: 'retry' };
+    }
+    case 'retry_after':
+      await recordRecovery(
+        ctx,
+        move.condition === 'timeout'
+          ? { stepId, condition: 'timeout', response: 'retry', attempt }
+          : { stepId, condition: 'outcome', outcomeId: move.outcomeId, response: 'retry', attempt },
+        move.delayMs,
       );
+      await clock.sleep(move.delayMs);
+      return { kind: 'retry' };
+    case 'reauthenticate_and_restart':
+      await recordRecovery(ctx, { stepId, condition: 'session_expired', response: 'reauthenticate', attempt: 1 });
+      return { kind: 'restart' };
+    case 'fail': {
+      const why = move.note === undefined ? describeClassification(classification) : `${describeClassification(classification)}; ${move.note}`;
+      return { kind: 'failed', code: move.code, expected: problem.expected, observed: `${problem.observed} (${why})`, observation: problem.observation };
     }
-    const outcome = await perform(stepId, 'recovery', toSurfaceAction(move.recover, resolution.ref), name);
-    switch (outcome.status) {
-      case 'denied':
-        return failed(stepId, 'policy_denied', `click on ${name} allowed by policy`, outcome.reason);
-      case 'landed_outside_policy':
-        return failed(stepId, 'policy_denied', `click on ${name} allowed by policy`, describeLanding(outcome));
-      case 'requires_human': {
-        const condition = capability.outcomes.find((declared) => declared.id === move.outcomeId)?.when;
-        return handOff(capability, stepId, `click on ${name} needs a human: ${outcome.reason}`, async () => {
-          if (condition === undefined) return { held: true };
-          const shown = evaluatePredicate(condition, await gatherFacts(capability, stepId, await gateway.observe(), [condition]));
-          return shown.holds ? { held: false, expected: `${move.outcomeId} to be dismissed`, observed: shown.observed } : { held: true };
-        });
-      }
-      case 'error':
-        return failed(stepId, 'driver_error', `click on ${name} to complete`, outcome.message);
-      case 'done':
-      case 'timeout':
-        return undefined;
-      default: {
-        const unhandled: never = outcome;
-        return unhandled;
-      }
+    default: {
+      const unhandled: never = move;
+      return unhandled;
     }
   }
+}
 
-  async function runSteps(capability: Capability, reauthUsed: boolean): Promise<Pass> {
-    const end = (ending: Ending): Pass => ({ kind: 'end', ending });
-    const outputs: Record<string, string> = {};
-    for (const step of capability.steps) {
-      currentStepId = step.id;
-      for (let attempt = 0; ; ) {
-        await evidence.event({ type: 'step_started', stepId: step.id, attempt, action: step.action.kind });
-        const outcome = await attemptStep(capability, step);
-        if (outcome.kind === 'done') {
-          if (step.action.kind === 'read' && outcome.value !== undefined) {
-            outputs[step.action.output] = outcome.value;
-            await evidence.event({ type: 'output', stepId: step.id, name: step.action.output, value: outcome.value });
-          }
-          break;
-        }
-        if (outcome.kind === 'failed') return end(await failed(step.id, outcome.code, outcome.expected, outcome.observed));
-        if (outcome.kind === 'requires_human') {
-          const ended = await handOff(capability, step.id, outcome.message, () => verifyStep(capability, step));
-          if (ended !== undefined) return end(ended);
-          break;
-        }
-
-        const { trigger, classification } = outcome;
-        await evidence.event({ type: 'classification', stepId: step.id, trigger, classification });
-        const move = nextMove(classification, { attempt, reauthUsed });
-        switch (move.move) {
-          case 'return_business':
-            return end({ status: 'business_outcome', outcome: move.outcomeId, stepId: step.id });
-          case 'apply_recovery': {
-            attempt += 1;
-            await recordRecovery({ stepId: step.id, condition: 'outcome', outcomeId: move.outcomeId, response: 'declared_recovery', attempt });
-            const recoveryFailed = await applyRecovery(capability, step.id, move);
-            if (recoveryFailed !== undefined) return end(recoveryFailed);
-            break;
-          }
-          case 'retry_after':
-            attempt += 1;
-            await recordRecovery(
-              move.condition === 'timeout'
-                ? { stepId: step.id, condition: 'timeout', response: 'retry', attempt }
-                : { stepId: step.id, condition: 'outcome', outcomeId: move.outcomeId, response: 'retry', attempt },
-              move.delayMs,
-            );
-            await clock.sleep(move.delayMs);
-            break;
-          case 'reauthenticate_and_restart':
-            await recordRecovery({ stepId: step.id, condition: 'session_expired', response: 'reauthenticate', attempt: 1 });
-            return { kind: 'restart' };
-          case 'fail':
-            return end(
-              await failed(
-                step.id,
-                move.code,
-                outcome.expected,
-                `${outcome.observed} (${describeClassification(classification)})`,
-                outcome.observation,
-              ),
-            );
-          default: {
-            const unhandled: never = move;
-            return unhandled;
-          }
-        }
-      }
-    }
-    return end({ status: 'succeeded', outputs });
+async function completeStep(ctx: ReplayContext, step: Step, value: string | undefined): Promise<void> {
+  for (const dialog of ctx.dialogs) await recordRecovery(ctx, dialogRecovery(step.id, dialog));
+  if (step.action.kind === 'read' && value !== undefined) {
+    ctx.outputs[step.action.output] = value;
+    await ctx.deps.evidence.event({ type: 'output', stepId: step.id, name: step.action.output, value });
   }
+}
 
-  // Nothing is open yet, so there is no session to hand over for requires_human.
-  async function refused(decision: OpenDecision): Promise<Ending | undefined> {
-    switch (decision.decision) {
-      case 'allow':
-        return undefined;
-      case 'deny':
-        return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed by policy`, decision.reason);
-      case 'landed_outside_policy':
-        return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed by policy`, describeLanding(decision));
-      case 'requires_human':
-        return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed for automation`, `needs a human: ${decision.reason}`);
-      default: {
-        const unhandled: never = decision;
-        return unhandled;
-      }
+// Attempts the step until it is done, handed to a human, or failed. A failure a human may get
+// past goes to them once, when there is an operator window; without one the run fails.
+async function runStep(ctx: ReplayContext, step: Step, reauthUsed: boolean): Promise<StepEnd> {
+  ctx.stepId = step.id;
+  ctx.dialogs = [];
+  let handedOver = false;
+  for (let attempt = 0; ; attempt += 1) {
+    await ctx.deps.evidence.event({ type: 'step_started', stepId: step.id, attempt, action: step.action.kind });
+    const outcome = await attemptOrTimeout(ctx, step);
+    if (outcome.kind === 'done') {
+      await completeStep(ctx, step, outcome.value);
+      return NEXT;
     }
+    if (outcome.kind === 'requires_human') {
+      const ended = await handOff(ctx, step.id, 'risky_action', outcome.message, () => verifyStep(ctx, step));
+      if (ended !== undefined) return end(ended);
+      ctx.riskyStepDone = true;
+      return NEXT;
+    }
+    const next: Response = outcome.kind === 'failed' ? outcome : await respond(ctx, step, outcome, { attempt, reauthUsed, riskyStepDone: ctx.riskyStepDone });
+    if (next.kind === 'retry') continue;
+    if (next.kind !== 'failed') return next;
+
+    if (!handedOver && humanCanRecover(next.code) && ctx.deps.escalation.humanSurfaceAvailable) {
+      handedOver = true;
+      const message = `step ${step.id} failed with ${next.code}: expected ${next.expected}; observed ${next.observed}`;
+      const ended = await handOff(ctx, step.id, 'unrecoverable', message, () => verifyStep(ctx, step));
+      if (ended !== undefined) return end(ended);
+      // A read still has to capture its value from the page the human left.
+      if (step.action.kind === 'read') continue;
+      return NEXT;
+    }
+    return end(await failed(ctx, step.id, next.code, next.expected, withDismissedDialogs(next.observed, ctx.dialogs), next.observation));
   }
+}
 
-  // Checks the target, signs in (ADR-013) and loads the target through the gateway.
-  async function openSurface(capability: Capability, reauthenticating: boolean): Promise<Ending | undefined> {
-    currentStepId = 'preconditions';
-    const notAllowed = await refused(gateway.checkOpen(request.targetUrl));
-    if (notAllowed !== undefined) return notAllowed;
-    let cookies: readonly SessionCookie[] = [];
-    if (capability.preconditions.map((precondition) => precondition.kind).includes('authenticated_session')) {
-      try {
-        cookies = await session.establish(request.targetUrl);
-      } catch (error) {
-        if (!isSessionError(error)) throw error;
-        return failed('preconditions', 'precondition_failed', 'an authenticated session', errorMessage(error));
-      }
-      await evidence.event({ type: 'session', event: reauthenticating ? 'reauthenticated' : 'established' });
-    }
-    const notOpened = await refused(await gateway.open(request.targetUrl, cookies));
+async function runSteps(ctx: ReplayContext, reauthUsed: boolean): Promise<Pass> {
+  ctx.outputs = {};
+  for (const step of ctx.capability.steps) {
+    const ended = await runStep(ctx, step, reauthUsed);
+    if (ended.kind !== 'next') return ended;
+  }
+  return end({ status: 'succeeded', outputs: ctx.outputs });
+}
+
+async function open(ctx: ReplayContext, reauthenticating: boolean): Promise<Ending | undefined> {
+  ctx.stepId = 'preconditions';
+  const signsIn = ctx.capability.preconditions.map((precondition) => precondition.kind).includes('authenticated_session');
+  const refusal = await openSurface(ctx.deps, ctx.request.targetUrl, !signsIn ? 'none' : reauthenticating ? 'reauthenticate' : 'establish');
+  if (refusal !== undefined) return failed(ctx, 'preconditions', refusal.code, refusal.expected, refusal.observed);
+  ctx.surfaceOpened = true;
+  return undefined;
+}
+
+// Only surface failures become driver_error; anything else is a bug and propagates.
+async function execute(ctx: ReplayContext): Promise<Ending> {
+  try {
+    const notOpened = await open(ctx, false);
     if (notOpened !== undefined) return notOpened;
-    surfaceOpened = true;
-    await evidence.event({ type: 'session', event: 'opened' });
-    return undefined;
+    for (let reauthUsed = false; ; reauthUsed = true) {
+      const pass = await runSteps(ctx, reauthUsed);
+      if (pass.kind === 'end') return pass.ending;
+      const notReopened = await open(ctx, true);
+      if (notReopened !== undefined) return notReopened;
+    }
+  } catch (error) {
+    if (!(error instanceof SurfaceFailure)) throw error;
+    return failed(ctx, ctx.stepId, 'driver_error', 'the surface to respond', error.message);
   }
+}
 
+// Executes a capability without a model (RFC-004): every step is resolved, performed through
+// the gateway and verified; anything else is classified against the artifact's declared outcomes.
+export async function replay(deps: ReplayDeps, request: ReplayRequest, options: ReplayOptions): Promise<ExecutionResult> {
+  const { store, evidence, clock } = deps;
+  const startedAt = clock.now();
+  const record: RunRecord = {
+    evidenceRun: await evidence.startRun({ mode: 'replay', capabilityId: request.capabilityId }),
+    startedAt,
+    capability: { id: request.capabilityId, requestedMajor: request.major },
+    recoveries: [],
+    interventions: [],
+  };
   await evidence.event({
     type: 'run_started',
     mode: 'replay',
@@ -567,39 +573,34 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
 
   const loaded = await store.loadLatest(request.capabilityId, request.major);
   if (!loaded.ok) {
-    return finish(
-      await failed(
-        'artifact',
-        'artifact_unavailable',
-        `a valid ${request.capabilityId} artifact with major version ${String(request.major)}`,
-        loaded.issues.join('; '),
-      ),
-    );
+    const expected = `a valid ${request.capabilityId} artifact with major version ${String(request.major)}`;
+    return finish(evidence, clock, record, failedBeforeSurface(record, 'artifact', 'artifact_unavailable', expected, loaded.issues.join('; ')));
   }
   const { id, version } = loaded.capability.capability;
-  capabilityRef = { id, requestedMajor: request.major, version };
+  record.capability = { id, requestedMajor: request.major, version };
   // Raw values, so they are masked even when validation rejects them.
-  evidence.protect(sensitiveValuesOf(loaded.capability, request.inputs, {}));
+  const sensitive = sensitiveValuesOf(loaded.capability, request.inputs, {});
+  evidence.protect(sensitive);
 
   const validation = validateInputs(loaded.capability, request.inputs);
   if (!validation.ok) {
-    const contract = `${id}@${version}`;
-    return finish(
-      await failed('inputs', 'invalid_input', `inputs matching the ${contract} contract`, validation.errors.map((error) => error.message).join('; ')),
-    );
+    const expected = `inputs matching the ${id}@${version} contract`;
+    return finish(evidence, clock, record, failedBeforeSurface(record, 'inputs', 'invalid_input', expected, validation.errors.map((error) => error.message).join('; ')));
   }
-  const capability = bindInputs(loaded.capability, validation.values);
 
-  try {
-    const notOpened = await openSurface(capability, false);
-    if (notOpened !== undefined) return await finish(notOpened);
-    for (let reauthUsed = false; ; reauthUsed = true) {
-      const pass = await runSteps(capability, reauthUsed);
-      if (pass.kind === 'end') return await finish(pass.ending);
-      const notReopened = await openSurface(capability, true);
-      if (notReopened !== undefined) return await finish(notReopened);
-    }
-  } catch (error) {
-    return finish(await failed(currentStepId, 'driver_error', 'the surface to respond', errorMessage(error)));
-  }
+  const ctx: ReplayContext = {
+    deps: { ...deps, gateway: guardSurface(deps.gateway) },
+    request,
+    stepTimeoutMs: options.stepTimeoutMs,
+    pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
+    capability: bindInputs(loaded.capability, validation.values),
+    record,
+    sensitive,
+    outputs: {},
+    stepId: 'preconditions',
+    surfaceOpened: false,
+    riskyStepDone: false,
+    dialogs: [],
+  };
+  return finish(evidence, clock, record, await execute(ctx));
 }

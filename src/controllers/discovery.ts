@@ -1,7 +1,7 @@
-import type { EvidenceRecorder } from '../diplomat/evidence/port';
-import type { ActionGateway, GatewayOutcome, OpenDecision } from '../diplomat/gateway/port';
-import { isReasonerError, type Reasoner, type ReasonerAdapter } from '../diplomat/reasoner/port';
-import { isSessionError, type SessionCookie, type SessionProvider } from '../diplomat/session/port';
+import type { EvidenceRecorder, EvidenceRun } from '../diplomat/evidence/port';
+import type { ActionGateway } from '../diplomat/gateway/port';
+import { isReasonerError, type Proposal, type Reasoner, type ReasonerAdapter } from '../diplomat/reasoner/port';
+import type { SessionProvider } from '../diplomat/session/port';
 import type { ArtifactStore } from '../diplomat/store/port';
 import { DEFAULT_POLL_INTERVAL_MS, type Clock } from '../infrastructure/clock';
 import { errorMessage } from '../infrastructure/errors';
@@ -12,8 +12,8 @@ import { findNode, observationRefs } from '../logic/grounding';
 import { matchHumanTarget } from '../logic/human-trace';
 import { describeLanding } from '../logic/policy';
 import { redactDeep, redactObservation, type RedactionRules, type SensitiveValue } from '../logic/redaction';
-import { actionArgument, actionRef } from '../logic/step-action';
-import type { AgentDecision, SurfaceAction } from '../models/action';
+import { actionRef } from '../logic/step-action';
+import type { AgentDecision, SurfaceDecision } from '../models/action';
 import type { ReasonerInfo } from '../models/capability';
 import type { CapabilityRequest } from '../models/capability-request';
 import {
@@ -26,9 +26,11 @@ import {
 import type { ElementDescriptor } from '../models/element-descriptor';
 import type { EscalationReason } from '../models/execution-result';
 import type { HumanTarget, InterventionReason } from '../models/intervention';
-import type { Observation } from '../models/observation';
+import type { Observation, ObservationNode } from '../models/observation';
 import type { OutcomeCatalog } from '../models/outcome-catalog';
 import type { Escalation } from './escalation';
+import { pollUntil } from './poll';
+import { endRun, guardSurface, openSurface, photograph, recordOutcome, SurfaceFailure, type OpenRefusal } from './run-lifecycle';
 
 export type DiscoveryDeps = {
   readonly store: ArtifactStore;
@@ -69,6 +71,43 @@ type Ending =
       readonly message: string;
     };
 
+// One discovery run.
+type DiscoveryContext = {
+  // The gateway rejects only with SurfaceFailure (guardSurface).
+  readonly deps: DiscoveryDeps;
+  readonly run: DiscoveryRun;
+  readonly limits: DiscoveryLimits;
+  readonly stepTimeoutMs: number;
+  readonly pollIntervalMs: number;
+  readonly evidenceRun: EvidenceRun;
+  readonly info: ReasonerInfo;
+  readonly capability: { readonly id: string; readonly version: string };
+  readonly startedAt: number;
+  // What the model, the trace and the evidence snapshots may not show: the secrets and every
+  // sensitive output read so far. Inputs stay visible, since the model has to type them.
+  modelRules: RedactionRules;
+  // Sensitive inputs and outputs, covered in screenshots.
+  readonly sensitive: SensitiveValue[];
+  readonly captured: Record<string, string>;
+  readonly trace: TraceStep[];
+  readonly interventions: string[];
+  // Model turns taken.
+  steps: number;
+  stalls: number;
+  feedback: string | undefined;
+  surfaceOpened: boolean;
+};
+
+// A surface decision the gateway completed.
+type Performed = {
+  readonly decision: SurfaceDecision;
+  readonly observation: Observation;
+  readonly node: ObservationNode | undefined;
+  readonly descriptor: ElementDescriptor | undefined;
+  readonly output: string | undefined;
+  readonly value: string | undefined;
+};
+
 function reasonerKind(adapter: ReasonerAdapter): ReasonerInfo['adapter'] {
   switch (adapter) {
     case 'ollama':
@@ -95,17 +134,282 @@ function failed(reason: DiscoveryFailureReason, message: string): Ending {
   return { status: 'failed', reason, message };
 }
 
-// Why opening targetUrl is refused, or undefined when it is allowed.
-function openRefused(targetUrl: string, decision: OpenDecision): Ending | undefined {
-  switch (decision.decision) {
-    case 'allow':
+function openFailed(targetUrl: string, refusal: OpenRefusal): Ending {
+  return failed(refusal.code, refusal.code === 'precondition_failed' ? refusal.observed : `opening ${targetUrl}: ${refusal.observed}`);
+}
+
+function maskTexts(ctx: DiscoveryContext): string[] {
+  return ctx.sensitive.map(({ value }) => value);
+}
+
+async function finish(ctx: DiscoveryContext, ending: Ending): Promise<DiscoveryResult> {
+  const base = {
+    runId: ctx.evidenceRun.runId,
+    capability: ctx.capability,
+    reasoner: ctx.info,
+    durationMs: ctx.deps.clock.now() - ctx.startedAt,
+    steps: ctx.steps,
+    interventions: ctx.interventions,
+  };
+  let result: DiscoveryResult;
+  switch (ending.status) {
+    case 'succeeded':
+      result = { ...base, status: 'succeeded', outputs: ending.outputs };
+      break;
+    case 'failed':
+      result = { ...base, ...ending };
+      break;
+    case 'escalated':
+      result = { ...base, ...ending };
+      break;
+    default: {
+      const unhandled: never = ending;
+      return unhandled;
+    }
+  }
+  const event = ending.status === 'succeeded' ? ({ type: 'result', status: ending.status } as const) : ({ type: 'result', status: ending.status, reason: ending.reason } as const);
+  return endRun(ctx.deps.evidence, event, result);
+}
+
+// The only observation the model, the trace and the evidence see is the redacted one.
+async function observe(ctx: DiscoveryContext): Promise<Observation> {
+  return redactObservation(await ctx.deps.gateway.observe(), ctx.modelRules);
+}
+
+// A read value of a sensitive output is masked in the evidence, in screenshots, and in every
+// observation the model gets from now on.
+function protectOutput(ctx: DiscoveryContext, output: string, value: string): void {
+  const sensitivity = ctx.run.request.outputs[output]?.sensitivity;
+  if (sensitivity === undefined || sensitivity === 'none') return;
+  const sensitive: SensitiveValue = { value, sensitivity };
+  ctx.deps.evidence.protect([sensitive]);
+  ctx.sensitive.push(sensitive);
+  ctx.modelRules = { ...ctx.modelRules, sensitive: [...ctx.modelRules.sensitive, sensitive] };
+}
+
+async function setback(ctx: DiscoveryContext, stepId: string, what: Setback): Promise<void> {
+  ctx.stalls += 1;
+  ctx.feedback = feedbackFor(what);
+  await ctx.deps.evidence.event({ type: 'feedback', stepId, feedback: ctx.feedback, stalls: ctx.stalls });
+}
+
+// Hands the same session to a human (RFC-005). After resume, a changed page puts what they
+// did in the trace as theirs; an unchanged one means they declined, told to the model (RFC-003).
+// undefined when the run goes on.
+async function escalate(ctx: DiscoveryContext, stepId: string, reason: InterventionReason, message: string): Promise<Ending | undefined> {
+  const { escalation, clock } = ctx.deps;
+  const before = await observe(ctx);
+  let after: Observation | undefined;
+  const outcome = await escalation.handOff({
+    run: ctx.evidenceRun,
+    mode: 'discovery',
+    capability: `${ctx.capability.id}@${ctx.capability.version}`,
+    goal: renderGoal(ctx.run.request, Object.keys(ctx.captured)),
+    stepId,
+    reason,
+    message,
+    maskTexts: maskTexts(ctx),
+    // Discovery has no step checkpoint: the fresh observation, once what the human started
+    // has loaded, decides what the resume means.
+    async verify() {
+      after = await pollUntil(clock, clock.now() + ctx.stepTimeoutMs, ctx.pollIntervalMs, async () => {
+        const observation = await observe(ctx);
+        return { done: progressed(before, observation, false), value: observation };
+      });
+      return { held: true };
+    },
+  });
+  ctx.interventions.push(outcome.interventionId);
+  if (outcome.status === 'aborted') {
+    return { status: 'escalated', interventionId: outcome.interventionId, reason: outcome.cause, stepId, message: `${message} (handoff ${outcome.cause})` };
+  }
+  const observationAfter = after ?? (await observe(ctx));
+  ctx.stalls = 0;
+  ctx.feedback = undefined;
+  if (!progressed(before, observationAfter, false)) {
+    await setback(ctx, stepId, { kind: 'human_declined' });
+    return undefined;
+  }
+  for (const action of outcome.actions) {
+    const target = action.kind === 'click' ? redactDeep(action.target, ctx.modelRules) : undefined;
+    const node = target === undefined ? undefined : matchHumanTarget(target, before);
+    ctx.trace.push({
+      actor: 'human',
+      stepId,
+      interventionId: outcome.interventionId,
+      action,
+      ...(target === undefined || node === undefined ? {} : { element: { node, descriptor: descriptorOf(target) } }),
+      observation: before,
+      observationAfter,
+    });
+  }
+  return undefined;
+}
+
+async function publish(ctx: DiscoveryContext): Promise<Ending> {
+  const { evidence, store, clock } = ctx.deps;
+  const synthesis = synthesizeArtifact(ctx.trace, ctx.run.request, ctx.run.catalog, {
+    method: 'discovered',
+    createdAt: new Date(clock.now()).toISOString(),
+    runId: ctx.evidenceRun.runId,
+    reasoner: ctx.info,
+  });
+  if (!synthesis.ok) {
+    const { code, message, stepId } = synthesis.error;
+    return failed('synthesis_failed', `${code}${stepId === undefined ? '' : ` at ${stepId}`}: ${message}`);
+  }
+  await evidence.artifact(synthesis.capability);
+  const saved = await store.save(synthesis.capability);
+  if (!saved.ok) return failed(saved.code === 'exists' ? 'artifact_exists' : 'artifact_invalid', saved.issues.join('; '));
+  await evidence.event({ type: 'artifact', capability: ctx.capability, steps: synthesis.capability.steps.length });
+  return { status: 'succeeded', outputs: { ...ctx.captured } };
+}
+
+// Observes and records the page the model is about to decide on. The sign-in screen is never photographed.
+async function observeTurn(ctx: DiscoveryContext, stepId: string): Promise<Observation> {
+  const { evidence } = ctx.deps;
+  const observation = await observe(ctx);
+  const elements = observationRefs(observation).length;
+  await evidence.event({ type: 'observation', stepId, observationId: observation.observationId, url: observation.url, elements });
+  await evidence.capture(stepId, { snapshot: observation });
+  const screenshot = ctx.surfaceOpened ? await photograph(ctx.deps, observation, maskTexts(ctx)) : undefined;
+  if (screenshot !== undefined) await evidence.capture(stepId, { screenshot });
+  return observation;
+}
+
+async function decide(ctx: DiscoveryContext, stepId: string, observation: Observation, validRefs: readonly string[]): Promise<{ decision: AgentDecision } | { ending: Ending }> {
+  const { reasoner, evidence, clock } = ctx.deps;
+  const asked = clock.now();
+  let proposal: Proposal;
+  try {
+    proposal = await reasoner.propose({
+      goal: renderGoal(ctx.run.request, Object.keys(ctx.captured)),
+      observation,
+      validRefs,
+      ...(ctx.feedback === undefined ? {} : { feedback: ctx.feedback }),
+    });
+  } catch (error) {
+    if (!isReasonerError(error)) throw error;
+    return { ending: failed('reasoner_exhausted', errorMessage(error)) };
+  }
+  const { decision, meta } = proposal;
+  await evidence.event({
+    type: 'decision',
+    stepId,
+    ...decisionFields(decision),
+    rationale: decision.rationale,
+    latencyMs: clock.now() - asked,
+    reasoner: ctx.info,
+    ...(meta === undefined ? {} : { providerMeta: meta }),
+  });
+  return { decision };
+}
+
+// After a completed action: records what was read and whether the page moved on.
+async function settle(ctx: DiscoveryContext, stepId: string, performed: Performed): Promise<undefined> {
+  const { decision, observation, node, descriptor, output, value } = performed;
+  const observationAfter = await observe(ctx);
+  let capturedNewValue = false;
+  if (output !== undefined && value !== undefined) {
+    capturedNewValue = ctx.captured[output] !== value;
+    ctx.captured[output] = value;
+    await ctx.deps.evidence.event({ type: 'output', stepId, name: output, value });
+  }
+  const moved = progressed(observation, observationAfter, capturedNewValue);
+  ctx.trace.push({
+    actor: 'agent',
+    stepId,
+    decision,
+    observation,
+    ...(node === undefined || descriptor === undefined ? {} : { element: { node, descriptor } }),
+    ...(value === undefined ? {} : { value }),
+    observationAfter,
+    progressed: moved,
+  });
+  await ctx.deps.evidence.event({ type: 'progress', stepId, progressed: moved });
+  if (moved) {
+    ctx.stalls = 0;
+    ctx.feedback = undefined;
+  } else {
+    await setback(ctx, stepId, { kind: 'no_progress', decision, node });
+  }
+  return undefined;
+}
+
+// Grounds the decision in the observation it was made on, then performs it through the gateway.
+async function act(ctx: DiscoveryContext, stepId: string, observation: Observation, decision: SurfaceDecision): Promise<Ending | undefined> {
+  const { gateway, evidence } = ctx.deps;
+  const { action } = decision;
+  const verb = action.kind;
+  const ref = actionRef(action);
+  const node = ref === undefined ? undefined : findNode(observation, ref);
+  if (ref !== undefined && node === undefined) {
+    await evidence.event({ type: 'grounding_rejected', stepId, target: ref });
+    await setback(ctx, stepId, { kind: 'unknown_ref', decision });
+    return undefined;
+  }
+  const output = decision.kind === 'read' ? decision.output : undefined;
+  if (decision.kind === 'read' && !Object.hasOwn(ctx.run.request.outputs, decision.output)) {
+    await setback(ctx, stepId, { kind: 'unknown_output', decision, outputs: Object.keys(ctx.run.request.outputs) });
+    return undefined;
+  }
+
+  // Described before acting: a click may take the element away.
+  const descriptor = ref === undefined ? undefined : redactDeep(await gateway.inspect(ref), ctx.modelRules);
+  const outcome = await gateway.perform({ stepId, purpose: 'step', action, timeoutMs: ctx.stepTimeoutMs });
+  const value = output !== undefined && outcome.status === 'done' ? outcome.value : undefined;
+  // Before the action is recorded: the element it names may show the value.
+  if (output !== undefined && value !== undefined) protectOutput(ctx, output, value);
+  const described = node === undefined ? undefined : `${node.role} ${JSON.stringify(node.name === '' ? (node.label ?? '') : node.name)}`;
+  await recordOutcome(evidence, { stepId, purpose: 'step', action, target: described, output }, outcome);
+  switch (outcome.status) {
+    case 'denied':
+      await setback(ctx, stepId, { kind: 'denied', decision, node, reason: outcome.reason });
       return undefined;
-    case 'deny':
-      return failed('policy_denied', `opening ${targetUrl}: ${decision.reason}`);
     case 'landed_outside_policy':
-      return failed('policy_denied', `opening ${targetUrl}: ${describeLanding(decision)}`);
+      // The action already ran and took the page outside the policy: nothing the model sees next is safe to act on.
+      return failed('policy_denied', `${verb} ${described ?? ''} ${describeLanding(outcome)}`);
     case 'requires_human':
-      return failed('policy_denied', `opening ${targetUrl} needs a human: ${decision.reason}`);
+      return escalate(ctx, stepId, 'risky_action', `${verb} ${described ?? ''} needs a human: ${outcome.reason}`);
+    case 'timeout':
+      await setback(ctx, stepId, { kind: 'action_failed', decision, node, detail: 'the page did not finish loading' });
+      return undefined;
+    case 'error':
+      await setback(ctx, stepId, { kind: 'action_failed', decision, node, detail: outcome.message });
+      return undefined;
+    case 'done':
+      return settle(ctx, stepId, { decision, observation, node, descriptor, output, value });
+    default: {
+      const unhandled: never = outcome;
+      return unhandled;
+    }
+  }
+}
+
+// One turn: observe, decide, then act on the decision. undefined means keep going.
+async function turn(ctx: DiscoveryContext, stepId: string): Promise<Ending | undefined> {
+  const observation = await observeTurn(ctx, stepId);
+  const validRefs = observationRefs(observation);
+  if (validRefs.length === 0) {
+    await setback(ctx, stepId, { kind: 'no_elements' });
+    await ctx.deps.clock.sleep(ctx.pollIntervalMs);
+    return undefined;
+  }
+  const asked = await decide(ctx, stepId, observation, validRefs);
+  if ('ending' in asked) return asked.ending;
+  const { decision } = asked;
+  switch (decision.kind) {
+    case 'request_help':
+      return escalate(ctx, stepId, 'help_requested', decision.message);
+    case 'finish': {
+      const missing = missingOutputs(ctx.run.request, ctx.captured);
+      if (missing.length === 0) return publish(ctx);
+      await setback(ctx, stepId, { kind: 'goal_not_met', missing });
+      return undefined;
+    }
+    case 'act':
+    case 'read':
+      return act(ctx, stepId, observation, decision);
     default: {
       const unhandled: never = decision;
       return unhandled;
@@ -113,346 +417,75 @@ function openRefused(targetUrl: string, decision: OpenDecision): Ending | undefi
   }
 }
 
+async function explore(ctx: DiscoveryContext): Promise<Ending> {
+  const refusal = await openSurface(ctx.deps, ctx.run.targetUrl, 'establish');
+  if (refusal !== undefined) return openFailed(ctx.run.targetUrl, refusal);
+  ctx.surfaceOpened = true;
+  for (;;) {
+    const stop = stopCheck({ steps: ctx.steps, stalls: ctx.stalls, startedAt: ctx.startedAt }, ctx.limits, ctx.deps.clock.now());
+    if (stop.kind === 'fail') return failed(stop.reason, stop.message);
+    if (stop.kind === 'escalate') {
+      const ended = await escalate(ctx, `step-${String(ctx.steps)}`, stop.reason, stop.message);
+      if (ended !== undefined) return ended;
+      continue;
+    }
+    ctx.steps += 1;
+    const ended = await turn(ctx, `step-${String(ctx.steps)}`);
+    if (ended !== undefined) return ended;
+  }
+}
+
+// Only surface failures become driver_error; anything else is a bug and propagates.
+async function exploreGuarded(ctx: DiscoveryContext): Promise<Ending> {
+  try {
+    return await explore(ctx);
+  } catch (error) {
+    if (!(error instanceof SurfaceFailure)) throw error;
+    return failed('driver_error', error.message);
+  }
+}
+
 // Accomplishes the request's goal on the live surface with the model (RFC-003) and, when the
 // goal holds, synthesizes and publishes the capability artifact.
 export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: DiscoveryOptions): Promise<DiscoveryResult> {
-  const { store, session, gateway, reasoner, evidence, escalation, clock } = deps;
-  const { request, catalog, targetUrl } = run;
-  const limits = options.limits ?? DEFAULT_DISCOVERY_LIMITS;
-  const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-  const rules: RedactionRules = { secrets: run.secrets, sensitive: [] };
-  const info: ReasonerInfo = { adapter: reasonerKind(reasoner.adapter), model: reasoner.model };
+  const { store, reasoner, evidence, clock } = deps;
+  const { request, targetUrl } = run;
   const capability = { id: request.capability.id, version: request.capability.version };
+  const info: ReasonerInfo = { adapter: reasonerKind(reasoner.adapter), model: reasoner.model };
+  const limits = options.limits ?? DEFAULT_DISCOVERY_LIMITS;
   const startedAt = clock.now();
   const evidenceRun = await evidence.startRun({ mode: 'discovery', capabilityId: capability.id });
-  const captured: Record<string, string> = {};
-  const trace: TraceStep[] = [];
-  const interventions: string[] = [];
-  let steps = 0;
-  let stalls = 0;
-  let feedback: string | undefined;
-  let surfaceOpened = false;
-
-  async function finish(ending: Ending): Promise<DiscoveryResult> {
-    const base = { runId: evidenceRun.runId, capability, reasoner: info, durationMs: clock.now() - startedAt, steps, interventions };
-    let result: DiscoveryResult;
-    switch (ending.status) {
-      case 'succeeded':
-        result = { ...base, status: 'succeeded', outputs: ending.outputs };
-        break;
-      case 'failed':
-        result = { ...base, ...ending };
-        break;
-      case 'escalated':
-        result = { ...base, ...ending };
-        break;
-      default: {
-        const unhandled: never = ending;
-        return unhandled;
-      }
-    }
-    await evidence.event(
-      ending.status === 'succeeded' ? { type: 'result', status: ending.status } : { type: 'result', status: ending.status, reason: ending.reason },
-    );
-    await evidence.finish(result);
-    return result;
-  }
-
-  // The sign-in screen is never photographed (it may show credentials).
-  async function screenshot(stepId: string, observation: Observation): Promise<void> {
-    if (!surfaceOpened || session.isExpired(observation)) return;
-    try {
-      await evidence.capture(stepId, { screenshot: await gateway.screenshot() });
-    } catch {
-      // Best effort: the run goes on without the picture.
-    }
-  }
-
-  // The only observation the model, the trace and the evidence see is the redacted one.
-  async function observe(): Promise<Observation> {
-    return redactObservation(await gateway.observe(), rules);
-  }
-
-  async function setback(stepId: string, what: Setback): Promise<void> {
-    stalls += 1;
-    feedback = feedbackFor(what);
-    await evidence.event({ type: 'feedback', stepId, feedback, stalls });
-  }
-
-  // Hands the same session to a human (RFC-005). After resume, a changed page puts what they
-  // did in the trace as theirs; an unchanged one means they declined, told to the model (RFC-003).
-  // undefined when the run goes on.
-  async function escalate(stepId: string, reason: InterventionReason, message: string): Promise<Ending | undefined> {
-    const before = await observe();
-    let after: Observation | undefined;
-    const outcome = await escalation.handOff({
-      run: evidenceRun,
-      mode: 'discovery',
-      capability: `${capability.id}@${capability.version}`,
-      goal: renderGoal(request, Object.keys(captured)),
-      stepId,
-      reason,
-      message,
-      // Discovery has no step checkpoint: the fresh observation, once what the human started
-      // has loaded, decides what the resume means.
-      async verify() {
-        const deadline = clock.now() + options.stepTimeoutMs;
-        after = await observe();
-        while (!progressed(before, after, false) && clock.now() < deadline) {
-          await clock.sleep(pollIntervalMs);
-          after = await observe();
-        }
-        return { held: true };
-      },
-    });
-    interventions.push(outcome.interventionId);
-    if (outcome.status === 'aborted') {
-      return { status: 'escalated', interventionId: outcome.interventionId, reason: outcome.cause, stepId, message: `${message} (handoff ${outcome.cause})` };
-    }
-    const observationAfter = after ?? (await observe());
-    stalls = 0;
-    feedback = undefined;
-    if (!progressed(before, observationAfter, false)) {
-      await setback(stepId, { kind: 'human_declined' });
-      return undefined;
-    }
-    for (const action of outcome.actions) {
-      const target = action.kind === 'click' ? redactDeep(action.target, rules) : undefined;
-      const node = target === undefined ? undefined : matchHumanTarget(target, before);
-      trace.push({
-        actor: 'human',
-        stepId,
-        interventionId: outcome.interventionId,
-        action,
-        ...(target === undefined || node === undefined ? {} : { element: { node, descriptor: descriptorOf(target) } }),
-        observation: before,
-        observationAfter,
-      });
-    }
-    return undefined;
-  }
-
-  // `output` is the name a read captures into, recorded as its argument.
-  async function recordAction(stepId: string, action: SurfaceAction, target: string | undefined, output: string | undefined, outcome: GatewayOutcome): Promise<void> {
-    const policy = { type: 'policy', stepId, purpose: 'step', verb: action.kind } as const;
-    switch (outcome.status) {
-      case 'denied':
-        await evidence.event({ ...policy, decision: 'deny', reason: outcome.reason });
-        return;
-      case 'landed_outside_policy':
-        await evidence.event({ ...policy, decision: 'deny', reason: describeLanding(outcome) });
-        return;
-      case 'requires_human':
-        await evidence.event({ ...policy, decision: 'requires_human', reason: outcome.reason });
-        return;
-      case 'done':
-      case 'timeout':
-      case 'error':
-        break;
-      default: {
-        const unhandled: never = outcome;
-        return unhandled;
-      }
-    }
-    await evidence.event({ ...policy, decision: 'allow' });
-    const argument = output ?? actionArgument(action);
-    await evidence.event({
-      type: 'action',
-      stepId,
-      purpose: 'step',
-      verb: action.kind,
-      ...(target === undefined ? {} : { target }),
-      ...(argument === undefined ? {} : { argument }),
-      outcome: outcome.status,
-      ...(outcome.status === 'done' ? { navigations: outcome.navigations } : {}),
-      ...(outcome.status === 'error' ? { message: outcome.message } : {}),
-    });
-  }
-
-  async function publish(): Promise<Ending> {
-    const synthesis = synthesizeArtifact(trace, request, catalog, {
-      method: 'discovered',
-      createdAt: new Date(clock.now()).toISOString(),
-      runId: evidenceRun.runId,
-      reasoner: info,
-    });
-    if (!synthesis.ok) {
-      const { code, message, stepId } = synthesis.error;
-      return failed('synthesis_failed', `${code}${stepId === undefined ? '' : ` at ${stepId}`}: ${message}`);
-    }
-    await evidence.artifact(synthesis.capability);
-    const saved = await store.save(synthesis.capability);
-    if (!saved.ok) return failed(saved.code === 'exists' ? 'artifact_exists' : 'artifact_invalid', saved.issues.join('; '));
-    await evidence.event({ type: 'artifact', capability, steps: synthesis.capability.steps.length });
-    return { status: 'succeeded', outputs: { ...captured } };
-  }
-
-  // One turn: observe, decide, ground, gate, act, check progress. undefined means keep going.
-  async function turn(stepId: string): Promise<Ending | undefined> {
-    const observation = await observe();
-    const validRefs = observationRefs(observation);
-    await evidence.event({ type: 'observation', stepId, observationId: observation.observationId, url: observation.url, elements: validRefs.length });
-    await evidence.capture(stepId, { snapshot: observation });
-    await screenshot(stepId, observation);
-    if (validRefs.length === 0) {
-      await setback(stepId, { kind: 'no_elements' });
-      await clock.sleep(pollIntervalMs);
-      return undefined;
-    }
-
-    const asked = clock.now();
-    let decision: AgentDecision;
-    try {
-      decision = await reasoner.propose({
-        goal: renderGoal(request, Object.keys(captured)),
-        observation,
-        validRefs,
-        ...(feedback === undefined ? {} : { feedback }),
-      });
-    } catch (error) {
-      if (!isReasonerError(error)) throw error;
-      return failed('reasoner_exhausted', errorMessage(error));
-    }
-    await evidence.event({ type: 'decision', stepId, ...decisionFields(decision), rationale: decision.rationale, latencyMs: clock.now() - asked, reasoner: info });
-
-    if (decision.kind === 'request_help') return escalate(stepId, 'help_requested', decision.message);
-    if (decision.kind === 'finish') {
-      const missing = missingOutputs(request, captured);
-      if (missing.length === 0) return publish();
-      await setback(stepId, { kind: 'goal_not_met', missing });
-      return undefined;
-    }
-
-    const { action } = decision;
-    const verb = action.kind;
-    const ref = actionRef(action);
-    const node = ref === undefined ? undefined : findNode(observation, ref);
-    if (ref !== undefined && node === undefined) {
-      await evidence.event({ type: 'grounding_rejected', stepId, target: ref });
-      await setback(stepId, { kind: 'unknown_ref', decision });
-      return undefined;
-    }
-    const output = decision.kind === 'read' ? decision.output : undefined;
-    if (decision.kind === 'read' && !Object.hasOwn(request.outputs, decision.output)) {
-      await setback(stepId, { kind: 'unknown_output', decision, outputs: Object.keys(request.outputs) });
-      return undefined;
-    }
-
-    // Described before acting: a click may take the element away.
-    const descriptor = ref === undefined ? undefined : redactDeep(await gateway.inspect(ref), rules);
-    const outcome = await gateway.perform({ stepId, purpose: 'step', action, timeoutMs: options.stepTimeoutMs });
-    const value = output !== undefined && outcome.status === 'done' ? outcome.value : undefined;
-    // Before the action is recorded: the element it names may show the value.
-    const sensitivity = output === undefined ? undefined : request.outputs[output]?.sensitivity;
-    if (value !== undefined && sensitivity !== undefined && sensitivity !== 'none') evidence.protect([{ value, sensitivity }]);
-    const described = node === undefined ? undefined : `${node.role} ${JSON.stringify(node.name === '' ? (node.label ?? '') : node.name)}`;
-    await recordAction(stepId, action, described, output, outcome);
-    switch (outcome.status) {
-      case 'denied':
-        await setback(stepId, { kind: 'denied', decision, node, reason: outcome.reason });
-        return undefined;
-      case 'landed_outside_policy':
-        // The action already ran and took the page outside the policy: nothing the model sees next is safe to act on.
-        return failed('policy_denied', `${verb} ${described ?? ''} ${describeLanding(outcome)}`);
-      case 'requires_human':
-        return escalate(stepId, 'risky_action', `${verb} ${described ?? ''} needs a human: ${outcome.reason}`);
-      case 'timeout':
-        await setback(stepId, { kind: 'action_failed', decision, node, detail: 'the page did not finish loading' });
-        return undefined;
-      case 'error':
-        await setback(stepId, { kind: 'action_failed', decision, node, detail: outcome.message });
-        return undefined;
-      case 'done':
-        break;
-      default: {
-        const unhandled: never = outcome;
-        return unhandled;
-      }
-    }
-
-    const observationAfter = await observe();
-    let capturedNewValue = false;
-    if (output !== undefined && value !== undefined) {
-      capturedNewValue = captured[output] !== value;
-      captured[output] = value;
-      await evidence.event({ type: 'output', stepId, name: output, value });
-    }
-    const moved = progressed(observation, observationAfter, capturedNewValue);
-    trace.push({
-      actor: 'agent',
-      stepId,
-      decision,
-      observation,
-      ...(node === undefined || descriptor === undefined ? {} : { element: { node, descriptor } }),
-      ...(value === undefined ? {} : { value }),
-      observationAfter,
-      progressed: moved,
-    });
-    await evidence.event({ type: 'progress', stepId, progressed: moved });
-    if (moved) {
-      stalls = 0;
-      feedback = undefined;
-    } else {
-      await setback(stepId, { kind: 'no_progress', decision, node });
-    }
-    return undefined;
-  }
-
-  async function loop(): Promise<Ending> {
-    // Before signing in: credentials are never sent for a target the policy refuses.
-    const notAllowed = openRefused(targetUrl, gateway.checkOpen(targetUrl));
-    if (notAllowed !== undefined) return notAllowed;
-    let cookies: readonly SessionCookie[];
-    try {
-      cookies = await session.establish(targetUrl);
-    } catch (error) {
-      if (!isSessionError(error)) throw error;
-      return failed('precondition_failed', errorMessage(error));
-    }
-    await evidence.event({ type: 'session', event: 'established' });
-    const notOpened = openRefused(targetUrl, await gateway.open(targetUrl, cookies));
-    if (notOpened !== undefined) return notOpened;
-    surfaceOpened = true;
-    await evidence.event({ type: 'session', event: 'opened' });
-
-    for (;;) {
-      const stop = stopCheck({ steps, stalls, startedAt }, limits, clock.now());
-      if (stop.kind === 'fail') return failed(stop.reason, stop.message);
-      if (stop.kind === 'escalate') {
-        const ended = await escalate(`step-${String(steps)}`, stop.reason, stop.message);
-        if (ended !== undefined) return ended;
-        continue;
-      }
-      steps += 1;
-      const ended = await turn(`step-${String(steps)}`);
-      if (ended !== undefined) return ended;
-    }
-  }
-
   // Before the first event: the goal quotes the examples.
   const sensitive: SensitiveValue[] = Object.values(request.inputs).flatMap(({ example, sensitivity }) =>
     sensitivity === 'none' ? [] : [{ value: example, sensitivity }],
   );
   evidence.protect(sensitive);
-  await evidence.event({
-    type: 'discovery_started',
-    capability,
-    goal: renderGoal(request),
-    inputNames: Object.keys(request.inputs),
-    targetUrl,
-    reasoner: info,
+  const ctx: DiscoveryContext = {
+    deps: { ...deps, gateway: guardSurface(deps.gateway) },
+    run,
     limits,
-  });
+    stepTimeoutMs: options.stepTimeoutMs,
+    pollIntervalMs: options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS,
+    evidenceRun,
+    info,
+    capability,
+    startedAt,
+    modelRules: { secrets: run.secrets, sensitive: [] },
+    sensitive: [...sensitive],
+    captured: {},
+    trace: [],
+    interventions: [],
+    steps: 0,
+    stalls: 0,
+    feedback: undefined,
+    surfaceOpened: false,
+  };
+  await evidence.event({ type: 'discovery_started', capability, goal: renderGoal(request), inputNames: Object.keys(request.inputs), targetUrl, reasoner: info, limits });
 
   // Versions are immutable (ADR-007): refuse before spending a run on an artifact that cannot be saved.
   const existing = await store.load(capability.id, capability.version);
   if (existing.ok || existing.code === 'invalid') {
-    return finish(failed('artifact_exists', `${capability.id}@${capability.version} is already published; request a new version`));
+    return finish(ctx, failed('artifact_exists', `${capability.id}@${capability.version} is already published; request a new version`));
   }
-
-  try {
-    return await finish(await loop());
-  } catch (error) {
-    return finish(failed('driver_error', errorMessage(error)));
-  }
+  return finish(ctx, await exploreGuarded(ctx));
 }

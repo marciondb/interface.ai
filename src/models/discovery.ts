@@ -35,6 +35,24 @@ export type HumanTraceStep = {
 
 export type TraceStep = AgentTraceStep | HumanTraceStep;
 
+// What the model provider said about the call that produced a decision, when it said it: shows
+// the discovery evidence came from a real model. Ollama's durations are in nanoseconds.
+export type ProviderMeta =
+  | {
+      readonly provider: 'ollama';
+      readonly model?: string;
+      readonly createdAt?: string;
+      readonly totalDurationNs?: number;
+      readonly evalCount?: number;
+      readonly promptEvalCount?: number;
+    }
+  | {
+      readonly provider: 'openai-compatible';
+      readonly id?: string;
+      readonly model?: string;
+      readonly usage?: { readonly promptTokens?: number; readonly completionTokens?: number; readonly totalTokens?: number };
+    };
+
 export type DiscoveryLimits = {
   readonly maxSteps: number;
   readonly timeoutMs: number;

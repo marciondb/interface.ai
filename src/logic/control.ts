@@ -3,6 +3,7 @@ import type { ControlEvent, ControlOwner, ControlState, Transition } from '../mo
 const ENDINGS: readonly ControlEvent[] = ['operator_abort', 'ttl_expired', 'surface_closed'];
 
 function next(state: ControlState, event: ControlEvent): ControlState | undefined {
+  if (event === 'handoff_failed') return state === 'automation' || state === 'aborted' ? undefined : 'aborted';
   switch (state) {
     case 'automation':
       return event === 'escalate' ? 'awaiting_human' : undefined;

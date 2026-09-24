@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import type { EscalationReason } from './execution-result';
 
-// Why automation stopped and asked for a human (RFC-005 triggers).
-export const InterventionReasonSchema = z.enum(['risky_action', 'stalled', 'help_requested']);
+// Why automation stopped and asked for a human (RFC-005 triggers); `unrecoverable` is a replay
+// step that failed in a way no declared recovery handles (requirement §3.6).
+export const InterventionReasonSchema = z.enum(['risky_action', 'stalled', 'help_requested', 'unrecoverable']);
 
 // Written to intervention.json and shown to the operator (RFC-005).
 export const InterventionRequestSchema = z.strictObject({
@@ -50,6 +51,9 @@ export type InterventionRequest = z.infer<typeof InterventionRequestSchema>;
 export type HumanTarget = z.infer<typeof HumanTargetSchema>;
 export type HumanAction = z.infer<typeof HumanActionSchema>;
 export type DialogDecision = Extract<HumanAction, { kind: 'dialog' }>['decision'];
+
+// Whether the human's work shows on the page; their word is not taken on faith.
+export type Verification = { readonly held: true } | { readonly held: false; readonly expected: string; readonly observed: string };
 
 export type HandoffOutcome =
   | {

@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fromCapabilityFile } from '../../../src/adapters/capability-file';
-import type { Clock } from '../../../src/infrastructure/clock';
 import { DiscoveryResultSchema, type DiscoveryResult } from '../../../src/models/discovery';
 import { at } from '../../support/at';
+import { createFakeClock } from '../../support/fakes';
 import { runDiscovery, type DiscoveryHarnessOptions, type DiscoveryHarnessRun } from '../../support/discovery-harness';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
 import { PASSWORD, runReplay } from '../../support/replay-harness';
@@ -58,10 +58,11 @@ describe('discovery controller against the fixture', { timeout: 60_000 }, () => 
   }
 
   describe('the read flow', () => {
+    const reasoner = createScriptedReasoner(READ_FLOW);
     let run: DiscoveryHarnessRun | undefined;
 
     beforeAll(async () => {
-      run = await discover(createScriptedReasoner(READ_FLOW));
+      run = await discover(reasoner);
     }, 60_000);
 
     function discovered(): DiscoveryHarnessRun {
@@ -97,6 +98,15 @@ describe('discovery controller against the fixture', { timeout: 60_000 }, () => 
       expect(text).not.toContain('4,812.37');
       expect(text).toContain('[REDACTED:financial]');
       expect(log.find((event) => event.type === 'output')).toMatchObject({ name: 'balance', value: '[REDACTED:financial]' });
+    });
+
+    it('stops showing the model the balance once it is read, but keeps the member id it types', () => {
+      const [beforeRead, afterRead] = reasoner.inputs.slice(4).map((input) => JSON.stringify(input.observation));
+
+      expect(beforeRead).toContain('4,812.37');
+      expect(afterRead).not.toContain('4,812.37');
+      expect(afterRead).toContain('[REDACTED:financial]');
+      expect(JSON.stringify(reasoner.inputs.at(-1)?.goal)).toContain('10001');
     });
 
     it('produces an artifact that replays for another member without the model', async () => {
@@ -212,12 +222,20 @@ describe('discovery controller against the fixture', { timeout: 60_000 }, () => 
   });
 
   it('fails when the wall-clock budget runs out', async () => {
-    let now = 0;
-    const clock: Clock = { now: () => (now += 1_000), sleep: () => Promise.resolve() };
+    const clock = createFakeClock();
+    const scripted = createScriptedReasoner(READ_FLOW);
+    // Each answer takes the model 3 s of the clock: the third turn starts past the 5 s budget.
+    const slow: ScriptedReasoner = {
+      ...scripted,
+      async propose(input) {
+        await clock.sleep(3_000);
+        return scripted.propose(input);
+      },
+    };
 
-    const run = await discover(createScriptedReasoner(READ_FLOW), { clock, limits: { maxSteps: 25, timeoutMs: 5_000, maxStalls: 3 } });
+    const run = await discover(slow, { clock, limits: { maxSteps: 25, timeoutMs: 5_000, maxStalls: 3 } });
 
-    expect(expectStatus(run.result, 'failed')).toMatchObject({ reason: 'timeout' });
+    expect(expectStatus(run.result, 'failed')).toMatchObject({ reason: 'timeout', steps: 2 });
   });
 
   it('fails when the reasoner gives up', async () => {

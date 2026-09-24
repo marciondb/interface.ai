@@ -16,6 +16,9 @@ const VALID: readonly [ControlState, ControlEvent, ControlState][] = [
   ['verifying', 'checkpoint_held', 'automation'],
   ['verifying', 'checkpoint_failed', 'human'],
   ['verifying', 'surface_closed', 'aborted'],
+  ['awaiting_human', 'handoff_failed', 'aborted'],
+  ['human', 'handoff_failed', 'aborted'],
+  ['verifying', 'handoff_failed', 'aborted'],
 ];
 
 describe('control state machine', () => {

@@ -199,6 +199,7 @@ describe('human handoff of the live session', { timeout: 60_000 }, () => {
         stepId: 'step-2',
         reason: 'help_requested',
         message: 'search for the member',
+        maskTexts: [],
         async verify() {
           const observation = await gateway.observe();
           return observation.nodes.some((node) => node.role === 'link' && node.name === 'Maria Santos')

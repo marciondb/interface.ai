@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { SemverSchema } from './capability';
+import { DialogSchema } from './observation';
 
 export const FAILURE_CODES = [
   'invalid_input',
@@ -21,11 +22,13 @@ export const FailureCodeSchema = z.enum(FAILURE_CODES);
 const recoveryBase = { stepId: z.string(), attempt: z.number().int().positive() };
 
 // What was recovered from and how (RFC-004): a declared recoverable outcome by its recovery
-// or a retry, a timeout by a retry, an expired session by signing in again.
+// or a retry, a timeout by a retry, an expired session by signing in again, and a native dialog
+// automation dismissed while the step's checkpoint still held.
 export const RecoverySchema = z.discriminatedUnion('condition', [
   z.strictObject({ ...recoveryBase, condition: z.literal('outcome'), outcomeId: z.string(), response: z.enum(['declared_recovery', 'retry']) }),
   z.strictObject({ ...recoveryBase, condition: z.literal('timeout'), response: z.literal('retry') }),
   z.strictObject({ ...recoveryBase, condition: z.literal('session_expired'), response: z.literal('reauthenticate') }),
+  z.strictObject({ stepId: z.string(), condition: z.literal('unexpected_dialog'), response: z.literal('dismissed'), dialog: DialogSchema }),
 ]);
 
 // How the human handoff ended without the run resuming (RFC-005); what triggered it is in the

@@ -1,7 +1,7 @@
 import type { SurfaceActionKind, Verb } from './action';
 import type { Candidate, ReasonerInfo, StepAction } from './capability';
 import type { Classification, ClassificationTrigger } from './classification';
-import type { DiscoveryFailureReason, DiscoveryLimits } from './discovery';
+import type { DiscoveryFailureReason, DiscoveryLimits, ProviderMeta } from './discovery';
 import type { EscalationReason, ExecutionStatus, Recovery } from './execution-result';
 import type { HumanAction, InterventionReason } from './intervention';
 import type { Navigation } from './resolution';
@@ -112,6 +112,7 @@ export type RunEvent =
       readonly rationale: string;
       readonly latencyMs: number;
       readonly reasoner: ReasonerInfo;
+      readonly providerMeta?: ProviderMeta;
     }
   | { readonly type: 'grounding_rejected'; readonly stepId: string; readonly target: string | null }
   | { readonly type: 'progress'; readonly stepId: string; readonly progressed: boolean }

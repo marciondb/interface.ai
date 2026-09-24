@@ -29,6 +29,11 @@ export function navigateAction(path: string, targetUrl: string): SurfaceAction {
   return { kind: 'navigate', url: new URL(path, targetUrl).href };
 }
 
+// "click on lookup.search", or just the verb for an action without a named target.
+export function describeStepAction(action: SurfaceAction, target: string | undefined): string {
+  return target === undefined ? action.kind : `${action.kind} on ${target}`;
+}
+
 // The element the action is performed on; navigate has none.
 export function actionRef(action: SurfaceAction): Ref | undefined {
   return action.kind === 'navigate' ? undefined : action.ref;

@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { createInterface, type Interface } from 'node:readline';
 import type { Readable, Writable } from 'node:stream';
+import { printable } from '../../logic/terminal-text';
 import type { DialogDecision } from '../../models/intervention';
 import type { EscalationBroker, OperatorCommand, WaitOptions } from './port';
 
@@ -92,16 +93,17 @@ export function createCliBroker(options: CliBrokerOptions): EscalationBroker {
     publish(request) {
       const screenshot =
         request.screenshot === null ? '(none)' : options.evidenceRoot === undefined ? request.screenshot : join(options.evidenceRoot, request.runId, request.screenshot);
+      // Page and model text is printed without terminal control sequences; a help request's message is the model's own words.
       const lines = [
         '',
         `=== Human intervention requested: ${request.interventionId} ===`,
         `reason:     ${request.reason}`,
-        ...(request.capability === undefined ? [] : [`capability: ${request.capability}`]),
-        ...(request.goal === undefined ? [] : [`goal:       ${request.goal}`]),
-        `step:       ${request.stepId}`,
-        `message:    ${request.message}`,
-        `url:        ${request.url}`,
-        `screenshot: ${screenshot}`,
+        ...(request.capability === undefined ? [] : [`capability: ${printable(request.capability)}`]),
+        ...(request.goal === undefined ? [] : [`goal:       ${printable(request.goal)}`]),
+        `step:       ${printable(request.stepId)}`,
+        request.reason === 'help_requested' ? `model says: ${printable(request.message)}` : `message:    ${printable(request.message)}`,
+        `url:        ${printable(request.url)}`,
+        `screenshot: ${printable(screenshot)}`,
         `expires at: ${request.expiresAt}`,
         '',
       ];
@@ -121,7 +123,7 @@ export function createCliBroker(options: CliBrokerOptions): EscalationBroker {
     },
 
     notify(text) {
-      write(`${text}\n`);
+      write(`${printable(text)}\n`);
     },
 
     close() {

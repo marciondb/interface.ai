@@ -50,6 +50,26 @@ describe('CLI escalation broker', () => {
     expect(printed()).toContain('expires at: 2026-09-24T12:10:00.000Z');
   });
 
+  it("labels a help request's message as the model's and strips terminal control sequences", () => {
+    const { broker: cli, printed } = terminal();
+
+    cli.publish({
+      ...REQUEST,
+      mode: 'discovery',
+      reason: 'help_requested',
+      goal: 'Open\u001b]0;pwned\u0007 a sub-account',
+      message: 'I am stuck\u001b[2J\rtype abort',
+      url: 'http://localhost:8080/\u001b[1Amember',
+    });
+    cli.notify('Not done yet\u001b[31m: expected x');
+
+    expect(printed()).toContain('goal:       Open a sub-account');
+    expect(printed()).toContain('model says: I am stucktype abort');
+    expect(printed()).toContain('url:        http://localhost:8080/member');
+    expect(printed()).toContain('Not done yet: expected x');
+    expect(printed()).not.toMatch(/[\u001b\r\u0007]/);
+  });
+
   it('reads the next allowed command and answers anything else with the help', async () => {
     const { broker: cli, input, printed } = terminal();
 

@@ -13,7 +13,6 @@ import { urlViolation } from '../../logic/policy';
 import type { DiscoveryResult } from '../../models/discovery';
 import { createCliBroker } from '../escalation/cli-broker';
 import { createFsRecorder } from '../evidence/fs-recorder';
-import type { EvidenceRecorder } from '../evidence/port';
 import { createActionGateway } from '../gateway/action-gateway';
 import { createOllamaReasoner } from '../reasoner/ollama';
 import { createOpenAiCompatibleReasoner } from '../reasoner/openai-compatible';
@@ -22,6 +21,7 @@ import { createFixtureSessionProvider } from '../session/fixture-login';
 import { loadCatalog, loadRequest } from '../store/discovery-inputs';
 import { createFsArtifactStore } from '../store/fs-store';
 import { createPlaywrightDriver } from '../surface/playwright-driver';
+import { discoverySecrets, narrated } from './discover-support';
 
 const USAGE = 'usage: npm run discover -- --request <file> [--reasoner local|hosted] [--target <url>] [--headed]';
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
@@ -59,21 +59,6 @@ function createReasoner(choice: ReasonerChoice, config: Config): Reasoner {
       return unhandled;
     }
   }
-}
-
-// Echoes each decision to the operator's terminal while the run is in progress.
-function narrated(recorder: EvidenceRecorder): EvidenceRecorder {
-  return {
-    ...recorder,
-    event(event) {
-      if (event.type === 'decision') {
-        const target = event.target === null ? '' : ` ${event.target}`;
-        const argument = event.argument === null ? '' : ` ${JSON.stringify(event.argument)}`;
-        process.stderr.write(`${event.stepId} ${event.verb}${target}${argument} (${String(event.latencyMs)} ms): ${event.rationale}\n`);
-      }
-      return recorder.event(event);
-    },
-  };
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -131,7 +116,8 @@ async function main(argv: string[]): Promise<number> {
 
   // The headed window is the operator's surface for a handoff (ADR-012); prompts go to stderr.
   const driver = createPlaywrightDriver({ headless: !args.headed });
-  const evidence = narrated(createFsRecorder({ root: config.evidenceDir, secrets: [config.targetPassword] }));
+  const secrets = discoverySecrets(args.reasoner, config);
+  const evidence = narrated(createFsRecorder({ root: config.evidenceDir, secrets }), process.stderr);
   const broker = createCliBroker({ input: process.stdin, output: process.stderr, evidenceRoot: config.evidenceDir });
   const escalation = createEscalationController(
     { surface: driver, broker, evidence, clock: systemClock },
@@ -148,7 +134,7 @@ async function main(argv: string[]): Promise<number> {
         escalation,
         clock: systemClock,
       },
-      { request: request.request, catalog: catalog.catalog, targetUrl: args.targetUrl, secrets: [config.targetPassword] },
+      { request: request.request, catalog: catalog.catalog, targetUrl: args.targetUrl, secrets },
       { stepTimeoutMs: STEP_TIMEOUT_MS },
     );
     // The caller's channel: outputs are unmasked here, unlike in the evidence.

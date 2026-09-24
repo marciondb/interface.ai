@@ -15,7 +15,8 @@ export type GatewayRequest = {
 };
 
 // `denied` and `requires_human` mean the driver was not called. `denied` is outside the
-// allowlist; `requires_human` is a risky action only a human may perform (RFC-005).
+// allowlist, or reason 'control_owned_by_human' while a human holds the live session (ADR-012);
+// `requires_human` is a risky action only a human may perform (RFC-005).
 export type GatewayOutcome =
   | PerformOutcome
   | { readonly status: 'denied'; readonly reason: string }

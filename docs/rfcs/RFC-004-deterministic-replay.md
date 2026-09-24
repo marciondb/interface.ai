@@ -36,7 +36,10 @@ replay --capability member.read-account-balance@1 --input memberId=10002 --input
    2. Escalate instead of acting if the step is `risky` in the artifact or the
       gateway returns `requires_human` (ADR-011)
    3. Execute through the gateway with an explicit timeout
-      (`REPLAY_STEP_TIMEOUT_MS`, default 5 s)
+      (`REPLAY_STEP_TIMEOUT_MS`, default 5 s). The same budget bounds how long
+      target resolution and the checkpoint keep polling; each single observation
+      of the page has its own fixed 5 s limit in the driver, so a step can
+      overrun the budget by one observation
    4. Observe and evaluate the checkpoint
    5. If target resolution, the action, or the checkpoint fails, classify the
       observation (below)

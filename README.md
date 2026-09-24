@@ -5,7 +5,7 @@
   <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white" />
   <img alt="Playwright" src="https://img.shields.io/badge/Playwright-Chromium-2EAD33?style=flat-square&logo=playwright&logoColor=white" />
   <img alt="Local LLM" src="https://img.shields.io/badge/local%20LLM-Ollama%20%C2%B7%20qwen3%3A14b-000000?style=flat-square&logo=ollama&logoColor=white" />
-  <img alt="Tests" src="https://img.shields.io/badge/tests-513%20passing-brightgreen?style=flat-square" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-528%20passing-brightgreen?style=flat-square" />
   <img alt="Replay" src="https://img.shields.io/badge/replay-no%20model%20in%20the%20loop-b7410e?style=flat-square" />
 </p>
 
@@ -50,7 +50,7 @@ This system does the second.
 | **Genuine local discoveries** | Both flows were discovered live by `qwen3:14b` on a laptop: the read flow in 6 decisions (31 s) and the write flow in 13 decisions (45 s), including a risky `Confirm` performed through the human handoff. |
 | **Replay needs nothing** | No model, no key, no network: `npm run demo` replays eight scenarios in seconds. |
 | **Enforced architecture** | Diplomat layering (pure domain, side effects at the edge) checked by dependency-cruiser on every `npm run verify`. |
-| **Tested against the real thing** | 513 tests (293 unit, 220 integration), many of them driving the real target app in a real Chromium, with injected faults. |
+| **Tested against the real thing** | 528 tests (295 unit, 233 integration), many of them driving the real target app in a real Chromium, with injected faults. |
 | **Documented decisions** | Every trade-off has an [ADR or RFC](docs/README.md); [`REPORT.md`](REPORT.md) is the short version. |
 
 ## Quick start
@@ -60,7 +60,7 @@ nvm use                         # Node 24
 npm install
 npx playwright install chromium
 
-npm run verify                  # typecheck, lint, 513 tests, dependency rules — offline
+npm run verify                  # typecheck, lint, 528 tests, dependency rules — offline
 npm run demo                    # eight replay scenarios against the target app — no model
 ```
 
@@ -256,7 +256,7 @@ loads `.env` automatically, so export what you change (e.g.
 | `REASONER_MODEL` | `qwen3:14b` | `discover` (local) |
 | `HOSTED_BASE_URL`, `HOSTED_MODEL`, `HOSTED_API_KEY` | unset | `discover --reasoner hosted`; the base URL must be `https:` unless it is loopback |
 | `EVIDENCE_DIR` | `evidence/runs` | where each run's evidence folder is written; a relative path resolves from the repository root |
-| `REPLAY_STEP_TIMEOUT_MS` | `5000` | per-step budget in replay |
+| `REPLAY_STEP_TIMEOUT_MS` | `5000` | per-step budget in replay: the action, and how long target lookup and the checkpoint keep polling |
 | `DISCOVERY_STEP_TIMEOUT_MS` | `5000` | per-action budget in discovery |
 | `HANDOFF_TTL_MS` | `600000` (10 min) | how long a handoff waits for the operator |
 | `OPERATOR_ID` | `local-operator` | who is recorded as taking and resuming a handoff |

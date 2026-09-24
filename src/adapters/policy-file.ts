@@ -26,14 +26,16 @@ export function fromPolicyFile(raw: unknown): PolicyFileResult {
       issues: parsed.error.issues.map((issue) => `${issue.path.map(String).join('.') || '(root)'}: ${issue.message}`),
     };
   }
-  const { allowedOrigins, allowedRoutes, allowedActions } = parsed.data;
+  const { allowedOrigins, allowedRoutes, allowedActions, risky } = parsed.data;
+  const badRoutes = (field: string, routes: string[]) =>
+    routes.filter((route) => !ROUTE.test(route)).map((route) => `${field}: ${JSON.stringify(route)} must start with / and may only end with *`);
   const issues = [
     ...allowedOrigins.filter((origin) => !isOrigin(origin)).map((origin) => `allowedOrigins: ${JSON.stringify(origin)} is not an origin`),
-    ...allowedRoutes
-      .filter((route) => !ROUTE.test(route))
-      .map((route) => `allowedRoutes: ${JSON.stringify(route)} must start with / and may only end with *`),
+    ...badRoutes('allowedRoutes', allowedRoutes),
     ...allowedActions.filter((action) => !isVerb(action)).map((action) => `allowedActions: ${JSON.stringify(action)} is not a verb`),
+    ...badRoutes('risky.routes', risky.routes),
+    ...risky.controlText.filter((text) => text.trim() === '').map(() => 'risky.controlText: entries must not be blank'),
   ];
   if (issues.length > 0) return { ok: false, issues };
-  return { ok: true, policy: { allowedOrigins, allowedRoutes, allowedActions: allowedActions.filter(isVerb) } };
+  return { ok: true, policy: { allowedOrigins, allowedRoutes, allowedActions: allowedActions.filter(isVerb), risky } };
 }

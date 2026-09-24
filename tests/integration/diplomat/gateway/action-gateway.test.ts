@@ -10,6 +10,7 @@ const POLICY: Policy = {
   allowedOrigins: ['http://localhost:8080'],
   allowedRoutes: ['/', '/member/*'],
   allowedActions: ['click', 'read'],
+  risky: { routes: ['/member/danger/*'], controlText: ['Close Account'] },
 };
 
 function fakeDriver(element: ElementInfo) {

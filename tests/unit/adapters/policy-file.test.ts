@@ -2,10 +2,13 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { fromPolicyFile } from '../../../src/adapters/policy-file';
 
+const RISKY = { routes: ['/member/danger/*'], controlText: ['Close Account'] };
+
 const VALID = {
   allowedOrigins: ['http://localhost:8080'],
   allowedRoutes: ['/', '/member/*'],
   allowedActions: ['click', 'read'],
+  risky: RISKY,
 };
 
 describe('fromPolicyFile', () => {
@@ -18,12 +21,21 @@ describe('fromPolicyFile', () => {
         allowedOrigins: ['http://localhost:8080'],
         allowedRoutes: ['/', '/welcome', '/member/*'],
         allowedActions: ['click', 'fill', 'select', 'navigate', 'read'],
+        risky: { routes: ['/member/danger/*'], controlText: ['Close Account', 'Post Adjustment', 'Confirm'] },
       },
     });
   });
 
   it('ignores sections it does not know', () => {
-    expect(fromPolicyFile({ ...VALID, risky: { routes: [] } })).toMatchObject({ ok: true });
+    expect(fromPolicyFile({ ...VALID, tenants: {} })).toMatchObject({ ok: true });
+  });
+
+  it('fails closed without risky rules', () => {
+    const withoutRisky: Record<string, unknown> = { ...VALID };
+    delete withoutRisky.risky;
+
+    expect(fromPolicyFile(withoutRisky)).toEqual({ ok: false, issues: [expect.stringContaining('risky') as unknown] });
+    expect(fromPolicyFile({ ...VALID, risky: { routes: [] } })).toMatchObject({ ok: false });
   });
 
   it('rejects a malformed file', () => {
@@ -39,6 +51,7 @@ describe('fromPolicyFile', () => {
       allowedOrigins: ['http://localhost:8080/app'],
       allowedRoutes: ['member/*', '/a*b'],
       allowedActions: ['click', 'delete'],
+      risky: { routes: ['danger'], controlText: [' '] },
     });
 
     expect(result).toEqual({
@@ -48,6 +61,8 @@ describe('fromPolicyFile', () => {
         'allowedRoutes: "member/*" must start with / and may only end with *',
         'allowedRoutes: "/a*b" must start with / and may only end with *',
         'allowedActions: "delete" is not a verb',
+        'risky.routes: "danger" must start with / and may only end with *',
+        'risky.controlText: entries must not be blank',
       ],
     });
   });

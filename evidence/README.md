@@ -1,19 +1,62 @@
 # Evidence
 
-Curated sample runs (ADR-014). Each folder under `runs/` is one run: `run.jsonl`
-(one event per line), `result.json`, and, where the run captured them, `artifact.json`,
-`screenshots/` and `snapshots/`. Everything is redacted before it is written (RFC-006):
-the target password never appears, and declared-sensitive values show as
-`[REDACTED:<sensitivity>]` from the moment they are known.
+Curated sample runs (ADR-014), one per case. Each folder under `runs/` is one run:
+`run.jsonl` (one event per line), `result.json`, and, where the run captured them,
+`artifact.json`, `intervention.json`, `screenshots/` and `snapshots/`. Everything is
+redacted before it is written (RFC-006): the target password never appears, and
+declared-sensitive values show as `[REDACTED:<sensitivity>]` from the moment they are
+known.
 
-| Run | What it shows |
-|---|---|
-| [`2026-09-24T17-21-04-747Z-discovery-member.read-account-balance`](runs/2026-09-24T17-21-04-747Z-discovery-member.read-account-balance/) | Genuine discovery with the local model (`qwen3:14b` on Ollama) against the fixture: 6 decisions, each with its rationale, in 27 s. Produced [`member.read-account-balance@1.0.1`](../capabilities/member.read-account-balance/1.0.1.json) (`artifact.json` is the same file). |
-| [`2026-09-24T17-21-48-771Z-replay-member.read-account-balance`](runs/2026-09-24T17-21-48-771Z-replay-member.read-account-balance/) | Replay of the discovered artifact without the model, member 10001: `succeeded`. |
-| [`2026-09-24T17-21-50-647Z-replay-member.read-account-balance`](runs/2026-09-24T17-21-50-647Z-replay-member.read-account-balance/) | Same, member 10002 (Savings is not the first account): `succeeded`. |
-| [`2026-09-24T17-21-52-189Z-replay-member.read-account-balance`](runs/2026-09-24T17-21-52-189Z-replay-member.read-account-balance/) | Same, member 99999: `business_outcome` `member_not_found`. |
-| [`2026-09-24T18-24-21-626Z-discovery-member.open-sub-account`](runs/2026-09-24T18-24-21-626Z-discovery-member.open-sub-account/) | Genuine discovery of the write flow with the local model (`qwen3:14b` on Ollama): 13 decisions in 68 s, from the menu through the member lookup and the sub-account form to the review. The model's click on `Confirm` got `requires_human` from the gateway (`step-11`), the run handed the same browser session over (`intervention.json`), the operator clicked `Confirm` and accepted the page's `confirm()` dialog, and after `resume` the model read the new account number and finished. The model's premature `Continue` (before the deposit was filled) is in the log but not in the artifact: the application rejected it. Produced [`member.open-sub-account@1.0.0`](../capabilities/member.open-sub-account/1.0.0.json), whose only `risky` step is that `Confirm`. |
-| [`2026-09-24T18-25-29-841Z-replay-member.open-sub-account`](runs/2026-09-24T18-25-29-841Z-replay-member.open-sub-account/) | Replay of the discovered artifact without the model, member 10002, `Holiday Club`, `Vacation`, `100.00`: automation filled the form, stopped before the risky `click-confirm` and handed the session over; the operator confirmed (click, dialog `accept`), the step's checkpoint held (`performedBy: human`) and the run read the new account number: `succeeded`. Recorded by the same live test, right after the discovery above. |
-| [`2026-09-24T18-27-06-416Z-replay-member.open-sub-account`](runs/2026-09-24T18-27-06-416Z-replay-member.open-sub-account/) | `npm run replay -- --capability member.open-sub-account@1 --input memberId=10002 --input "accountType=Holiday Club" --input nickname=Vacation --input initialDeposit=10.00` against `npm run fixture`: the application rejects the deposit at `click-continue`, reported as `business_outcome` `invalid_initial_deposit` (exit 2) with no intervention. |
+**Saved example artifact:** the `artifact.json` of the two discovery runs, identical to
+[`member.read-account-balance@1.0.1`](../capabilities/member.read-account-balance/1.0.1.json)
+and [`member.open-sub-account@1.0.0`](../capabilities/member.open-sub-account/1.0.0.json).
 
-**About the operator in the write-flow recordings.** The model decisions are genuine; the operator actions were performed by a scripted operator through the same handoff channel a person uses: it typed `take` and `resume` at the real CLI broker's `handoff>` prompt, answered `accept` at its `dialog>` prompt, and clicked `Confirm` in the run's own browser page. The recordings come from `tests/live/discovery-write.live.test.ts` (`RUN_LIVE_MODEL=1 npx vitest run tests/live/discovery-write.live.test.ts --reporter=default`), which runs the same controllers, broker, gateway and Playwright session as `npm run discover`, with the fixture on a free port and operator id `test-operator`: a script cannot reach the browser of a separate `npm run discover` process. To reproduce with a person, start `npm run fixture`, bump `capability.version` in `discovery/requests/member.open-sub-account.json` (the committed 1.0.0 makes a rerun stop with `artifact_exists`), then run `npm run discover -- --request discovery/requests/member.open-sub-account.json --headed`; at the intervention type `take`, click `Confirm` in the window, type `accept` at the dialog prompt, then `resume`.
+## Runs
+
+| Run | What it shows | Result | Req. |
+|---|---|---|---|
+| [`…17-21-04-747Z-discovery-member.read-account-balance`](runs/2026-09-24T17-21-04-747Z-discovery-member.read-account-balance/) | Genuine discovery with the local model (`qwen3:14b` on Ollama) against the fixture: 6 decisions, each with its `rationale` and latency, in 27 s. A screenshot and snapshot per step. Produced `member.read-account-balance@1.0.1`. | `succeeded` | §3.1, §3.2, §3.5 |
+| [`…17-21-50-647Z-replay-member.read-account-balance`](runs/2026-09-24T17-21-50-647Z-replay-member.read-account-balance/) | Replay of the discovered artifact without the model (`npm run replay`), member 10002, whose Savings account is not the first row: `read-balance` resolves by the `table_cell` candidate. | `succeeded` | §3.3 |
+| [`…17-21-52-189Z-replay-member.read-account-balance`](runs/2026-09-24T17-21-52-189Z-replay-member.read-account-balance/) | Same, member 99999: the page shows "No records found.", a declared business outcome. | `business_outcome` `member_not_found` (exit 2) | §3.3 |
+| [`…18-35-09-617Z-replay-member.read-account-balance`](runs/2026-09-24T18-35-09-617Z-replay-member.read-account-balance/) | Injected `interstitial` fault on the first step: the checkpoint fails, the page matches the declared recoverable condition, its recovery clicks Continue and the step is retried. | `succeeded`, `recoveries[0].condition = interstitial` | §3.3 |
+| [`…18-35-11-093Z-replay-member.read-account-balance`](runs/2026-09-24T18-35-11-093Z-replay-member.read-account-balance/) | Injected `server_error` fault: HTTP 500 on the first step's navigation, a hard failure with `stepId`, `code`, `expected`, `observed`, and the failure screenshot and snapshot. | `failed` `server_error` (exit 3) | §3.3, §3.5 |
+| [`…18-24-21-626Z-discovery-member.open-sub-account`](runs/2026-09-24T18-24-21-626Z-discovery-member.open-sub-account/) | Genuine discovery of the write flow with the local model: 13 decisions in 68 s, from the menu through the member lookup and the sub-account form to the review. The model's click on `Confirm` got `requires_human` from the gateway (`step-11`), the run handed the same browser session over (`intervention.json`), the operator clicked `Confirm` and accepted the page's `confirm()` dialog, and after `resume` the model read the new account number. The model's premature `Continue` (before the deposit was filled) is in the log but not in the artifact: the application rejected it. Produced `member.open-sub-account@1.0.0`, whose only `risky` step is that `Confirm`. | `succeeded`, one intervention | §3.1, §3.2, §3.4, §3.6 |
+| [`…18-25-29-841Z-replay-member.open-sub-account`](runs/2026-09-24T18-25-29-841Z-replay-member.open-sub-account/) | Replay of the discovered write artifact, member 10002, `Holiday Club`, `Vacation`, `100.00`: automation filled the form, stopped before the risky `click-confirm` and handed the session over; the operator confirmed (click, dialog `accept`), the step's checkpoint held (`performedBy: human`) and the run read the new account number. | `succeeded`, one intervention | §3.3, §3.6 |
+| [`…18-27-06-416Z-replay-member.open-sub-account`](runs/2026-09-24T18-27-06-416Z-replay-member.open-sub-account/) | `npm run replay` of the write artifact with `initialDeposit=10.00`: the application rejects the deposit at `click-continue`, before any risky step. | `business_outcome` `invalid_initial_deposit` (exit 2) | §3.3 |
+| [`…18-35-11-541Z-replay-member.close-account`](runs/2026-09-24T18-35-11-541Z-replay-member.close-account/) | Replay of the hand-written `member.close-account@1.0.0`: its last step is `risky`, so automation stops before acting and hands the session over; the operator takes control, clicks `Close Account`, resumes, and the checkpoint is verified on the page the human left (`handoff_*` events, before/after screenshots). | `succeeded`, one intervention | §3.4, §3.6 |
+| [`…18-35-12-677Z-replay-member.close-account`](runs/2026-09-24T18-35-12-677Z-replay-member.close-account/) | Same capability with no operator window (no `--headed`): the intervention request is still written, and the run ends at once. | `escalated` `no_operator_surface` (exit 4) | §3.6 |
+
+The four `18-35-*` runs come from `npm run demo -- --keep` (scenarios 3–6; scenarios
+1–2 match the two `npm run replay` runs above). The demo starts its own fixture on a
+free port, hence the different ports in the URLs.
+
+## Where to look
+
+- **Why the agent did something:** `decision` events in the discovery `run.jsonl`
+  (`verb`, `target`, `rationale`, `latencyMs`, `reasoner`).
+- **Guardrails:** every action is preceded by a `policy` event; the write-flow
+  discovery has `"decision":"requires_human"` at `step-11`.
+- **Redaction:** member ids, deposits, balances and account numbers appear as
+  `[REDACTED:internal]` / `[REDACTED:financial]` in events, snapshots, URLs and
+  `result.json`; a value typed by a human during a handoff is captured as
+  `[redacted]`. Screenshots are not masked (a known v1 limit, synthetic data only);
+  the sign-in page is never captured because sign-in happens over HTTP before the
+  browser opens (ADR-013).
+- **Handoff:** `intervention.json` plus the `handoff_requested`, `handoff_taken`,
+  `handoff_human_action`, `handoff_resumed` events and the
+  `handoff-<interventionId>-before|after` screenshots and snapshots.
+
+## About the operator in these recordings
+
+The model decisions are genuine; **every operator action here was performed by a
+scripted operator** (`tests/support/scripted-operator.ts`) through the same handoff
+channel a person uses: it typed `take` and `resume` at the real CLI broker's
+`handoff>` prompt, answered `accept` at its `dialog>` prompt, and clicked in the run's
+own browser page. The write-flow recordings come from
+`tests/live/discovery-write.live.test.ts`
+(`RUN_LIVE_MODEL=1 npx vitest run tests/live/discovery-write.live.test.ts --reporter=default`),
+which runs the same controllers, broker, gateway and Playwright session as
+`npm run discover` in one process, with the fixture on a free port and operator id
+`test-operator`: a script cannot reach the browser of a separate `npm run discover`
+process. No recording with a person at the keyboard is committed; to make one, follow
+"Human handoff" in the [README](../README.md#human-handoff).

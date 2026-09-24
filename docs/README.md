@@ -56,12 +56,12 @@ runtime flag.
 | RFC | Title | Status |
 |---|---|---|
 | [RFC-001](rfcs/RFC-001-system-scope-and-component-landscape.md) | System Scope & Component Landscape | ACCEPTED |
-| RFC-002 | Capability Artifact — Schema & Contract | PLANNED |
-| RFC-003 | Discovery — LLM-Driven Observe / Decide / Act | PLANNED |
-| RFC-004 | Deterministic Replay & Execution Result Contract | PLANNED |
-| RFC-005 | Human-in-the-Loop Escalation & Session Handoff | PLANNED |
-| RFC-006 | Safety, Guardrails & Regulated Data Handling | PLANNED |
-| RFC-007 | Surface Abstraction & Multi-Tenant Capability Reuse | PLANNED |
+| [RFC-002](rfcs/RFC-002-capability-artifact-schema.md) | Capability Artifact — Schema & Contract | ACCEPTED |
+| [RFC-003](rfcs/RFC-003-discovery-agent-loop.md) | Discovery — LLM-Driven Observe / Decide / Act | ACCEPTED |
+| [RFC-004](rfcs/RFC-004-deterministic-replay.md) | Deterministic Replay & Execution Result Contract | ACCEPTED |
+| [RFC-005](rfcs/RFC-005-human-in-the-loop-handoff.md) | Human-in-the-Loop Escalation & Session Handoff | ACCEPTED |
+| [RFC-006](rfcs/RFC-006-safety-guardrails.md) | Safety, Guardrails & Regulated Data Handling | ACCEPTED |
+| [RFC-007](rfcs/RFC-007-surface-abstraction-and-multi-tenant.md) | Surface Abstraction & Multi-Tenant Capability Reuse | ACCEPTED |
 
 ---
 
@@ -73,13 +73,13 @@ runtime flag.
 | [ADR-002](decisions/ADR-002-typescript-node-stack.md) | TypeScript on Node as Language and Runtime | ACCEPTED |
 | [ADR-003](decisions/ADR-003-single-process-cli-composition.md) | Single Process, CLI-First Composition | ACCEPTED |
 | [ADR-004](decisions/ADR-004-legacy-fixture-target-surface.md) | Purpose-Built Legacy Fixture as Target Surface | ACCEPTED |
-| ADR-005 | Accessibility-Tree-First Perception Model | PLANNED |
-| ADR-006 | Playwright as the Computer-Use Driver | PLANNED |
-| ADR-007 | Artifact Serialization Format and Versioning | PLANNED |
-| ADR-008 | Ordered Locator Candidate Chain | PLANNED |
-| ADR-009 | Discriminated-Union Execution Result Contract | PLANNED |
-| ADR-010 | LLM Provider and Structured Tool Calling | PLANNED |
-| ADR-011 | Guardrail Enforcement at a Single Action Gateway | PLANNED |
-| ADR-012 | Same-Session Control Transfer for Human Handoff | PLANNED |
-| ADR-013 | Authentication as Environment Precondition | PLANNED |
-| ADR-014 | Per-Run Evidence Bundle Layout | PLANNED |
+| [ADR-005](decisions/ADR-005-accessibility-tree-first-perception.md) | Accessibility-Tree-First Perception Model | ACCEPTED |
+| [ADR-006](decisions/ADR-006-playwright-driver.md) | Playwright as the Computer-Use Driver | ACCEPTED |
+| [ADR-007](decisions/ADR-007-artifact-format-and-versioning.md) | Artifact Serialization Format and Versioning | ACCEPTED |
+| [ADR-008](decisions/ADR-008-ordered-locator-candidate-chain.md) | Ordered Locator Candidate Chain | ACCEPTED |
+| [ADR-009](decisions/ADR-009-discriminated-union-result-contract.md) | Discriminated-Union Execution Result Contract | ACCEPTED |
+| [ADR-010](decisions/ADR-010-llm-provider-and-tool-calling.md) | LLM Provider and Structured Tool Calling | ACCEPTED |
+| [ADR-011](decisions/ADR-011-single-action-gateway.md) | Guardrail Enforcement at a Single Action Gateway | ACCEPTED |
+| [ADR-012](decisions/ADR-012-same-session-control-transfer.md) | Same-Session Control Transfer for Human Handoff | ACCEPTED |
+| [ADR-013](decisions/ADR-013-authentication-as-precondition.md) | Authentication as Environment Precondition | ACCEPTED |
+| [ADR-014](decisions/ADR-014-per-run-evidence-bundle.md) | Per-Run Evidence Bundle Layout | ACCEPTED |

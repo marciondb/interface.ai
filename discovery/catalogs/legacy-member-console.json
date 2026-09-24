@@ -52,6 +52,36 @@
         "kind": "click",
         "target": "interstitial.continue"
       }
+    },
+    {
+      "id": "invalid_initial_deposit",
+      "kind": "business",
+      "description": "The initial deposit is below the minimum the application accepts",
+      "when": {
+        "kind": "text_visible",
+        "text": "Initial deposit must be at least $25.00",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "invalid_deposit_amount",
+      "kind": "business",
+      "description": "The application does not accept the initial deposit as an amount",
+      "when": {
+        "kind": "text_visible",
+        "text": "Initial deposit must be a valid amount.",
+        "frame": "content"
+      }
+    },
+    {
+      "id": "invalid_nickname",
+      "kind": "business",
+      "description": "The nickname is empty or contains special characters",
+      "when": {
+        "kind": "text_visible",
+        "text": "Nickname is required and may not contain special characters.",
+        "frame": "content"
+      }
     }
   ]
 }

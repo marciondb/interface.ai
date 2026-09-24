@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "capability": {
+    "id": "member.open-sub-account",
+    "version": "1.0.0",
+    "description": "Open a new sub-account for a member and read its account number; a human performs the final confirmation",
+    "app": {
+      "product": "legacy-member-console",
+      "surface": "web"
+    }
+  },
+  "goal": "Open a new {{accountType}} sub-account for member {{memberId}} with nickname {{nickname}} and an initial deposit of {{initialDeposit}}, confirm it, and read the new account number",
+  "inputs": {
+    "memberId": {
+      "type": "string",
+      "description": "Member ID, digits only",
+      "pattern": "^[0-9]+$",
+      "sensitivity": "internal",
+      "example": "10001"
+    },
+    "accountType": {
+      "type": "string",
+      "description": "Type of the new sub-account",
+      "enum": [
+        "Savings",
+        "Money Market",
+        "Holiday Club"
+      ],
+      "sensitivity": "none",
+      "example": "Money Market"
+    },
+    "nickname": {
+      "type": "string",
+      "description": "Nickname of the new sub-account; the application rejects special characters",
+      "pattern": "^.{1,40}$",
+      "sensitivity": "none",
+      "example": "Rainy Day"
+    },
+    "initialDeposit": {
+      "type": "string",
+      "description": "Initial deposit in dollars, e.g. 250.00; the application requires at least 25.00",
+      "pattern": "^[0-9]+(\\.[0-9]{1,2})?$",
+      "sensitivity": "financial",
+      "example": "250.00"
+    }
+  },
+  "outputs": {
+    "accountNumber": {
+      "type": "string",
+      "description": "Number of the new sub-account as displayed, e.g. 10001MMRAIN025000",
+      "sensitivity": "financial"
+    }
+  },
+  "outcomes": [
+    "member_not_found",
+    "member_restricted",
+    "interstitial",
+    "invalid_initial_deposit",
+    "invalid_deposit_amount",
+    "invalid_nickname"
+  ]
+}

@@ -34,11 +34,11 @@ Illustrative; the Zod schema in code is canonical (ADR-007).
   },
   "preconditions": [{ "kind": "authenticated_session" }],
   "inputs": {
-    "memberId": { "type": "string", "pattern": "^[0-9]+$", "sensitivity": "internal" },
-    "accountType": { "type": "string", "enum": ["Checking", "Savings", "Money Market"], "sensitivity": "none" }
+    "memberId": { "type": "string", "description": "Member ID, digits only", "pattern": "^[0-9]{1,12}$", "sensitivity": "internal" },
+    "accountType": { "type": "string", "description": "Account type to read", "enum": ["Checking", "Savings", "Money Market"], "sensitivity": "none" }
   },
   "outputs": {
-    "balance": { "type": "string", "sensitivity": "financial" }
+    "balance": { "type": "string", "description": "Balance as displayed", "sensitivity": "financial" }
   },
   "targets": {
     "lookup.memberId": {
@@ -97,10 +97,10 @@ The Member ID input has no accessible name in the target, so its chain starts at
 |---|---|
 | `capability` | Identity, semver, human description, which app and surface |
 | `preconditions` | What must hold before running (ADR-013) |
-| `inputs` / `outputs` | Typed contract for the caller, with a `sensitivity` class per field used by redaction |
-| `targets` | Named controls with ordered locator candidates (ADR-008). Steps refer to targets by name |
+| `inputs` / `outputs` | Typed contract for the caller (`string` \| `number`, a `description`, a `sensitivity` class used by redaction); string inputs may add `pattern` and `enum`. All inputs are required |
+| `targets` | Named controls with an optional `frame` (absent = top-level document) and ordered locator candidates (ADR-008). Steps refer to targets by name |
 | `steps` | Ordered actions, each with a `risk` class and a `checkpoint` |
-| `outcomes` | Declared business outcomes and recoverable conditions, each with a detector |
+| `outcomes` | Declared business outcomes and recoverable conditions, each with a detector; a recoverable condition may declare a `recover` click |
 | `provenance` | How the artifact was made: `method` (`discovered` \| `hand_written`), `createdAt`, optional `runId` linking to the discovery run evidence, optional `reasoner` (`adapter`, `model`) |
 | `notes` | Optional free-text notes for reviewers |
 
@@ -113,8 +113,11 @@ Vocabulary:
 - **Step actions:** `click`, `fill`, `select`, `press`, `navigate`, `read`
 
 Beyond the schema, the artifact is validated for internal consistency: every
-referenced target exists, every placeholder names a declared input, and each
-output is produced by exactly one `read`.
+referenced target exists, every placeholder names a declared input, each output
+is produced by exactly one `read`, step and outcome ids are unique, and unknown
+keys are rejected. `discovered` provenance requires `runId` and `reasoner`.
+Placeholders are only `{{inputs.<name>}}`; they may appear in targets, steps and
+outcomes and are bound to the caller's validated inputs before replay.
 
 ## Design notes
 

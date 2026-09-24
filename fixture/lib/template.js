@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * Primary submit convention (Stage 0.6):
+ * Primary submit convention:
  * Every screen's primary submit control MUST include {{primarySubmit}}.
- * Stage 9's element_missing fault removes the control with id btnPrimary.
+ * The element_missing fault removes the control with id btnPrimary.
  * Do not use aria-*, role=, or data-testid for this marker.
  */
 

@@ -115,7 +115,7 @@ input[type="button"] {
   cursor: pointer;
 }
 
-/* Error text — plain red font, no semantic class roles for automation */
+/* Error text — plain red font, no semantic class or role */
 .ns-error {
   color: #cc0000;
   font-size: 12px;

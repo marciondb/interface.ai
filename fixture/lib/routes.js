@@ -26,11 +26,6 @@ function createRoutes() {
       sendText(res, 'pong');
     },
 
-    'GET /_example': function (_req, res) {
-      const html = renderPage('_example.html', {});
-      sendHtml(res, html);
-    },
-
     'GET /login': function (_req, res) {
       sendHtml(res, memberViews.renderLogin({}));
     },
@@ -320,7 +315,7 @@ function isPublicPath(method, pathname) {
   if (pathname === '/favicon.ico') return true;
   if (pathname === '/login' && (method === 'GET' || method === 'POST')) return true;
   if (method === 'POST' && pathname === '/_fault') return true;
-  if (method === 'GET' && (pathname === '/ping' || pathname === '/_example')) return true;
+  if (method === 'GET' && pathname === '/ping') return true;
   return false;
 }
 

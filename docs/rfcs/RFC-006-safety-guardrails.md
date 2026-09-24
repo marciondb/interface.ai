@@ -52,18 +52,35 @@ The artifact records each step's `risk`; replay honors it even if policy changes
 - Redaction is pure Logic, applied inside the reasoner client and the evidence
   recorder — the two places data leaves the process
 
+## Data residency
+
+The default reasoner is a local model (ADR-015): observations are redacted **and**
+never leave the machine. Redaction is still applied on the local path, so switching
+to the hosted adapter does not change what the model sees.
+
+The hosted adapter is opt-in per run (`--reasoner hosted`) and never selected
+automatically. When it is used, the evidence records it, so it is always clear
+whether an artifact was produced with data sent off the machine.
+
+The model is also constrained by construction: its output schema only admits
+refs present in the current observation, so it cannot aim at anything the page
+does not show, and every action still goes through the gateway.
+
 ## Limits
 
 - Screenshots are not masked in v1; acceptable only because the target uses
   synthetic data
 - Risk classification by route and control text is per-app configuration and can
   be wrong; it fails closed when in doubt
-- The model provider receives redacted observations; a production deployment would
-  also need a data-processing agreement or a self-hosted model
+- Pattern-based redaction cannot catch every novel PII shape; the local default
+  limits the exposure to the machine running discovery
+- Using the hosted adapter in production would require a data-processing agreement
+  with the provider
 
 ## Related
 
 - ADR-011 — Guardrail Enforcement at a Single Action Gateway
 - ADR-013 — Authentication as Environment Precondition
 - ADR-014 — Per-Run Evidence Bundle Layout
+- ADR-015 — Local Reasoner with Schema-Constrained Output
 - RFC-005 — Human-in-the-Loop Escalation & Session Handoff

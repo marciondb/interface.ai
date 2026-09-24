@@ -45,7 +45,7 @@ export function createScriptedReasoner(script: readonly ScriptedStep[]): Scripte
       inputs.push(input);
       const step = script.at(inputs.length - 1);
       if (step === undefined) return Promise.reject(exhausted('script exhausted'));
-      if (typeof step === 'function') return Promise.resolve(step(input));
+      if (typeof step === 'function') return Promise.resolve({ decision: step(input) });
       let target: string | null = null;
       if (step.find !== undefined) {
         const { find } = step;
@@ -55,7 +55,7 @@ export function createScriptedReasoner(script: readonly ScriptedStep[]): Scripte
       }
       const answer = { verb: step.verb, target, argument: step.argument ?? null, rationale: `scripted ${step.verb}` };
       const parsed = parseModelDecision(JSON.stringify(answer), input.validRefs);
-      return parsed.ok ? Promise.resolve(parsed.decision) : Promise.reject(exhausted(parsed.reason));
+      return parsed.ok ? Promise.resolve({ decision: parsed.decision }) : Promise.reject(exhausted(parsed.reason));
     },
   };
 }

@@ -41,7 +41,7 @@ describe('createOllamaReasoner', () => {
   it('calls /api/chat with a constrained, deterministic, non-streaming request', async () => {
     const { reasoner: ollama, calls } = reasoner([answer(decision)]);
 
-    await expect(ollama.propose(input)).resolves.toEqual(parsed);
+    await expect(ollama.propose(input)).resolves.toMatchObject({ decision: parsed });
     expect(ollama).toMatchObject({ adapter: 'ollama', model: 'qwen3:8b' });
     expect(calls).toHaveLength(1);
     expect(calls[0]?.url).toBe('http://localhost:11434/api/chat');
@@ -55,10 +55,28 @@ describe('createOllamaReasoner', () => {
     });
   });
 
+  it('returns what Ollama said about the call with the decision', async () => {
+    const response = jsonResponse({
+      model: 'qwen3:8b',
+      created_at: '2026-09-24T12:00:00Z',
+      message: { role: 'assistant', content: JSON.stringify(decision) },
+      done: true,
+      total_duration: 1_500_000_000,
+      eval_count: 42,
+      prompt_eval_count: 'n/a',
+    });
+    const { reasoner: ollama } = reasoner([response]);
+
+    await expect(ollama.propose(input)).resolves.toEqual({
+      decision: parsed,
+      meta: { provider: 'ollama', model: 'qwen3:8b', createdAt: '2026-09-24T12:00:00Z', totalDurationNs: 1_500_000_000, evalCount: 42 },
+    });
+  });
+
   it('repairs an invalid answer by calling again with the rejection reason', async () => {
     const { reasoner: ollama, calls } = reasoner([answer({ verb: 'dance' }), answer(decision)]);
 
-    await expect(ollama.propose(input)).resolves.toEqual(parsed);
+    await expect(ollama.propose(input)).resolves.toMatchObject({ decision: parsed });
     expect(calls).toHaveLength(2);
     expect(userMessage(calls[0]?.body)).not.toContain('Previous answer rejected');
     expect(userMessage(calls[1]?.body)).toMatch(/\nPrevious answer rejected: .*verb/);
@@ -85,7 +103,7 @@ describe('createOllamaReasoner', () => {
   it('retries a 503 and then succeeds', async () => {
     const { reasoner: ollama, calls } = reasoner([jsonResponse({ error: 'busy' }, 503), answer(decision)]);
 
-    await expect(ollama.propose(input)).resolves.toEqual(parsed);
+    await expect(ollama.propose(input)).resolves.toMatchObject({ decision: parsed });
     expect(calls).toHaveLength(2);
   });
 
@@ -102,7 +120,7 @@ describe('createOllamaReasoner', () => {
   it('retries an unexpected envelope', async () => {
     const { reasoner: ollama, calls } = reasoner([jsonResponse({ done: true }), answer(decision)]);
 
-    await expect(ollama.propose(input)).resolves.toEqual(parsed);
+    await expect(ollama.propose(input)).resolves.toMatchObject({ decision: parsed });
     expect(calls).toHaveLength(2);
   });
 

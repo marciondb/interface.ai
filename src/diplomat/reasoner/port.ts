@@ -1,4 +1,5 @@
 import type { AgentDecision } from '../../models/action';
+import type { ProviderMeta } from '../../models/discovery';
 import type { Observation } from '../../models/observation';
 
 export type ReasonerInput = {
@@ -24,9 +25,15 @@ export function isReasonerError(error: unknown): error is ReasonerFailure {
   return error instanceof Error && error.name === 'ReasonerError' && 'code' in error && (REASONER_ERROR_CODES as readonly unknown[]).includes(error.code);
 }
 
+// A validated decision, with what the provider said about the call that produced it.
+export type Proposal = {
+  readonly decision: AgentDecision;
+  readonly meta?: ProviderMeta;
+};
+
 export type Reasoner = {
   readonly adapter: ReasonerAdapter;
   readonly model: string;
   // Stateless. Resolves to a validated decision or rejects with a ReasonerFailure; never best-effort.
-  propose(input: ReasonerInput): Promise<AgentDecision>;
+  propose(input: ReasonerInput): Promise<Proposal>;
 };

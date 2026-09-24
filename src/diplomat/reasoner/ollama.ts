@@ -1,3 +1,4 @@
+import { ollamaMeta } from '../../adapters/provider-meta';
 import { OllamaChatResponseSchema, OllamaErrorBodySchema } from '../../wire/in/ollama-chat-response';
 import type { OllamaChatRequest } from '../../wire/out/ollama-chat-request';
 import { isLoopback, parseBaseUrl } from './endpoint';
@@ -51,7 +52,7 @@ export function createOllamaReasoner({
     }
     const envelope = OllamaChatResponseSchema.safeParse(await response.json().catch(() => undefined));
     if (!envelope.success) throw new TransportFailure(true, 'unexpected response envelope');
-    return envelope.data.message.content;
+    return { content: envelope.data.message.content, meta: ollamaMeta(envelope.data) };
   };
 
   return {

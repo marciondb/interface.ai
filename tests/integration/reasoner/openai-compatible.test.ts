@@ -36,7 +36,7 @@ describe('createOpenAiCompatibleReasoner', () => {
   it('calls /chat/completions with a bearer key and the strict step schema', async () => {
     const { reasoner: hosted, calls } = reasoner([answer(JSON.stringify(decision))]);
 
-    await expect(hosted.propose(input)).resolves.toEqual(parsed);
+    await expect(hosted.propose(input)).resolves.toMatchObject({ decision: parsed });
     expect(hosted).toMatchObject({ adapter: 'openai-compatible', model: 'gpt-test' });
     expect(calls[0]?.url).toBe('https://llm.test/v1/chat/completions');
     expect(calls[0]?.headers.authorization).toBe(`Bearer ${API_KEY}`);
@@ -50,10 +50,25 @@ describe('createOpenAiCompatibleReasoner', () => {
     });
   });
 
+  it('returns what the provider said about the call with the decision', async () => {
+    const response = jsonResponse({
+      id: 'chatcmpl-1',
+      model: 'gpt-test-2026',
+      choices: [{ index: 0, message: { role: 'assistant', content: JSON.stringify(decision) } }],
+      usage: { prompt_tokens: 120, completion_tokens: 30, total_tokens: 150 },
+    });
+    const { reasoner: hosted } = reasoner([response]);
+
+    await expect(hosted.propose(input)).resolves.toEqual({
+      decision: parsed,
+      meta: { provider: 'openai-compatible', id: 'chatcmpl-1', model: 'gpt-test-2026', usage: { promptTokens: 120, completionTokens: 30, totalTokens: 150 } },
+    });
+  });
+
   it('treats a refusal as invalid output and asks again', async () => {
     const { reasoner: hosted, calls } = reasoner([answer(null), answer(JSON.stringify(decision))]);
 
-    await expect(hosted.propose(input)).resolves.toEqual(parsed);
+    await expect(hosted.propose(input)).resolves.toMatchObject({ decision: parsed });
     expect(calls).toHaveLength(2);
     expect(JSON.stringify(calls[1]?.body)).toContain('Previous answer rejected: the answer was empty');
   });

@@ -1,3 +1,4 @@
+import { openAiMeta } from '../../adapters/provider-meta';
 import { OpenAiChatResponseSchema, OpenAiErrorBodySchema } from '../../wire/in/openai-chat-response';
 import type { OpenAiChatRequest } from '../../wire/out/openai-chat-request';
 import { isLoopback, parseBaseUrl } from './endpoint';
@@ -59,7 +60,7 @@ export function createOpenAiCompatibleReasoner({
     }
     const envelope = OpenAiChatResponseSchema.safeParse(await response.json().catch(() => undefined));
     if (!envelope.success) throw new TransportFailure(true, 'unexpected response envelope');
-    return envelope.data.choices[0].message.content;
+    return { content: envelope.data.choices[0].message.content, meta: openAiMeta(envelope.data) };
   };
 
   return {

@@ -25,8 +25,9 @@ const input: ReasonerInput = {
 
 async function proposeOnce(reasoner: Reasoner) {
   const started = performance.now();
-  const decision = await reasoner.propose(input);
-  console.info(`${reasoner.adapter} ${reasoner.model}: ${String(Math.round(performance.now() - started))} ms ->`, decision);
+  const { decision, meta } = await reasoner.propose(input);
+  console.info(`${reasoner.adapter} ${reasoner.model}: ${String(Math.round(performance.now() - started))} ms ->`, decision, meta);
+  expect(meta?.provider).toBe(reasoner.adapter);
   expect(decision.kind === 'act' || decision.kind === 'read').toBe(true);
   if (decision.kind === 'act' && decision.action.kind !== 'navigate') expect(input.validRefs).toContain(decision.action.ref);
 }

@@ -75,10 +75,10 @@ describe.skipIf(process.env.RUN_LIVE_MODEL !== '1')('first real decision on Memb
     expect(textboxes).toHaveLength(1);
 
     const started = performance.now();
-    const decision = await reasoner.propose({ goal: GOAL, observation, validRefs: observationRefs(observation) });
+    const { decision, meta } = await reasoner.propose({ goal: GOAL, observation, validRefs: observationRefs(observation) });
     const latencyMs = Math.round(performance.now() - started);
     console.info(
-      `[live-decision] ${JSON.stringify({ reasoner: reasoner.adapter, model: reasoner.model, latencyMs, decision })}`,
+      `[live-decision] ${JSON.stringify({ reasoner: reasoner.adapter, model: reasoner.model, latencyMs, decision, meta })}`,
     );
 
     expect(decision).toMatchObject({ kind: 'act', action: { kind: 'fill', ref: textboxes[0]?.ref, value: '10001' } });

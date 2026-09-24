@@ -5,7 +5,7 @@ import type { ArtifactStore } from '../../../src/diplomat/store/port';
 import type { AgentDecision } from '../../../src/models/action';
 import { CapabilityRequestSchema } from '../../../src/models/capability-request';
 import { DiscoveryResultSchema } from '../../../src/models/discovery';
-import { createFakeClock, createFakeEscalation, createFakeEvidence, createFakeGateway, createFakeSession, FAKE_ORIGIN, type FakeGatewayOptions } from '../../support/fakes';
+import { createFakeClock, createFakeEscalation, createFakeEvidence, createFakeGateway, createFakeSession, FAKE_ORIGIN, surfaceFault, type FakeGatewayOptions } from '../../support/fakes';
 
 const MEMBER = '10001';
 const BALANCE = '4,812.37';
@@ -96,7 +96,7 @@ describe('discovery controller with fakes', () => {
 
   it('reports a surface failure as driver_error', async () => {
     const onObserve = () => {
-      throw Object.assign(new Error('surface snapshot_mismatch: unexpected shape'), { name: 'SurfaceError' });
+      throw surfaceFault('snapshot_mismatch', 'unexpected shape');
     };
 
     const { result } = await run(scripted([]), { onObserve });

@@ -1,6 +1,7 @@
 import type { EvidenceRecorder } from '../diplomat/evidence/port';
 import type { ActionGateway, GatewayOutcome, OpenDecision } from '../diplomat/gateway/port';
 import { isSessionError, type SessionCookie, type SessionProvider } from '../diplomat/session/port';
+import { isSurfaceError } from '../diplomat/surface/port';
 import { errorMessage } from '../infrastructure/errors';
 import { describeLanding } from '../logic/policy';
 import { actionArgument } from '../logic/step-action';
@@ -24,7 +25,7 @@ export class SurfaceFailure extends Error {
   override readonly name = 'SurfaceFailure';
 
   constructor(
-    // The page did not become readable in time: the browser's timeout, or a frame replaced mid-read.
+    // The page did not become readable in time (surface code `timeout`).
     readonly timedOut: boolean,
     cause: unknown,
   ) {
@@ -32,21 +33,12 @@ export class SurfaceFailure extends Error {
   }
 }
 
-// The surface port rejects with the underlying browser error for these (surface/port.ts).
-const REPLACED_FRAME = /frame (was|got) detached|execution context was destroyed/i;
-
-// Thrown by broken code, never by a page: a bug in a diplomat is not a driver error either.
-function isProgrammingError(error: unknown): boolean {
-  return error instanceof TypeError || error instanceof ReferenceError || error instanceof RangeError || error instanceof SyntaxError;
-}
-
 async function guarded<T>(call: () => Promise<T>): Promise<T> {
   try {
     return await call();
   } catch (error) {
-    if (isProgrammingError(error)) throw error;
-    const timedOut = error instanceof Error && (error.name === 'TimeoutError' || REPLACED_FRAME.test(error.message));
-    throw new SurfaceFailure(timedOut, error);
+    if (!isSurfaceError(error)) throw error;
+    throw new SurfaceFailure(error.code === 'timeout', error);
   }
 }
 

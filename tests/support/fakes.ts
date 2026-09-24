@@ -3,7 +3,7 @@ import type { CapturePaths, EvidenceRecorder } from '../../src/diplomat/evidence
 import type { ActionGateway, GatewayOutcome, GatewayRequest, OpenDecision } from '../../src/diplomat/gateway/port';
 import type { SessionErrorCode, SessionProvider } from '../../src/diplomat/session/port';
 import type { ArtifactStore, LoadResult } from '../../src/diplomat/store/port';
-import type { ScreenshotOptions } from '../../src/diplomat/surface/port';
+import type { ScreenshotOptions, SurfaceErrorCode, SurfaceFault } from '../../src/diplomat/surface/port';
 import type { Clock } from '../../src/infrastructure/clock';
 import type { SensitiveValue } from '../../src/logic/redaction';
 import type { SurfaceAction } from '../../src/models/action';
@@ -14,6 +14,11 @@ import type { InterventionRequest } from '../../src/models/intervention';
 import type { Dialog, Observation } from '../../src/models/observation';
 import type { PolicyDecision } from '../../src/models/policy';
 import type { RunEvent } from '../../src/models/run-event';
+
+// A rejection as the surface port defines it.
+export function surfaceFault(code: SurfaceErrorCode, detail: string): SurfaceFault {
+  return Object.assign(new Error(`surface ${code}: ${detail}`), { name: 'SurfaceError' as const, code });
+}
 
 // Fast, browser-free stand-ins for the ports a controller uses, scripted by the test.
 

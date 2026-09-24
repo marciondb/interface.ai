@@ -1,6 +1,6 @@
 import type { EscalationBroker, OperatorCommand } from '../diplomat/escalation/port';
 import type { EvidenceRecorder, EvidenceRun } from '../diplomat/evidence/port';
-import type { HumanSurface } from '../diplomat/surface/port';
+import { isSurfaceError, type HumanSurface } from '../diplomat/surface/port';
 import type { Clock } from '../infrastructure/clock';
 import { errorMessage } from '../infrastructure/errors';
 import { newId } from '../infrastructure/ids';
@@ -10,6 +10,7 @@ import type { EscalationReason } from '../models/execution-result';
 import type { DialogDecision, HandoffOutcome, HumanAction, InterventionReason, InterventionRequest, Verification } from '../models/intervention';
 import type { Observation } from '../models/observation';
 import type { RunMode } from '../models/run-event';
+import { SurfaceFailure } from './run-lifecycle';
 
 export type { Verification } from '../models/intervention';
 
@@ -88,8 +89,9 @@ export function createEscalationController(deps: EscalationDeps, options: Escala
     try {
       observation = await surface.observe();
       screenshot = await surface.screenshot({ maskTexts });
-    } catch {
+    } catch (error) {
       // Recorded without the picture.
+      if (!isSurfaceError(error)) throw error;
     }
     const paths = await evidence.capture(name, { screenshot, snapshot: observation });
     return { observation, screenshot: paths.screenshot };
@@ -103,8 +105,9 @@ export function createEscalationController(deps: EscalationDeps, options: Escala
     let url = '';
     try {
       url = surface.currentUrl();
-    } catch {
+    } catch (error) {
       // Not open.
+      if (!isSurfaceError(error)) throw error;
     }
     const intervention: InterventionRequest = {
       interventionId,
@@ -130,6 +133,7 @@ export function createEscalationController(deps: EscalationDeps, options: Escala
     try {
       return await request.verify();
     } catch (error) {
+      if (!(error instanceof SurfaceFailure)) throw error;
       return { held: false, expected: 'the page to be readable', observed: errorMessage(error) };
     }
   }

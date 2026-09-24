@@ -17,6 +17,7 @@ import {
   show,
   SIGN_IN_URL,
   changes,
+  surfaceFault,
   type Effect,
   type FakeGatewayOptions,
   type FakePage,
@@ -147,10 +148,6 @@ function failure(result: ExecutionResult) {
   return result.failure;
 }
 
-function surfaceError(detail: string): Error {
-  return Object.assign(new Error(`surface ${detail}`), { name: 'SurfaceError' });
-}
-
 describe('replay controller with fakes', () => {
   it('succeeds, masking the member id and the balance in every screenshot it would take', async () => {
     const { result, evidence, clock } = await run();
@@ -239,7 +236,7 @@ describe('replay controller with fakes', () => {
       effects: {
         ...LOOKUP,
         search: () => {
-          throw surfaceError('unknown_ref: e9 is not in the latest observation');
+          throw surfaceFault('unknown_ref', 'e9 is not in the latest observation');
         },
       },
     });
@@ -250,7 +247,7 @@ describe('replay controller with fakes', () => {
   it('retries a page that does not become readable in time as a timeout', async () => {
     let stalls = 1;
     const onObserve = () => {
-      if (stalls-- > 0) throw Object.assign(new Error('page.waitForLoadState: Timeout 5000ms exceeded.'), { name: 'TimeoutError' });
+      if (stalls-- > 0) throw surfaceFault('timeout', 'the page did not load within 5000 ms');
     };
 
     const { result } = await run({ gateway: { onObserve } });

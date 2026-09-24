@@ -6,6 +6,11 @@ export function errorMessage(error: unknown): string {
   return end === -1 ? error.message : error.message.slice(0, end);
 }
 
+// Thrown by broken code, never by a page or a system call.
+export function isProgrammingError(error: unknown): boolean {
+  return error instanceof TypeError || error instanceof ReferenceError || error instanceof RangeError || error instanceof SyntaxError;
+}
+
 // The errno code of a failed system call, e.g. ENOENT or EEXIST.
 export function errnoCode(error: unknown): string | undefined {
   return error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : undefined;

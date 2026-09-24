@@ -5,6 +5,7 @@ import { createHumanCapture } from './human-capture';
 import { ELEMENT_DESCRIPTOR_SCRIPT } from './in-page/element-descriptor';
 import { ELEMENT_INFO_SCRIPT } from './in-page/element-info';
 import { HUMAN_CAPTURE_SCRIPT, HUMAN_EVENT_BINDING } from './in-page/human-capture-script';
+import { translated } from './playwright-errors';
 import type { HumanSurface, SurfaceDriver } from './port';
 import { createRefRegistry } from './ref-registry';
 import { resolveTarget } from './resolve';
@@ -49,35 +50,30 @@ export function createPlaywrightDriver(options: PlaywrightDriverOptions = {}): P
   const locate = (ref: string) => refs.locate(session.page(), ref);
 
   const driver: PlaywrightDriver = {
-    async open(url, cookies) {
-      refs.clear();
-      await session.open(url, cookies);
-    },
+    open: (url, cookies) =>
+      translated(async () => {
+        refs.clear();
+        await session.open(url, cookies);
+      }),
 
-    async observe() {
-      const page = session.page();
-      refs.clear();
-      const { observation, refTargets } = await snapshotPage(page, observations + 1);
-      observations += 1;
-      refs.replace(refTargets);
-      return { ...observation, dialog: capture.takeDismissedDialog() };
-    },
+    observe: () =>
+      translated(async () => {
+        const page = session.page();
+        refs.clear();
+        const { observation, refTargets } = await snapshotPage(page, observations + 1);
+        observations += 1;
+        refs.replace(refTargets);
+        return { ...observation, dialog: capture.takeDismissedDialog() };
+      }),
 
-    async resolve(target) {
-      return resolveTarget(session.page(), target, (locator) => refs.mint(locator));
-    },
+    resolve: (target) => translated(() => resolveTarget(session.page(), target, (locator) => refs.mint(locator))),
 
-    async perform(action, performOptions) {
-      return performAction(session.page(), action, locate, performOptions?.timeoutMs ?? ACTION_TIMEOUT_MS);
-    },
+    perform: (action, performOptions) =>
+      translated(() => performAction(session.page(), action, locate, performOptions?.timeoutMs ?? ACTION_TIMEOUT_MS)),
 
-    async describe(ref) {
-      return locate(ref).evaluate(ELEMENT_INFO_SCRIPT, undefined, { timeout: ACTION_TIMEOUT_MS });
-    },
+    describe: (ref) => translated(() => locate(ref).evaluate(ELEMENT_INFO_SCRIPT, undefined, { timeout: ACTION_TIMEOUT_MS })),
 
-    async inspect(ref) {
-      return locate(ref).evaluate(ELEMENT_DESCRIPTOR_SCRIPT, undefined, { timeout: ACTION_TIMEOUT_MS });
-    },
+    inspect: (ref) => translated(() => locate(ref).evaluate(ELEMENT_DESCRIPTOR_SCRIPT, undefined, { timeout: ACTION_TIMEOUT_MS })),
 
     currentUrl() {
       return session.page().url();
@@ -92,9 +88,7 @@ export function createPlaywrightDriver(options: PlaywrightDriverOptions = {}): P
       session.setNavigationGuard(allows);
     },
 
-    async screenshot(screenshotOptions) {
-      return takeScreenshot(session.page(), screenshotOptions?.maskTexts ?? [], ACTION_TIMEOUT_MS);
-    },
+    screenshot: (screenshotOptions) => translated(() => takeScreenshot(session.page(), screenshotOptions?.maskTexts ?? [], ACTION_TIMEOUT_MS)),
 
     startHumanCapture(listener) {
       capture.start(listener);

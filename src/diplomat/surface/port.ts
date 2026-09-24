@@ -6,9 +6,17 @@ import type { Dialog, Observation } from '../../models/observation';
 import type { ElementInfo, PerformOutcome, Resolution } from '../../models/resolution';
 import type { SessionCookie } from '../session/port';
 
+// timeout: the page did not answer in time, or a frame was replaced while it was being read.
 // driver_error: the surface failed in a way that is neither a page outcome nor an absence.
 // invalid_candidate: a locator candidate the surface cannot express (e.g. an unknown role).
-export type SurfaceErrorCode = 'not_open' | 'unknown_ref' | 'snapshot_mismatch' | 'driver_error' | 'invalid_candidate';
+export const SURFACE_ERROR_CODES = ['not_open', 'unknown_ref', 'snapshot_mismatch', 'timeout', 'driver_error', 'invalid_candidate'] as const;
+export type SurfaceErrorCode = (typeof SURFACE_ERROR_CODES)[number];
+
+export type SurfaceFault = Error & { readonly name: 'SurfaceError'; readonly code: SurfaceErrorCode };
+
+export function isSurfaceError(error: unknown): error is SurfaceFault {
+  return error instanceof Error && error.name === 'SurfaceError' && 'code' in error && (SURFACE_ERROR_CODES as readonly unknown[]).includes(error.code);
+}
 
 export type PerformOptions = {
   // Budget for the action and for the navigations it starts to finish loading (default 5000).
@@ -21,8 +29,8 @@ export type ScreenshotOptions = {
   readonly maskTexts?: readonly string[];
 };
 
-// One browser, one context, one page per run. Methods reject with a SurfaceError
-// (name 'SurfaceError', code SurfaceErrorCode) or with the underlying surface error.
+// One browser, one context, one page per run. Methods reject only with a SurfaceFault; anything
+// else they throw is a bug.
 export type SurfaceDriver = {
   // Loads url with the session cookies; calling it again reuses the same page (re-login).
   open(url: string, session: readonly SessionCookie[]): Promise<void>;

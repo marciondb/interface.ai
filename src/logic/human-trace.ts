@@ -1,4 +1,4 @@
-import type { HumanTarget } from '../models/intervention';
+import type { HumanAction, HumanTarget } from '../models/intervention';
 import type { Observation, ObservationNode } from '../models/observation';
 
 function only(nodes: readonly ObservationNode[]): ObservationNode | undefined {
@@ -12,4 +12,26 @@ export function matchHumanTarget(target: HumanTarget, observation: Observation):
   const { role, name } = target;
   if (role === undefined || name === undefined || name === '') return undefined;
   return only(inFrame.filter((node) => node.role === role && node.name === name));
+}
+
+function targetText({ role, name, tag }: HumanTarget): string {
+  return name === undefined || name === '' ? (role ?? tag) : `${role ?? tag} ${JSON.stringify(name)}`;
+}
+
+// What the model is told a human did; navigations only follow from the other actions.
+export function describeHumanAction(action: HumanAction): string | undefined {
+  switch (action.kind) {
+    case 'click':
+      return `click ${targetText(action.target)}`;
+    case 'input':
+      return `type into ${targetText(action.target)}`;
+    case 'dialog':
+      return `${action.decision} the dialog ${JSON.stringify(action.message)}`;
+    case 'navigation':
+      return undefined;
+    default: {
+      const unhandled: never = action;
+      return unhandled;
+    }
+  }
 }

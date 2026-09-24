@@ -9,8 +9,6 @@ import type { HumanActor } from '../../support/human-actor';
 import { operatorAborts, operatorConfirms, operatorDeclines } from '../../support/scripted-operator';
 import { createScriptedReasoner, WRITE_FLOW, WRITE_FLOW_TO_CONFIRM, type ScriptedReasoner, type ScriptedStep } from '../../support/scripted-reasoner';
 
-const ARTIFACT = ['member.open-sub-account', '1.0.0.json'];
-
 async function events(run: DiscoveryHarnessRun): Promise<Record<string, unknown>[]> {
   const text = await readFile(join(run.evidenceRoot, run.result.runId, 'run.jsonl'), 'utf8');
   return text
@@ -55,7 +53,7 @@ describe('discovery of the write flow with a human at Confirm', { timeout: 60_00
       action: { message: 'Submit this sub-account request?', decision: 'accept' },
     });
 
-    const loaded = fromCapabilityFile(JSON.parse(await readFile(join(run.capabilitiesDir, ...ARTIFACT), 'utf8')));
+    const loaded = fromCapabilityFile(JSON.parse(await readFile(join(run.capabilitiesDir, 'member.open-sub-account', `${run.result.capability.version}.json`), 'utf8')));
     if (!loaded.ok) throw new Error(loaded.issues.join('; '));
     const { steps, targets } = loaded.capability;
     expect(steps.filter((step) => step.risk === 'risky').map((step) => step.id)).toEqual(['click-confirm']);
@@ -83,13 +81,13 @@ describe('discovery of the write flow with a human at Confirm', { timeout: 60_00
     expect(afterHandoff?.feedback).toMatch(/^a human took over and handed the screen back unchanged/);
     expect(JSON.stringify(afterHandoff?.observation)).toContain('Review Sub-Account Request');
     expect(run.result).toMatchObject({ status: 'failed', reason: 'reasoner_exhausted' });
-    expect(existsSync(join(run.capabilitiesDir, ...ARTIFACT))).toBe(false);
+    expect(existsSync(join(run.capabilitiesDir, 'member.open-sub-account', `${run.result.capability.version}.json`))).toBe(false);
   });
 
   it('ends escalated without an artifact when the human aborts', async () => {
     const { run } = await discover(WRITE_FLOW, operatorAborts());
 
     expect(run.result).toMatchObject({ status: 'escalated', reason: 'aborted', stepId: 'step-10' });
-    expect(existsSync(join(run.capabilitiesDir, ...ARTIFACT))).toBe(false);
+    expect(existsSync(join(run.capabilitiesDir, 'member.open-sub-account', `${run.result.capability.version}.json`))).toBe(false);
   });
 });

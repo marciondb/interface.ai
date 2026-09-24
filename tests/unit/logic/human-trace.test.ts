@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchHumanTarget } from '../../../src/logic/human-trace';
+import { describeHumanAction, matchHumanTarget } from '../../../src/logic/human-trace';
 import type { Observation } from '../../../src/models/observation';
 
 const DETAIL: Observation = {
@@ -31,5 +31,19 @@ describe('matchHumanTarget', () => {
 
   it('does not match when nothing identifies the element', () => {
     expect(matchHumanTarget({ frame: 'content', tag: 'td' }, DETAIL)).toBeUndefined();
+  });
+});
+
+describe('describeHumanAction', () => {
+  const at = '2026-09-24T21:54:32.000Z';
+
+  it('describes clicks, typing and dialogs, never what was typed', () => {
+    expect(describeHumanAction({ kind: 'click', target: { frame: 'content', tag: 'input', role: 'button', name: 'Confirm' }, at })).toBe('click button "Confirm"');
+    expect(describeHumanAction({ kind: 'input', target: { frame: 'content', tag: 'input' }, value: '[redacted]', at })).toBe('type into input');
+    expect(describeHumanAction({ kind: 'dialog', message: 'Submit?', decision: 'accept', at })).toBe('accept the dialog "Submit?"');
+  });
+
+  it('leaves navigations out: they follow from the other actions', () => {
+    expect(describeHumanAction({ kind: 'navigation', frame: 'content', url: 'http://localhost:8080/member/subacct/confirm', at })).toBeUndefined();
   });
 });

@@ -37,8 +37,14 @@ describe('renderGoal', () => {
   });
 
   it('tells the model which outputs are already read', () => {
-    expect(renderGoal(request(), ['balance'])).toBe(
+    expect(renderGoal(request(), { read: ['balance'] })).toBe(
       'Look up member 10001 and read the balance of their Savings account (already read: balance; nothing left to read)',
+    );
+  });
+
+  it('tells the model what a person already did', () => {
+    expect(renderGoal(request(), { byHuman: ['click button "Confirm"', 'accept the dialog "Submit?"'] })).toBe(
+      'Look up member 10001 and read the balance of their Savings account (a person already did: click button "Confirm", then accept the dialog "Submit?"; outputs to read: balance)',
     );
   });
 });

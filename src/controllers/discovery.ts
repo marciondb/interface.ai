@@ -9,9 +9,9 @@ import { synthesizeArtifact } from '../logic/artifact-synthesis';
 import { renderGoal } from '../logic/capability-request';
 import { decisionFields, feedbackFor, missingOutputs, progressed, stopCheck, type Setback } from '../logic/discovery-rules';
 import { findNode, observationRefs } from '../logic/grounding';
-import { matchHumanTarget } from '../logic/human-trace';
+import { describeHumanAction, matchHumanTarget } from '../logic/human-trace';
 import { describeLanding } from '../logic/policy';
-import { redactDeep, redactObservation, type RedactionRules, type SensitiveValue } from '../logic/redaction';
+import { redactDeep, redactObservation, redactText, type RedactionRules, type SensitiveValue } from '../logic/redaction';
 import { actionRef } from '../logic/step-action';
 import type { AgentDecision, SurfaceDecision } from '../models/action';
 import type { ReasonerInfo } from '../models/capability';
@@ -90,6 +90,8 @@ type DiscoveryContext = {
   readonly sensitive: SensitiveValue[];
   readonly captured: Record<string, string>;
   readonly trace: TraceStep[];
+  // What humans did during handoffs, as told to the model.
+  readonly byHuman: string[];
   readonly interventions: string[];
   // Model turns taken.
   steps: number;
@@ -136,6 +138,10 @@ function failed(reason: DiscoveryFailureReason, message: string): Ending {
 
 function openFailed(targetUrl: string, refusal: OpenRefusal): Ending {
   return failed(refusal.code, refusal.code === 'precondition_failed' ? refusal.observed : `opening ${targetUrl}: ${refusal.observed}`);
+}
+
+function goalNow(ctx: DiscoveryContext): string {
+  return renderGoal(ctx.run.request, { read: Object.keys(ctx.captured), byHuman: ctx.byHuman });
 }
 
 function maskTexts(ctx: DiscoveryContext): string[] {
@@ -204,7 +210,7 @@ async function escalate(ctx: DiscoveryContext, stepId: string, reason: Intervent
     run: ctx.evidenceRun,
     mode: 'discovery',
     capability: `${ctx.capability.id}@${ctx.capability.version}`,
-    goal: renderGoal(ctx.run.request, Object.keys(ctx.captured)),
+    goal: goalNow(ctx),
     stepId,
     reason,
     message,
@@ -231,6 +237,8 @@ async function escalate(ctx: DiscoveryContext, stepId: string, reason: Intervent
     return undefined;
   }
   for (const action of outcome.actions) {
+    const described = describeHumanAction(action);
+    if (described !== undefined) ctx.byHuman.push(redactText(described, ctx.modelRules));
     const target = action.kind === 'click' ? redactDeep(action.target, ctx.modelRules) : undefined;
     const node = target === undefined ? undefined : matchHumanTarget(target, before);
     ctx.trace.push({
@@ -283,7 +291,7 @@ async function decide(ctx: DiscoveryContext, stepId: string, observation: Observ
   let proposal: Proposal;
   try {
     proposal = await reasoner.propose({
-      goal: renderGoal(ctx.run.request, Object.keys(ctx.captured)),
+      goal: goalNow(ctx),
       observation,
       validRefs,
       ...(ctx.feedback === undefined ? {} : { feedback: ctx.feedback }),
@@ -474,6 +482,7 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
     sensitive: [...sensitive],
     captured: {},
     trace: [],
+    byHuman: [],
     interventions: [],
     steps: 0,
     stalls: 0,

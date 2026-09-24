@@ -6,17 +6,28 @@ function goalParameters(goal: string): string[] {
   return [...goal.matchAll(GOAL_PARAMETER)].flatMap(([, name]) => (name === undefined ? [] : [name]));
 }
 
-// The goal the model sees: the template with each input's example, plus which outputs are
-// read already. The model is stateless (RFC-003), so this is how it learns a read happened.
-export function renderGoal(request: CapabilityRequest, read: readonly string[] = []): string {
+export type GoalProgress = {
+  // Outputs read so far.
+  readonly read?: readonly string[];
+  // What a human did during handoffs, in order (describeHumanAction).
+  readonly byHuman?: readonly string[];
+};
+
+// The goal the model sees: the template with each input's example, plus what is done already.
+// The model is stateless (RFC-003), so this is how it learns a read, or a human's action, happened.
+export function renderGoal(request: CapabilityRequest, { read = [], byHuman = [] }: GoalProgress = {}): string {
   const goal = request.goal.replace(GOAL_PARAMETER, (placeholder, name: string) =>
     (Object.hasOwn(request.inputs, name) ? request.inputs[name]?.example : undefined) ?? placeholder,
   );
   const outputs = Object.keys(request.outputs);
   const done = outputs.filter((name) => read.includes(name));
   const left = outputs.filter((name) => !read.includes(name));
-  if (done.length === 0) return `${goal} (outputs to read: ${left.join(', ')})`;
-  return `${goal} (already read: ${done.join(', ')}; ${left.length === 0 ? 'nothing left to read' : `still to read: ${left.join(', ')}`})`;
+  const reads =
+    done.length === 0
+      ? `outputs to read: ${left.join(', ')}`
+      : `already read: ${done.join(', ')}; ${left.length === 0 ? 'nothing left to read' : `still to read: ${left.join(', ')}`}`;
+  const human = byHuman.length === 0 ? '' : `a person already did: ${byHuman.join(', then ')}; `;
+  return `${goal} (${human}${reads})`;
 }
 
 // Why the request cannot drive a discovery; empty when it can. Examples are how inputs are

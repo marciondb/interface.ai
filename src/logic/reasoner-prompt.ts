@@ -27,6 +27,7 @@ export const SYSTEM_PROMPT = [
   '- Only use refs listed on the current screen.',
   '- Use read once for each value the goal asks for, with the output name the goal uses.',
   '- Answer finish only when the goal is complete and every requested value has been read.',
+  '- What the goal says a person already did is done: never repeat it.',
   '- Answer request_help when you cannot make progress.',
   '- A "Feedback:" line means your previous action did not make progress; choose a different action.',
   '- A "Previous answer rejected:" line explains why your last answer was invalid; answer again without that mistake.',

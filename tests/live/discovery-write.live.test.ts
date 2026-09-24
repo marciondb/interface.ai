@@ -66,7 +66,8 @@ describe.skipIf(process.env.RUN_LIVE_MODEL !== '1')('live discovery of the write
     console.info(`[live-write] artifact dir ${discovery.capabilitiesDir}`);
     expect(operator.errors).toEqual([]);
     expect(discovery.result).toMatchObject({ status: 'succeeded', outputs: { accountNumber: '10001MMRAIN025000' } });
-    const loaded = fromCapabilityFile(JSON.parse(await readFile(join(discovery.capabilitiesDir, 'member.open-sub-account', '1.0.0.json'), 'utf8')));
+    const { version } = discovery.result.capability;
+    const loaded = fromCapabilityFile(JSON.parse(await readFile(join(discovery.capabilitiesDir, 'member.open-sub-account', `${version}.json`), 'utf8')));
     if (!loaded.ok) throw new Error(loaded.issues.join('; '));
     expect(loaded.capability.steps.filter((step) => step.risk === 'risky')).toHaveLength(1);
 
@@ -74,7 +75,7 @@ describe.skipIf(process.env.RUN_LIVE_MODEL !== '1')('live discovery of the write
     const replay = await runReplay(
       fixture,
       { memberId: '10002', accountType: 'Holiday Club', nickname: 'Vacation', initialDeposit: '100.00' },
-      { capability: 'member.open-sub-account', capabilitiesDir: discovery.capabilitiesDir, operator: replayOperator, stepTimeoutMs: 5_000 },
+      { capability: 'member.open-sub-account', capabilitiesDir: discovery.capabilitiesDir, allowDraft: true, operator: replayOperator, stepTimeoutMs: 5_000 },
     );
     console.info(`[live-write] replay evidence ${runDir(replay)}`);
 

@@ -126,12 +126,18 @@ The **artifact synthesizer** (pure Logic) turns the trace into an artifact:
   was observed (role/name, label, attributes)
 - An element in a table row that contains an input value gets a `table_cell`
   structural candidate
-- A target the model reads never uses role/name — its name is the data itself
+- A target the model reads never uses role/name — its name is the data itself —
+  nor a label that is record data; a value displayed next to its label cell
+  ("New Account Number:") is located by that label
 - The observation after each action becomes that step's checkpoint
+- An action after which the application newly shows one of the request's
+  business outcomes (e.g. a validation error on a premature submit) is a detour
+  and becomes no step
 - A handoff in which the human made a single click on an element of the screen
-  they were handed becomes a `risky` click step, checked by what it revealed; any
-  other human activity (typing, dialogs, several clicks) makes synthesis fail,
-  with the actions kept in the evidence
+  they were handed, accepting any confirmation dialog it opened, becomes a
+  `risky` click step, checked by what it revealed; any other human activity
+  (typing, a dismissed dialog, several clicks) makes synthesis fail, with the
+  actions kept in the evidence
 - Values equal to an input's `example` are replaced by `{{inputs.*}}`
 - Values captured with `read` become typed outputs
 - Business outcomes and recoverable conditions come from the per-app catalog

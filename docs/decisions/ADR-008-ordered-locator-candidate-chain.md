@@ -21,7 +21,8 @@ No single locator strategy is reliable everywhere, but replay must be determinis
 A target declares an ordered chain of candidates, most semantic first:
 
 1. **role + accessible name** — e.g. `textbox "Member ID"`
-2. **label text** — the visible text adjacent to the control
+2. **label text** — the visible text adjacent to the control, or to a displayed
+   value (the cell right after the label cell)
 3. **stable attribute** — `name` or `id`
 4. **text content** — for links and buttons
 5. **structural** — e.g. "the cell in the row where column `Acct Type` equals

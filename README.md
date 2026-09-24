@@ -202,11 +202,12 @@ local, deliberately hostile 2000s-era member-services console — iframe shell, 
 tables, presentational markup, no test IDs, ASP.NET-style generated names, native
 `confirm()` dialogs, irreversible buttons, and a fault-injection endpoint that makes
 slowness, interstitials, session expiry, server errors and missing controls happen on
-demand. This is a screenshot from the committed discovery run (declared sensitive
-values and account numbers are masked):
+demand. This is a screenshot from the committed discovery run, taken after the balance
+was read (the member ID, the read balance and, because they contain the member ID, the
+account numbers are masked):
 
 <p align="center">
-  <img alt="The legacy member-services console the model drives" src="evidence/runs/2026-09-24T21-39-10-424Z-discovery-member.read-account-balance/screenshots/0024-step-5.png" width="85%" />
+  <img alt="The legacy member-services console the model drives" src="evidence/runs/2026-09-24T21-39-10-424Z-discovery-member.read-account-balance/screenshots/0030-step-6.png" width="85%" />
 </p>
 
 ---
@@ -326,6 +327,7 @@ npm run replay -- --capability member.read-account-balance@1 --allow-draft --inp
 
 npm run replay -- --capability member.read-account-balance@1 --allow-draft --input memberId=abc --input accountType=Savings
 # exit 3: "status": "failed", "failure": { "stepId": "inputs", "code": "invalid_input", ... }
+# (the request file declares a pattern for memberId; a --goal input declares none, so there the app rejects it later)
 ```
 
 Replay exit codes: 0 `succeeded`, 2 `business_outcome`, 3 `failed`, 4 `escalated`,
@@ -359,9 +361,10 @@ intervention request (also written to `intervention.json`) and a `handoff>` prom
 typed values as `[redacted]`) is recorded as `handoff_*` events with before/after
 screenshots.
 
-With `--headed`, replay also hands over a step that fails in a way no declared recovery
-handles (a missing control, a checkpoint that does not hold); without an operator
-window that run ends `failed`.
+With `--headed`, replay also hands over a step whose target is missing or ambiguous,
+whose checkpoint does not hold, or whose declared recovery is exhausted; without an
+operator window that run ends `failed`. Server errors, timeouts, policy denials and
+driver errors fail at once.
 
 To rediscover the write flow yourself, run
 `npm run discover -- --request discovery/requests/member.open-sub-account.json --version 1.0.2 --headed`;
@@ -376,8 +379,8 @@ local-model discoveries (read flow, 6 decisions in 31 s; write flow, 13 decision
 45 s with a handoff), their artifacts, and replays covering success, business outcomes
 (member not found, permission denied, a rejected deposit), a recovered fault, a
 dismissed unexpected dialog, a hard failure, handoffs and an escalation with no
-operator. Screenshots are masked: declared sensitive values and account numbers are
-covered by boxes. The operator actions in the committed handoffs were performed by a scripted
+operator. Screenshots are masked: declared inputs, and outputs once read, are covered by
+boxes (in these runs the account numbers too, because they contain the member ID). The operator actions in the committed handoffs were performed by a scripted
 operator through the real handoff channel; the evidence index explains how.
 
 ## What is mocked, and why

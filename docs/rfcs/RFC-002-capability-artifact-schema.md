@@ -125,7 +125,8 @@ keys are rejected. `discovered` provenance requires `runId` and `reasoner`. The
 store also checks that a file's id and version match its path
 (`capabilities/<id>/<version>.json`).
 Placeholders are only `{{inputs.<name>}}`; they may appear in targets, steps and
-outcomes and are bound to the caller's validated inputs before replay.
+outcomes, except inside any `value_matches` pattern, whether a checkpoint or an
+outcome detector (an input would become unchecked regex syntax), and are bound to the caller's validated inputs before replay.
 
 ## Design notes
 

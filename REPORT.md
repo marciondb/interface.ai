@@ -134,8 +134,9 @@ Design only; the seams exist in code
   holds control the gateway refuses every automation action except `read`.
 - **Same live session:** the operator types `take` and works in the run's own headed
   window; tests assert an unchanged session cookie and a single sign-in.
-- **Handing back:** `resume` re-observes and verifies the step's checkpoint; if it
-  fails, the human keeps control. `abort`, TTL expiry (10 min), a closed window, or no
+- **Handing back:** in replay, `resume` re-observes and verifies the step's checkpoint;
+  if it fails, the human keeps control. In discovery, an unchanged page counts as the
+  human declining, and the model is told. `abort`, TTL expiry (10 min), a closed window, or no
   `--headed` window end the run as `escalated` with that reason.
 - **Recording:** clicks, navigations, typed values as `[redacted]` and dialog answers
   become `handoff_*` events with before/after screenshots; in discovery, the human's
@@ -154,7 +155,7 @@ Design only; the seams exist in code
 [ADR-014](docs/decisions/ADR-014-per-run-evidence-bundle.md).
 
 - **Allowlist:** [`policy.json`](policy.json) lists origins, routes and action types;
-  anything else is denied at the gateway before the driver is called.
+  anything else is denied at the gateway before the driver acts.
 - **Risk classes:** an action is risky if its control text, destination or current
   page matches the policy's risky list; precedence is deny > `requires_human` > allow.
   Risky actions are **blocked for automation and done by a human** in the live
@@ -165,7 +166,7 @@ Design only; the seams exist in code
   enter the page, observations, artifacts or evidence; the password is masked anyway.
 - **Sensitive data:** declared sensitive inputs and outputs show as
   `[REDACTED:<sensitivity>]` in every evidence JSON file and are boxed in every
-  screenshot; in text, account numbers keep their last 4 digits and SSNs are masked.
+  screenshot taken once the value is known; in text, account numbers keep their last 4 digits and SSNs are masked.
   The model sees secrets and every sensitive output read so far masked, but inputs in
   clear, since it must type them. Outputs reach the caller unmasked, on stdout only;
   the local model keeps observations on the machine.

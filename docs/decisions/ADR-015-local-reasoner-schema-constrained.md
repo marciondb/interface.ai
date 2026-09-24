@@ -45,8 +45,8 @@ all three, at about 2.6 s per warm call on an Apple M4 Pro with 24 GB. The 8B
 model can still be selected through `REASONER_MODEL` on machines with less
 memory, at lower accuracy.
 
-**Constrained output, built per step.** The schema is generated from the domain
-`Action` schema for each observation, with `target` narrowed to an `enum` of the
+**Constrained output, built per step.** The schema is generated from the flat domain
+`ModelStep` schema for each observation, with `target` narrowed to an `enum` of the
 element references present in that observation. A reference to an element that
 does not exist cannot be generated. An adapter still validates every response
 before it becomes a domain decision.

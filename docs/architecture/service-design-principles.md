@@ -117,7 +117,8 @@ response payloads, CLI arguments, evidence log records.
 - Pure data definitions
 - No dependencies
 - Not reused inside the Domain
-- Loose on the way in, strict on the way out
+- Loose on the way in, strict on the way out — except contract files (the capability
+  artifact, the policy's `risky` block), which reject unknown keys
 
 > Wire represents *how the world speaks to the system*.
 

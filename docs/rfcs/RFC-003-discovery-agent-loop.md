@@ -59,10 +59,10 @@ type Reasoner = {
 }
 ```
 
-Stateless per call. The controller owns the history; the only part it passes on is
-in the goal, which lists the declared outputs already read and what a person did
-during a handoff, so the model knows when to answer `finish` and what not to
-repeat. Adapters: local (Ollama, default model `qwen3:14b`, `think: false`) and
+Stateless per call. The controller owns the history; it passes on only the one-line
+`feedback` about the previous action and, in the goal, the declared outputs already
+read and what a person did during a handoff, so the model knows when to answer
+`finish` and what not to repeat. Adapters: local (Ollama, default model `qwen3:14b`, `think: false`) and
 hosted (OpenAI-compatible, strict `json_schema`), selected per run; both call the
 model at temperature 0. The reasoner does not redact; it receives an observation
 that is already redacted. Each decision is logged with the provider's metadata
@@ -126,7 +126,7 @@ If an observation has no addressable elements, the model is not called.
 |---|---|
 | Model answers `finish` and the goal check holds | Success → synthesize artifact |
 | Step budget exceeded (default 25) | Failure |
-| Wall-clock timeout (default 10 min — local models are slow) | Failure |
+| Timeout (default 10 min — local models are slow; time a human spends in a handoff is not counted) | Failure |
 | Reasoner exhausts its retry budgets | Failure |
 | Stall counter reaches 3 | Escalate |
 | Model answers `request_help` | Escalate |
@@ -149,7 +149,9 @@ write flow.
 
 The **artifact synthesizer** (pure Logic) turns the trace into an artifact:
 
-- Each executed action becomes a step. Refs are ephemeral and never persisted;
+- Each executed action that changed the page (or read a value not yet captured)
+  becomes a step; actions that made no progress and repeated reads of the same output
+  are dropped. Refs are ephemeral and never persisted;
   each resolved element becomes a target with a candidate chain built from what
   was observed (role/name, label, attributes) and `notes` explaining why the
   chain is ordered as it is
@@ -158,7 +160,9 @@ The **artifact synthesizer** (pure Logic) turns the trace into an artifact:
 - A target the model reads never uses role/name — its name is the data itself —
   nor a label that is record data; a value displayed next to its label cell
   ("New Account Number:") is located by that label
-- The observation after each action becomes that step's checkpoint
+- Each step gets a checkpoint: clicks, presses and navigations are checked by the first
+  new, non-numeric text the action revealed; fills and selects by the field holding the
+  typed value (`value_equals`); reads by the target being visible (`target_visible`)
 - An action after which the application newly shows one of the request's
   business outcomes (e.g. a validation error on a premature submit) is a detour
   and becomes no step

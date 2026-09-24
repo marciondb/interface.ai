@@ -37,20 +37,22 @@ replay --capability member.read-account-balance@1 --input memberId=10002 --input
       gateway returns `requires_human` (ADR-011)
    3. Execute through the gateway with an explicit timeout
       (`REPLAY_STEP_TIMEOUT_MS`, default 5 s). The same budget bounds how long
-      target resolution and the checkpoint keep polling; each single observation
-      of the page has its own fixed 5 s limit in the driver, so a step can
-      overrun the budget by one observation
+      target resolution and the checkpoint keep polling; each probe of the page runs
+      under fixed driver limits (up to 5 s per document load, frames included, and
+      5 s for the snapshot), so a step can overrun the budget by one probe
    4. Observe and evaluate the checkpoint
-   5. If target resolution, the action, or the checkpoint fails, classify the
-      observation (below)
+   5. If target resolution fails, the action times out, or the checkpoint fails,
+      classify the observation (below). An action the page rejects fails the step
+      with `driver_error`, and a gateway refusal with `policy_denied`, without
+      classification
 4. Extract outputs and return `succeeded`
 
 No step consults a model. The replay controller has no dependency on the reasoner.
 
 ## Classification
 
-Classification runs whenever target resolution, the action, or the checkpoint
-fails — not only on checkpoint failure. That is how "No records found." is
+Classification runs whenever target resolution fails, the action times out, or the
+checkpoint fails — not only on checkpoint failure. That is how "No records found." is
 caught: the next step's target is absent, and the page matches a declared
 business outcome. The outcome classifier (pure Logic) checks, in order:
 

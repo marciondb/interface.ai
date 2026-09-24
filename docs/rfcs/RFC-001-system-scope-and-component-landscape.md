@@ -172,8 +172,8 @@ expressed structurally rather than as a runtime condition. See ADR-001.
 | **Surface Driver** | Diplomat (outbound) | Observes and acts on a live application. The seam for surface heterogeneity |
 | **Action Gateway** | Diplomat | The single point through which every action reaches a surface. Where guardrail policy is applied |
 | **Artifact Store** | Diplomat (outbound) | Persists and loads versioned capability artifacts |
-| **Evidence Recorder** | Diplomat (outbound) | Writes a structured record of what happened and why, plus richer signal on failure |
-| **Escalation Broker** | Diplomat (outbound) | Delivers the intervention request and exposes the live session for manual control |
+| **Evidence Recorder** | Diplomat (outbound) | Writes a structured record of what happened and why, plus richer signal on a replay failure |
+| **Escalation Broker** | Diplomat (outbound) | Delivers the intervention request to the operator and relays their commands (`take`, `resume`, `abort`) and dialog answers; the live session is exposed through the surface driver's `HumanSurface` |
 | **Session Provider** | Diplomat (outbound) | Establishes the authenticated session before a run from environment credentials, logging in over HTTP so the password never enters the browser. Outside the action gateway because signing in is not an agent action (ADR-013) |
 | **Artifact Synthesizer** | Logic | Turns a successful run trace into a parameterized capability. Pure |
 | **Checkpoint Evaluator** | Logic | Decides whether an observation satisfies a step's success condition. Pure |
@@ -208,7 +208,7 @@ passes through it. There is no route to the surface that bypasses policy.
 5. Permitted actions are executed by the surface driver, producing a new
    observation.
 6. The loop continues until the goal's success condition holds, or a stopping
-   condition fires: a step budget, a wall-clock timeout, or a dead end.
+   condition fires: a step budget, a time budget, or a dead end.
 7. On success, the artifact synthesizer converts the run trace into a capability
    artifact, and the artifact store persists it as a new, immutable version with
    status `draft`, to be approved by a reviewer.
@@ -272,8 +272,9 @@ Detailed in RFC-006.
 ### Evidence
 
 Every run writes a structured, machine-readable record of what happened and, on
-the discovery path, why each action was chosen. Failures additionally capture a
-richer signal — a screenshot, a state snapshot — sufficient to reconstruct what
+the discovery path, why each action was chosen. Replay failures additionally
+capture a richer signal — a screenshot, a state snapshot; discovery captures both on
+every step — sufficient to reconstruct what
 the system saw.
 
 Evidence serves two audiences: an operator debugging a production failure, and a

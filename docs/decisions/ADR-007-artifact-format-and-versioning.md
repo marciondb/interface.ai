@@ -27,7 +27,7 @@ and invoked by agents that depend on their input/output contract.
 | Field | Meaning | Bumped when |
 |---|---|---|
 | `schemaVersion` | Version of the artifact format itself | The engine's schema changes incompatibly |
-| `capability.version` | Semver of this capability | Major: input/output contract changes. Minor: new optional output or outcome. Patch: locator or timing fixes |
+| `capability.version` | Semver of this capability | Major: input/output contract changes. Minor: new output or outcome. Patch: locator or timing fixes |
 
 Callers pin a capability major version (`<id>@<major>`); replay loads the newest
 approved version in that major, so locator fixes never break them.

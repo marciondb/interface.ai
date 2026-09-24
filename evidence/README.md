@@ -6,8 +6,9 @@ Curated sample runs (ADR-014), one per case. Each folder under `runs/` is one ru
 run (`failure.evidence`, `intervention.json`'s `screenshot`) are relative to its folder.
 
 Everything is redacted (RFC-006): the target password never appears; declared-sensitive
-inputs and outputs show as `[REDACTED:<sensitivity>]` in every JSON file of the run and
-are covered by a solid box in every screenshot. Account numbers keep only their last 4
+inputs and outputs show as `[REDACTED:<sensitivity>]` in every JSON file of the run and,
+from the moment each is known (inputs at once, outputs once read), are covered by a solid
+box in screenshots. Account numbers keep only their last 4
 digits in JSON; in these screenshots they are boxed too, because the fixture's account
 numbers contain the declared member ID. Other page data the capability does not declare
 (the member's name, balances that were not read) stays visible. All data is synthetic.
@@ -25,7 +26,7 @@ and [`member.open-sub-account@1.0.1`](../capabilities/member.open-sub-account/1.
 | [`…21-39-10-424Z-discovery-member.read-account-balance`](runs/2026-09-24T21-39-10-424Z-discovery-member.read-account-balance/) | Genuine discovery with the local model (`qwen3:14b` on Ollama) through `npm run discover -- --request … --version 1.0.2 --headed`: 6 decisions in 31 s, each with its `rationale`, latency and Ollama metadata (`providerMeta`: token counts, durations). A masked screenshot and a snapshot per step. Produced `member.read-account-balance@1.0.2`. | `succeeded` | §3.1, §3.2, §3.5 |
 | [`…21-40-05-051Z-replay-member.read-account-balance`](runs/2026-09-24T21-40-05-051Z-replay-member.read-account-balance/) | `npm run replay` of that artifact without the model, member 10002, whose Savings account is not the first row: `read-balance` resolves by its `table_cell` candidate (`target_resolved` events). | `succeeded` | §3.3 |
 | [`…21-40-08-036Z-replay-member.read-account-balance`](runs/2026-09-24T21-40-08-036Z-replay-member.read-account-balance/) | Same, member 99999: the page shows "No records found.", a declared business outcome. | `business_outcome` `member_not_found` (exit 2) | §3.3 |
-| [`…22-06-20-048Z-replay-member.read-account-balance`](runs/2026-09-24T22-06-20-048Z-replay-member.read-account-balance/) | Member 10009, restricted: the detail page says "You are not authorized to view this record." (permission denied), a declared business outcome, not a failure. | `business_outcome` `member_restricted` (exit 2) | §3.3 |
+| [`…22-06-20-048Z-replay-member.read-account-balance`](runs/2026-09-24T22-06-20-048Z-replay-member.read-account-balance/) | Member 10009, restricted: the search results say "You are not authorized to view this record." instead of listing the member (permission denied), a declared business outcome, not a failure. | `business_outcome` `member_restricted` (exit 2) | §3.3 |
 | [`…22-06-20-862Z-replay-member.read-account-balance`](runs/2026-09-24T22-06-20-862Z-replay-member.read-account-balance/) | Injected `interstitial` fault on the first step: the checkpoint fails, the page matches the declared recoverable outcome, its recovery clicks Continue and the step is retried. | `succeeded`, `recoveries[0].outcomeId = interstitial` | §3.3 |
 | [`…22-06-22-371Z-replay-member.read-account-balance`](runs/2026-09-24T22-06-22-371Z-replay-member.read-account-balance/) | Injected `unexpected_dialog` fault: a native alert ("Your password expires in 3 days.") the artifact does not expect is dismissed, recorded as a recovery, and the run goes on. | `succeeded`, `recoveries[0].condition = unexpected_dialog` | §3.3 |
 | [`…22-06-23-421Z-replay-member.read-account-balance`](runs/2026-09-24T22-06-23-421Z-replay-member.read-account-balance/) | Injected `server_error` fault: HTTP 500 on the first step's navigation, a hard failure with `stepId`, `code`, `expected`, `observed`, and the failure screenshot and snapshot. | `failed` `server_error` (exit 3) | §3.3, §3.5 |
@@ -47,9 +48,10 @@ free port, hence the different ports in the URLs.
   discovery has `"decision":"requires_human"` at `step-11`.
 - **Redaction:** the declared member ids, deposits, read balances and new account
   numbers appear as `[REDACTED:internal]` / `[REDACTED:financial]` in events,
-  snapshots, URLs and `result.json`, and as boxes in screenshots; a value typed by a
-  human during a handoff is captured as `[redacted]`. The sign-in page is never
-  captured because sign-in happens over HTTP before the browser opens (ADR-013).
+  snapshots, URLs and `result.json`, and as boxes in screenshots taken once the value is
+  known; a value typed by a human during a handoff is captured as `[redacted]`. The
+  sign-in page is never photographed, and none of these runs reached it, because sign-in
+  happens over HTTP before the browser opens (ADR-013).
 - **Handoff:** `intervention.json` plus the `handoff_requested`, `handoff_taken`,
   `handoff_human_action`, `handoff_resumed` events and the
   `handoff-<interventionId>-before|after` screenshots and snapshots.

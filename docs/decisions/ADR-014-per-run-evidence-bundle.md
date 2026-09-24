@@ -21,10 +21,10 @@ contain secrets or raw sensitive values.
 ```text
 evidence/runs/<timestamp>-<mode>-<capability-id>/
 ├── run.jsonl          # one event per line: observation, decision, action, policy, checkpoint, recovery, handoff
-├── result.json        # the ExecutionResult (ADR-009)
+├── result.json        # the run's result: ExecutionResult (replay, ADR-009) or DiscoveryResult (discovery)
 ├── artifact.json      # discovery only: the produced capability
 ├── intervention.json  # only when the run had a handoff
-├── screenshots/       # masked; per step on discovery, on failure and handoff (both modes)
+├── screenshots/       # masked; per step on discovery, on failure in replay, on handoff in both modes
 └── snapshots/         # accessibility snapshots, redacted
 ```
 

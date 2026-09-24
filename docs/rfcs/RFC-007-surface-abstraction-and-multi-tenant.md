@@ -47,7 +47,7 @@ relations — so the same schema works across surfaces:
 
 | Surface | Driver | Notes |
 |---|---|---|
-| Modern / legacy web | Playwright (v1) | Frames and framesets are part of `TargetSpec.frame` |
+| Modern / legacy web | Playwright (v1) | Named iframes are part of `TargetSpec.frame`; framesets are not handled in v1 |
 | Windows desktop | UI Automation | Same role/name model |
 | macOS desktop | AX API | Same role/name model |
 | No accessibility at all (Citrix, canvas) | Screenshot + vision locator | Last-resort `strategy: "visual"` candidate |

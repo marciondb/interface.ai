@@ -39,7 +39,8 @@ declares none, so the tree is populated on surfaces with no semantic markup at a
 Observations are captured with Playwright's `ariaSnapshot` in AI mode, in its JSON
 form, which includes iframe content. Controls with no accessible name (e.g. inputs
 with no associated `<label>`, common in the target) carry a `label` taken from
-adjacent visible text in the tree; this maps to the label candidate in ADR-008.
+adjacent visible text in the tree, shown to the model; the `label` locator candidate
+(ADR-008) is built from the adjacent table cell's text as the DOM displays it.
 A text field's value is its typed text; a list's value is its chosen option.
 
 ## Consequences

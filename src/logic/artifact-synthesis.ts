@@ -95,11 +95,14 @@ function candidatesFor(element: NonNullable<AgentTraceStep['element']>, read: bo
       },
     ];
   } else {
-    // A value read is data, so it never locates itself by its own text.
+    // A value read is data, so it never locates itself by its own text, nor by a label that
+    // is record data too (the cell before it in a data row).
     const named = !read && node.name !== '' && !CONTEXT_ROLES.has(node.role);
+    const label = descriptor.label === undefined ? undefined : parameterize(descriptor.label);
+    const labelled = label !== undefined && !(read && label === descriptor.label && /[0-9]/.test(label));
     chain = [
       ...(named ? [{ strategy: 'role' as const, role: node.role, name: parameterize(node.name) }] : []),
-      ...(descriptor.label === undefined ? [] : [{ strategy: 'label' as const, text: parameterize(descriptor.label) }]),
+      ...(labelled ? [{ strategy: 'label' as const, text: label }] : []),
       ...(descriptor.attributes.name === undefined ? [] : [{ strategy: 'attribute' as const, name: 'name', value: descriptor.attributes.name }]),
       ...(descriptor.attributes.id === undefined ? [] : [{ strategy: 'attribute' as const, name: 'id', value: descriptor.attributes.id }]),
       ...(named && !FORM_ROLES.has(node.role) ? [{ strategy: 'text' as const, text: parameterize(node.name) }] : []),
@@ -117,6 +120,7 @@ function candidatesFor(element: NonNullable<AgentTraceStep['element']>, read: bo
 function nameWords(element: NonNullable<AgentTraceStep['element']>, spec: TargetSpec): string[] {
   const first = spec.candidates[0];
   if (first.strategy === 'table_cell') return words(first.column);
+  if (first.strategy === 'label' && words(first.text).length > 0) return words(first.text);
   const { node, descriptor } = element;
   for (const text of [node.name, descriptor.label ?? '', descriptor.attributes.name?.split(/[$:.]/).at(-1) ?? '']) {
     const found = words(text);
@@ -181,11 +185,14 @@ function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog:
   }
 
   // A handoff becomes a step only when the human did one thing automation can repeat: a single
-  // click on an element of the screen they were handed. The step is risky, so replay hands
-  // it to a human again; what it clicks is only located, never performed, by automation.
+  // click on an element of the screen they were handed, with any confirmation dialog it opened
+  // accepted. The step is risky, so replay hands it (and its dialog) to a human again; what it
+  // clicks is only located, never performed, by automation.
   function humanStep(handoff: readonly HumanTraceStep[]): void {
     const clicks = handoff.filter((step) => step.action.kind === 'click');
-    const others = handoff.filter((step) => step.action.kind === 'input' || step.action.kind === 'dialog').map((step) => step.action.kind);
+    const others = handoff
+      .filter(({ action }) => action.kind === 'input' || (action.kind === 'dialog' && action.decision !== 'accept'))
+      .map(({ action }) => (action.kind === 'dialog' ? `a dialog ${action.decision}` : action.kind));
     if (clicks.length !== 1 || others.length > 0) {
       const did = [`${String(clicks.length)} click(s)`, ...others].join(', ');
       fail('unsupported_human_steps', `the human did ${did} during the handoff; only a single click can become a step`, handoff[0].stepId);
@@ -239,7 +246,7 @@ function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog:
         const target = targetFor(step, true);
         action = { kind: 'read', target, output: argument };
         checkpoint = { kind: 'target_visible', target };
-        label = [argument];
+        label = words(argument);
         break;
       }
       case 'finish':

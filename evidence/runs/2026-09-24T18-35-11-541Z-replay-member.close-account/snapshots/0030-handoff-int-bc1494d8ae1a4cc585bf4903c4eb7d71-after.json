@@ -1,0 +1,92 @@
+{
+  "observationId": 7,
+  "url": "http://localhost:50191/",
+  "frames": [
+    {
+      "name": null,
+      "url": "http://localhost:50191/"
+    },
+    {
+      "name": "content",
+      "url": "http://localhost:50191/member/danger/close?memberId=[REDACTED:internal]"
+    }
+  ],
+  "nodes": [
+    {
+      "role": "cell",
+      "name": "Bank Test Member Services Console | Internal Use Only",
+      "frame": null,
+      "ref": "e1"
+    },
+    {
+      "role": "generic",
+      "name": "Bank Test",
+      "frame": null,
+      "ref": "e2"
+    },
+    {
+      "role": "text",
+      "name": "Member Services Console | Internal Use Only",
+      "frame": null
+    },
+    {
+      "role": "text",
+      "name": "Signed on: operator |",
+      "frame": null
+    },
+    {
+      "role": "link",
+      "name": "Sign Off",
+      "frame": null,
+      "ref": "e3"
+    },
+    {
+      "role": "cell",
+      "name": "MAIN MENU",
+      "frame": null,
+      "ref": "e4"
+    },
+    {
+      "role": "link",
+      "name": "Home",
+      "frame": null,
+      "ref": "e5"
+    },
+    {
+      "role": "link",
+      "name": "Member Lookup",
+      "frame": null,
+      "ref": "e6"
+    },
+    {
+      "role": "cell",
+      "name": "Close Account Account closure has been submitted for member [REDACTED:internal]. This action is irreversible. (Demo only - no accounts were changed.) Return to Member Detail",
+      "frame": "content",
+      "ref": "e7"
+    },
+    {
+      "role": "generic",
+      "name": "Close Account",
+      "frame": "content",
+      "ref": "e8"
+    },
+    {
+      "role": "text",
+      "name": "Account closure has been submitted for member [REDACTED:internal]. This action is irreversible. (Demo only - no accounts were changed.)",
+      "frame": "content"
+    },
+    {
+      "role": "link",
+      "name": "Return to Member Detail",
+      "frame": "content",
+      "ref": "e9"
+    },
+    {
+      "role": "cell",
+      "name": "Bank Test — Confidential — Unauthorized access prohibited",
+      "frame": null,
+      "ref": "e10"
+    }
+  ],
+  "dialog": null
+}

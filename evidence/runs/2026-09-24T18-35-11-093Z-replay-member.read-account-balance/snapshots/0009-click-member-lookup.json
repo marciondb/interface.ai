@@ -1,0 +1,93 @@
+{
+  "observationId": 1,
+  "url": "http://localhost:50191/",
+  "frames": [
+    {
+      "name": null,
+      "url": "http://localhost:50191/"
+    },
+    {
+      "name": "content",
+      "url": "http://localhost:50191/member/search"
+    }
+  ],
+  "nodes": [
+    {
+      "role": "cell",
+      "name": "Bank Test Member Services Console | Internal Use Only",
+      "frame": null,
+      "ref": "e1"
+    },
+    {
+      "role": "generic",
+      "name": "Bank Test",
+      "frame": null,
+      "ref": "e2"
+    },
+    {
+      "role": "text",
+      "name": "Member Services Console | Internal Use Only",
+      "frame": null
+    },
+    {
+      "role": "text",
+      "name": "Signed on: operator |",
+      "frame": null
+    },
+    {
+      "role": "link",
+      "name": "Sign Off",
+      "frame": null,
+      "ref": "e3"
+    },
+    {
+      "role": "cell",
+      "name": "MAIN MENU",
+      "frame": null,
+      "ref": "e4"
+    },
+    {
+      "role": "link",
+      "name": "Home",
+      "frame": null,
+      "ref": "e5"
+    },
+    {
+      "role": "link",
+      "name": "Member Lookup",
+      "frame": null,
+      "ref": "e6"
+    },
+    {
+      "role": "cell",
+      "name": "System Error An unexpected error has occurred. Please contact the help desk and reference error code MSC-500. Return to Console",
+      "frame": "content",
+      "ref": "e7"
+    },
+    {
+      "role": "generic",
+      "name": "System Error",
+      "frame": "content",
+      "ref": "e8"
+    },
+    {
+      "role": "generic",
+      "name": "An unexpected error has occurred. Please contact the help desk and reference error code MSC-500.",
+      "frame": "content",
+      "ref": "e9"
+    },
+    {
+      "role": "link",
+      "name": "Return to Console",
+      "frame": "content",
+      "ref": "e10"
+    },
+    {
+      "role": "cell",
+      "name": "Bank Test — Confidential — Unauthorized access prohibited",
+      "frame": null,
+      "ref": "e11"
+    }
+  ],
+  "dialog": null
+}

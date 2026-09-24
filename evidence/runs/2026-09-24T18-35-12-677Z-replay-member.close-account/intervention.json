@@ -1,0 +1,13 @@
+{
+  "interventionId": "int-3c95515e105f43a28a774f367bc4ca73",
+  "runId": "2026-09-24T18-35-12-677Z-replay-member.close-account",
+  "mode": "replay",
+  "capability": "member.close-account@1.0.0",
+  "stepId": "close-account",
+  "reason": "risky_action",
+  "message": "step close-account is risky: click on detail.closeAccount needs a human",
+  "screenshot": "screenshots/0025-handoff-int-3c95515e105f43a28a774f367bc4ca73-before.png",
+  "url": "http://localhost:50191/member/detail?memberId=[REDACTED:internal]",
+  "requestedAt": "2026-09-24T18:35:13.708Z",
+  "expiresAt": "2026-09-24T18:35:43.708Z"
+}

@@ -1,0 +1,14 @@
+{
+  "runId": "2026-09-24T18-35-11-541Z-replay-member.close-account",
+  "capability": {
+    "id": "member.close-account",
+    "version": "1.0.0"
+  },
+  "durationMs": 1121,
+  "recoveries": [],
+  "interventions": [
+    "int-bc1494d8ae1a4cc585bf4903c4eb7d71"
+  ],
+  "status": "succeeded",
+  "outputs": {}
+}

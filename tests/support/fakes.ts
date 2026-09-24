@@ -220,8 +220,8 @@ export function createFakeEvidence(): FakeEvidence {
       const seq = evidence.captures.length + 1;
       evidence.captures.push({ stepId, screenshot: capture.screenshot !== undefined, snapshot: capture.snapshot !== undefined });
       const paths: CapturePaths = {
-        ...(capture.screenshot === undefined ? {} : { screenshot: `${run.dir}/screenshots/${String(seq)}-${stepId}.png` }),
-        ...(capture.snapshot === undefined ? {} : { snapshot: `${run.dir}/snapshots/${String(seq)}-${stepId}.json` }),
+        ...(capture.screenshot === undefined ? {} : { screenshot: `screenshots/${String(seq)}-${stepId}.png` }),
+        ...(capture.snapshot === undefined ? {} : { snapshot: `snapshots/${String(seq)}-${stepId}.json` }),
       };
       return Promise.resolve(paths);
     },

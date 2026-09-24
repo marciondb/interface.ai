@@ -62,7 +62,7 @@ export const ExecutionResultSchema = z.discriminatedUnion('status', [
       code: FailureCodeSchema,
       expected: z.string(),
       observed: z.string(),
-      // Failure screenshot, else failure snapshot, else the run's evidence folder.
+      // Failure screenshot, else failure snapshot, else the run's evidence folder ('.'); relative to that folder.
       evidence: z.string(),
     }),
   }),

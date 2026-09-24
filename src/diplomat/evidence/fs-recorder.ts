@@ -82,13 +82,13 @@ export function createFsRecorder(options: FsRecorderOptions): EvidenceRecorder {
       const paths: { screenshot?: string; snapshot?: string } = {};
       if (capture.screenshot !== undefined) {
         await mkdir(join(dir, 'screenshots'), { recursive: true });
-        paths.screenshot = join(dir, 'screenshots', `${name}.png`);
-        await writeFile(paths.screenshot, capture.screenshot);
+        paths.screenshot = join('screenshots', `${name}.png`);
+        await writeFile(join(dir, paths.screenshot), capture.screenshot);
       }
       if (capture.snapshot !== undefined) {
         await mkdir(join(dir, 'snapshots'), { recursive: true });
-        paths.snapshot = join(dir, 'snapshots', `${name}.json`);
-        await writeFile(paths.snapshot, `${json(capture.snapshot)}\n`, 'utf8');
+        paths.snapshot = join('snapshots', `${name}.json`);
+        await writeFile(join(dir, paths.snapshot), `${json(capture.snapshot)}\n`, 'utf8');
       }
       return paths satisfies CapturePaths;
     },

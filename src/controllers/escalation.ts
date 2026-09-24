@@ -95,7 +95,7 @@ export function createEscalationController(deps: EscalationDeps, options: Escala
   async function publish(request: HandoffRequest, interventionId: string, requestedAt: number, expiresAt: number): Promise<void> {
     const { run, stepId } = request;
     const before = await capture(`handoff-${interventionId}-before`, request.maskTexts);
-    const screenshot = before.screenshot?.startsWith(`${run.dir}/`) ? before.screenshot.slice(run.dir.length + 1) : (before.screenshot ?? null);
+    const screenshot = before.screenshot ?? null;
     let url = '';
     try {
       url = surface.currentUrl();

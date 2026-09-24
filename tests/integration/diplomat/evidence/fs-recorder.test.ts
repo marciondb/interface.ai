@@ -55,10 +55,10 @@ describe('filesystem evidence recorder', () => {
       },
     ]);
     expect(paths).toEqual({
-      screenshot: join(run.dir, 'screenshots', '0002-enter-member-id.png'),
-      snapshot: join(run.dir, 'snapshots', '0002-enter-member-id.json'),
+      screenshot: join('screenshots', '0002-enter-member-id.png'),
+      snapshot: join('snapshots', '0002-enter-member-id.json'),
     });
-    expect(JSON.parse(await readFile(paths.snapshot ?? '', 'utf8'))).toEqual({
+    expect(JSON.parse(await readFile(join(run.dir, paths.snapshot ?? ''), 'utf8'))).toEqual({
       ...loginObservation(),
       url: 'http://localhost:8080/?note=[REDACTED:financial]',
     });

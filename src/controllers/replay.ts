@@ -157,15 +157,18 @@ async function finish(evidence: EvidenceRecorder, clock: Clock, record: RunRecor
   return endRun(evidence, stepId === undefined ? { type: 'result', status: result.status } : { type: 'result', status: result.status, stepId }, result);
 }
 
+// failure.evidence when there is no capture to point at.
+const RUN_FOLDER = '.';
+
 // Before the surface is open there is nothing to capture: the evidence is the run folder.
 function failedBeforeSurface(record: RunRecord, stepId: string, code: FailureCode, expected: string, observed: string): Ending {
-  return { status: 'failed', failure: { stepId, code, expected, observed, evidence: record.evidenceRun.dir } };
+  return { status: 'failed', failure: { stepId, code, expected, observed, evidence: RUN_FOLDER } };
 }
 
 // Screenshot and snapshot of the failing state; returns the most telling path.
 async function captureFailure(ctx: ReplayContext, stepId: string, observation: Observation | undefined): Promise<string> {
   const { gateway, evidence } = ctx.deps;
-  if (!ctx.surfaceOpened) return ctx.record.evidenceRun.dir;
+  if (!ctx.surfaceOpened) return RUN_FOLDER;
   let snapshot = observation;
   try {
     snapshot ??= await gateway.observe();
@@ -175,7 +178,7 @@ async function captureFailure(ctx: ReplayContext, stepId: string, observation: O
   }
   const screenshot = snapshot === undefined ? undefined : await photograph(ctx.deps, snapshot, maskTexts(ctx));
   const paths = await evidence.capture(stepId, { screenshot, snapshot });
-  return paths.screenshot ?? paths.snapshot ?? ctx.record.evidenceRun.dir;
+  return paths.screenshot ?? paths.snapshot ?? RUN_FOLDER;
 }
 
 async function failed(ctx: ReplayContext, stepId: string, code: FailureCode, expected: string, observed: string, observation?: Observation): Promise<Ending> {

@@ -143,7 +143,7 @@ describe('replay of member.read-account-balance@1 against the fixture', () => {
     const written = ExecutionResultSchema.parse(JSON.parse(await readFile(join(runDir, 'result.json'), 'utf8')));
     expect(written).toEqual(result);
     expect(failed.evidence).toMatch(/screenshots\/\d+-submit-search\.png$/);
-    expect(existsSync(failed.evidence)).toBe(true);
+    expect(existsSync(join(runDir, failed.evidence))).toBe(true);
     expect(await readdir(join(runDir, 'snapshots'))).toEqual([expect.stringMatching(/-submit-search\.json$/)]);
   });
 });

@@ -17,6 +17,7 @@ export type Capture = {
   readonly snapshot?: Observation;
 };
 
+// Relative to the run folder: what is written to the evidence names no machine path.
 export type CapturePaths = {
   readonly screenshot?: string;
   readonly snapshot?: string;

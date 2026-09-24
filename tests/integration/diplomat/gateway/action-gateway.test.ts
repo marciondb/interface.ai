@@ -44,7 +44,7 @@ function fakeDriver(element: ElementInfo, options: FakeOptions = {}) {
     },
     describe: () => Promise.resolve(element),
     inspect: () => Promise.resolve({ attributes: {} }),
-    currentUrl: () => frames[0],
+    currentUrl: () => frames[0] ?? '',
     frameUrls: () => frames,
     setNavigationGuard: (allows) => {
       guard = allows;

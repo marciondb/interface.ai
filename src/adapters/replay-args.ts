@@ -25,10 +25,10 @@ export function toReplayRequest(raw: unknown): ReplayArgsResult {
   const args = parsed.data;
   const issues: string[] = [];
 
-  const reference = args.capability === undefined ? undefined : REFERENCE.exec(args.capability);
+  const [, capabilityId, major] = (args.capability === undefined ? null : REFERENCE.exec(args.capability)) ?? [];
   if (args.capability === undefined) issues.push('--capability is required, as <id>@<major>');
-  else if (reference === null || reference === undefined) issues.push('--capability must look like <id>@<major>, e.g. member.read-account-balance@1');
-  else if (!CapabilityIdSchema.safeParse(reference[1]).success) issues.push(`--capability id ${JSON.stringify(reference[1])} is malformed`);
+  else if (capabilityId === undefined || major === undefined) issues.push('--capability must look like <id>@<major>, e.g. member.read-account-balance@1');
+  else if (!CapabilityIdSchema.safeParse(capabilityId).success) issues.push(`--capability id ${JSON.stringify(capabilityId)} is malformed`);
 
   // Values are never echoed: inputs may be sensitive.
   const inputs: Record<string, string> = {};
@@ -43,10 +43,10 @@ export function toReplayRequest(raw: unknown): ReplayArgsResult {
   const target = targetUrl(args.target ?? DEFAULT_TARGET);
   if (target === undefined) issues.push('--target must be an http(s) URL');
 
-  if (issues.length > 0 || reference === null || reference === undefined || target === undefined) return { ok: false, issues };
+  if (issues.length > 0 || capabilityId === undefined || major === undefined || target === undefined) return { ok: false, issues };
   return {
     ok: true,
-    request: { capabilityId: reference[1], major: Number(reference[2]), inputs, targetUrl: target },
+    request: { capabilityId, major: Number(major), inputs, targetUrl: target },
     headed: args.headed ?? false,
   };
 }

@@ -102,10 +102,10 @@ export function toObservation(raw: AriaSnapshotWire, observationId: number): Sna
         return;
       }
       if (child.role === 'iframe') {
-        // Present: the iframe count was checked against raw.frames above.
+        // Always present: the iframe count was checked against raw.frames above.
         const childFrame = raw.frames[nextFrame];
         nextFrame += 1;
-        walk(child.children ?? [], childFrame.name, child, undefined);
+        if (childFrame !== undefined) walk(child.children ?? [], childFrame.name, child, undefined);
         return;
       }
       if (!CONTAINER_ROLES.has(child.role)) {

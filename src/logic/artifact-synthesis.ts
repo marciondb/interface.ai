@@ -58,7 +58,7 @@ function words(text: string): string[] {
 }
 
 function camel(parts: readonly string[]): string {
-  const joined = parts.map((word, index) => (index === 0 ? word.toLowerCase() : `${word[0].toUpperCase()}${word.slice(1).toLowerCase()}`)).join('');
+  const joined = parts.map((word, index) => (index === 0 ? word.toLowerCase() : `${word.charAt(0).toUpperCase()}${word.slice(1).toLowerCase()}`)).join('');
   return /^[a-zA-Z]/.test(joined) ? joined : `element${joined}`;
 }
 
@@ -120,8 +120,8 @@ function candidatesFor(element: NonNullable<AgentTraceStep['element']>, read: bo
 
 function nameWords(element: NonNullable<AgentTraceStep['element']>, spec: TargetSpec): string[] {
   const first = spec.candidates[0];
-  if (first.strategy === 'table_cell') return words(first.column);
-  if (first.strategy === 'label' && words(first.text).length > 0) return words(first.text);
+  if (first?.strategy === 'table_cell') return words(first.column);
+  if (first?.strategy === 'label' && words(first.text).length > 0) return words(first.text);
   const { node, descriptor } = element;
   for (const text of [node.name, descriptor.label ?? '', descriptor.attributes.name?.split(/[$:.]/).at(-1) ?? '']) {
     const found = words(text);
@@ -189,16 +189,16 @@ function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog:
   // click on an element of the screen they were handed, with any confirmation dialog it opened
   // accepted. The step is risky, so replay hands it (and its dialog) to a human again; what it
   // clicks is only located, never performed, by automation.
-  function humanStep(handoff: readonly HumanTraceStep[]): void {
+  function humanStep(stepId: string, handoff: readonly HumanTraceStep[]): void {
     const clicks = handoff.filter((step) => step.action.kind === 'click');
     const others = handoff
       .filter(({ action }) => action.kind === 'input' || (action.kind === 'dialog' && action.decision !== 'accept'))
       .map(({ action }) => (action.kind === 'dialog' ? `a dialog ${action.decision}` : action.kind));
-    if (clicks.length !== 1 || others.length > 0) {
+    const [click, ...moreClicks] = clicks;
+    if (click === undefined || moreClicks.length > 0 || others.length > 0) {
       const did = [`${String(clicks.length)} click(s)`, ...others].join(', ');
-      fail('unsupported_human_steps', `the human did ${did} during the handoff; only a single click can become a step`, handoff[0].stepId);
+      return fail('unsupported_human_steps', `the human did ${did} during the handoff; only a single click can become a step`, stepId);
     }
-    const [click] = clicks;
     const target = targetFor(click, false);
     const id = unique(kebab(['click', ...words(target.split('.').at(-1) ?? target)]), new Set(steps.map((existing) => existing.id)), '-');
     steps.push({ id, action: { kind: 'click', target }, risk: 'risky', checkpoint: revealed(click) });
@@ -217,7 +217,7 @@ function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog:
     if (step.actor === 'human') {
       if (handoffs.has(step.interventionId)) continue;
       handoffs.add(step.interventionId);
-      humanStep(trace.filter((other): other is HumanTraceStep => other.actor === 'human' && other.interventionId === step.interventionId));
+      humanStep(step.stepId, trace.filter((other): other is HumanTraceStep => other.actor === 'human' && other.interventionId === step.interventionId));
       continue;
     }
     if (!step.progressed || rejected(step)) continue;
@@ -273,9 +273,13 @@ function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog:
     if (!produced.has(output)) fail('output_not_read', `output ${output} was never read`);
   }
   const used = JSON.stringify({ targets, steps });
-  for (const name of recoveryTargets) targets[name] = catalog.targets[name];
-  for (const input of Object.keys(request.inputs)) {
-    if (!used.includes(`{{inputs.${input}}}`)) fail('input_not_used', `input ${input} (example ${JSON.stringify(request.inputs[input].example)}) appears in no step`);
+  // The catalog declares every recovery target; one it did not would fail CapabilitySchema below.
+  for (const name of recoveryTargets) {
+    const spec = catalog.targets[name];
+    if (spec !== undefined) targets[name] = spec;
+  }
+  for (const [input, { example }] of Object.entries(request.inputs)) {
+    if (!used.includes(`{{inputs.${input}}}`)) fail('input_not_used', `input ${input} (example ${JSON.stringify(example)}) appears in no step`);
   }
 
   const inputs = Object.fromEntries(

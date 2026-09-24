@@ -1,8 +1,8 @@
 import type { Classification } from '../models/classification';
 import type { FailureCode } from '../models/execution-result';
 
-export const MAX_STEP_RETRIES = 2;
-export const RETRY_BACKOFF_MS = [500, 1_000] as const;
+// The wait before each retry of a step: a step gets as many retries as there are waits.
+const RETRY_BACKOFF_MS = [500, 1_000] as const;
 
 export type RecoveryBudget = {
   // Retries already spent on the current step.
@@ -24,18 +24,19 @@ export type Move =
 
 // RFC-004 responses, with at most 2 retries per step and 1 re-authentication per run.
 export function nextMove(classification: Classification, budget: RecoveryBudget): Move {
-  const exhausted = budget.attempt >= MAX_STEP_RETRIES;
+  // undefined once the step's retries are spent.
+  const delayMs: number | undefined = RETRY_BACKOFF_MS[budget.attempt];
   switch (classification.kind) {
     case 'business':
       return { move: 'return_business', outcomeId: classification.outcomeId };
     case 'recoverable':
-      if (exhausted) return { move: 'fail', code: 'recovery_exhausted' };
+      if (delayMs === undefined) return { move: 'fail', code: 'recovery_exhausted' };
       return classification.recover === undefined
-        ? { move: 'retry_after', delayMs: RETRY_BACKOFF_MS[budget.attempt], condition: 'outcome', outcomeId: classification.outcomeId }
+        ? { move: 'retry_after', delayMs, condition: 'outcome', outcomeId: classification.outcomeId }
         : { move: 'apply_recovery', outcomeId: classification.outcomeId, recover: classification.recover };
     case 'timeout':
-      if (exhausted) return { move: 'fail', code: 'timeout' };
-      return { move: 'retry_after', delayMs: RETRY_BACKOFF_MS[budget.attempt], condition: 'timeout' };
+      if (delayMs === undefined) return { move: 'fail', code: 'timeout' };
+      return { move: 'retry_after', delayMs, condition: 'timeout' };
     case 'session_expired':
       return budget.reauthUsed ? { move: 'fail', code: 'session_expired' } : { move: 'reauthenticate_and_restart' };
     case 'server_error':

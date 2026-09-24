@@ -12,7 +12,7 @@ import { nextMove, type Move } from '../logic/recovery';
 import { sensitiveValuesOf } from '../logic/redaction';
 import { actionArgument, navigateAction, toSurfaceAction } from '../logic/step-action';
 import type { SurfaceAction } from '../models/action';
-import type { Capability, Predicate, Step } from '../models/capability';
+import type { Capability, Predicate, Step, TargetSpec } from '../models/capability';
 import type { Classification, ClassificationTrigger } from '../models/classification';
 import type { EscalationReason, ExecutionResult, Failure, FailureCode, Recovery } from '../models/execution-result';
 import type { Observation, Ref } from '../models/observation';
@@ -71,6 +71,13 @@ type HumanNeeded = { readonly kind: 'requires_human'; readonly message: string }
 type AttemptOutcome = { readonly kind: 'done'; readonly value?: string } | Problem | HardFailure | HumanNeeded;
 
 type Pass = { readonly kind: 'restart' } | { readonly kind: 'end'; readonly ending: Ending };
+
+// CapabilitySchema guarantees every target an artifact refers to is declared.
+function specOf(capability: Capability, name: string): TargetSpec {
+  const spec = capability.targets[name];
+  if (spec === undefined) throw new Error(`the artifact declares no target ${name}`);
+  return spec;
+}
 
 // Executes a capability without a model (RFC-004): every step is resolved, performed through
 // the gateway and verified; anything else is classified against the artifact's declared outcomes.
@@ -238,7 +245,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
   ): Promise<Facts> {
     const targets: Record<string, TargetFact> = {};
     for (const { target, needsValue } of factsNeeded(predicates)) {
-      const spec = capability.targets[target];
+      const spec = specOf(capability, target);
       const resolution = await gateway.resolve(spec);
       let value: string | undefined;
       if (resolution.status === 'resolved' && needsValue) {
@@ -281,7 +288,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
     step: Step,
     name: string,
   ): Promise<{ kind: 'resolved'; ref: Ref } | Problem> {
-    const spec = capability.targets[name];
+    const spec = specOf(capability, name);
     const deadline = clock.now() + stepTimeoutMs;
     for (;;) {
       const resolution = await gateway.resolve(spec);
@@ -406,7 +413,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
   // Clicks the declared recovery control; the step is then attempted again.
   async function applyRecovery(capability: Capability, stepId: string, move: Extract<Move, { move: 'apply_recovery' }>): Promise<Ending | undefined> {
     const name = move.recover.target;
-    const spec = capability.targets[name];
+    const spec = specOf(capability, name);
     const resolution = await gateway.resolve(spec);
     if (resolution.status === 'unresolved') {
       return failed(

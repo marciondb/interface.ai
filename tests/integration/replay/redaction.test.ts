@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { at } from '../../support/at';
 import { evidenceText, readEvents, runDir } from '../../support/evidence';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
 import { referenceCapabilities, runReplay, type HarnessOptions, type HarnessRun } from '../../support/replay-harness';
@@ -48,7 +49,7 @@ describe('replay evidence redaction against the fixture', { timeout: 30_000 }, (
     expect(replayRun.result).toMatchObject({ status: 'failed', failure: { code: 'session_expired' } });
     const snapshots = await readdir(join(runDir(replayRun), 'snapshots'));
     expect(snapshots).toEqual([expect.stringMatching(/-submit-search\.json$/)]);
-    const snapshot = await readFile(join(runDir(replayRun), 'snapshots', snapshots[0]), 'utf8');
+    const snapshot = await readFile(join(runDir(replayRun), 'snapshots', at(snapshots, 0)), 'utf8');
     expect(snapshot).toContain('/login');
     expect(snapshot).toContain('[REDACTED:secret]');
     expect(await evidenceText(replayRun)).not.toMatch(/training/i);

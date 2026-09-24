@@ -72,7 +72,7 @@ describe('discovery of the write flow with a human at Confirm', { timeout: 60_00
       'click-confirm',
       'read-account-number',
     ]);
-    expect(targets['content.newAccountNumber'].candidates[0]).toEqual({ strategy: 'label', text: 'New Account Number:' });
+    expect(targets['content.newAccountNumber']?.candidates[0]).toEqual({ strategy: 'label', text: 'New Account Number:' });
   });
 
   it('records no step and tells the model when the human hands back without confirming', async () => {
@@ -80,8 +80,8 @@ describe('discovery of the write flow with a human at Confirm', { timeout: 60_00
     const { run, reasoner } = await discover([...WRITE_FLOW_TO_CONFIRM, { verb: 'finish', argument: 'done' }], operator);
 
     const afterHandoff = reasoner.inputs[WRITE_FLOW_TO_CONFIRM.length];
-    expect(afterHandoff.feedback).toMatch(/^a human took over and handed the screen back unchanged/);
-    expect(JSON.stringify(afterHandoff.observation)).toContain('Review Sub-Account Request');
+    expect(afterHandoff?.feedback).toMatch(/^a human took over and handed the screen back unchanged/);
+    expect(JSON.stringify(afterHandoff?.observation)).toContain('Review Sub-Account Request');
     expect(run.result).toMatchObject({ status: 'failed', reason: 'reasoner_exhausted' });
     expect(existsSync(join(run.capabilitiesDir, ...ARTIFACT))).toBe(false);
   });

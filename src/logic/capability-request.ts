@@ -3,14 +3,14 @@ import type { OutcomeCatalog } from '../models/outcome-catalog';
 import { checkValue } from './capability-inputs';
 
 function goalParameters(goal: string): string[] {
-  return [...goal.matchAll(GOAL_PARAMETER)].map(([, name]) => name);
+  return [...goal.matchAll(GOAL_PARAMETER)].flatMap(([, name]) => (name === undefined ? [] : [name]));
 }
 
 // The goal the model sees: the template with each input's example, plus which outputs are
 // read already. The model is stateless (RFC-003), so this is how it learns a read happened.
 export function renderGoal(request: CapabilityRequest, read: readonly string[] = []): string {
   const goal = request.goal.replace(GOAL_PARAMETER, (placeholder, name: string) =>
-    Object.hasOwn(request.inputs, name) ? request.inputs[name].example : placeholder,
+    (Object.hasOwn(request.inputs, name) ? request.inputs[name]?.example : undefined) ?? placeholder,
   );
   const outputs = Object.keys(request.outputs);
   const done = outputs.filter((name) => read.includes(name));

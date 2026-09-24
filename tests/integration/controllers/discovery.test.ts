@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fromCapabilityFile } from '../../../src/adapters/capability-file';
 import type { Clock } from '../../../src/infrastructure/clock';
 import { DiscoveryResultSchema, type DiscoveryResult } from '../../../src/models/discovery';
+import { at } from '../../support/at';
 import { runDiscovery, type DiscoveryHarnessOptions, type DiscoveryHarnessRun } from '../../support/discovery-harness';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
 import { PASSWORD, runReplay } from '../../support/replay-harness';
@@ -37,7 +38,7 @@ function expectStatus<S extends DiscoveryResult['status']>(result: DiscoveryResu
 
 // Fills the member id, then keeps answering with `step`.
 function afterLookup(...steps: ScriptedStep[]): ScriptedStep[] {
-  return [READ_FLOW[0], READ_FLOW[1], ...steps];
+  return [at(READ_FLOW, 0), at(READ_FLOW, 1), ...steps];
 }
 
 describe('discovery controller against the fixture', { timeout: 60_000 }, () => {
@@ -144,7 +145,7 @@ describe('discovery controller against the fixture', { timeout: 60_000 }, () => 
 
   it('ends the run when an action lands outside the allowlist, without showing that page to the model', async () => {
     // The search form posts to /member/search, which redirects to /member/results.
-    const reasoner = createScriptedReasoner([...afterLookup(READ_FLOW[2]), ...READ_FLOW.slice(3)]);
+    const reasoner = createScriptedReasoner([...afterLookup(at(READ_FLOW, 2)), ...READ_FLOW.slice(3)]);
 
     const run = await discover(reasoner, { policy: (policy) => ({ ...policy, allowedRoutes: ['/', '/welcome', '/member/search', '/member/detail'] }) });
 
@@ -186,7 +187,7 @@ describe('discovery controller against the fixture', { timeout: 60_000 }, () => 
   it('escalates instead of performing a risky action', async () => {
     const run = await discover(
       createScriptedReasoner(
-        afterLookup(READ_FLOW[2], READ_FLOW[3], { verb: 'click', find: { role: 'button', name: 'Close Account' } }),
+        afterLookup(at(READ_FLOW, 2), at(READ_FLOW, 3), { verb: 'click', find: { role: 'button', name: 'Close Account' } }),
       ),
     );
 

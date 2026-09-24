@@ -56,7 +56,7 @@ export function createFsArtifactStore(rootDir: string): ArtifactStore {
     const latest = files
       .map((file) => VERSION_FILE.exec(file))
       .filter((match) => match !== null)
-      .map((match) => [Number(match[1]), Number(match[2]), Number(match[3])])
+      .map((match): [number, number, number] => [Number(match[1]), Number(match[2]), Number(match[3])])
       .filter(([fileMajor]) => fileMajor === major)
       .sort((a, b) => b[1] - a[1] || b[2] - a[2])
       .at(0);

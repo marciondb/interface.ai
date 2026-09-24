@@ -89,7 +89,7 @@ describe('fixture session provider', () => {
     expect(provider.isExpired(loginObservation())).toBe(true);
     expect(provider.isExpired(shell)).toBe(false);
     expect(
-      provider.isExpired({ ...shell, frames: [shell.frames[0], { name: 'content', url: 'http://localhost:8080/login' }] }),
+      provider.isExpired({ ...shell, frames: [...shell.frames.slice(0, 1), { name: 'content', url: 'http://localhost:8080/login' }] }),
     ).toBe(true);
   });
 });

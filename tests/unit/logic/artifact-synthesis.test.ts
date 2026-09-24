@@ -7,6 +7,7 @@ import type { AgentTraceStep, HumanTraceStep, TraceStep } from '../../../src/mod
 import type { ElementDescriptor } from '../../../src/models/element-descriptor';
 import type { Observation, ObservationNode } from '../../../src/models/observation';
 import type { OutcomeCatalog } from '../../../src/models/outcome-catalog';
+import { at } from '../../support/at';
 import { surfaceDecision } from '../../support/decisions';
 
 const REQUEST: CapabilityRequest = {
@@ -172,11 +173,11 @@ describe('synthesizeArtifact', () => {
   it('builds the ADR-008 chain from role, label and attributes elsewhere', () => {
     const { targets } = artifact(synthesizeArtifact(readFlow(), REQUEST, CATALOG, PROVENANCE));
 
-    expect(targets['page.memberLookup'].candidates).toEqual([
+    expect(targets['page.memberLookup']?.candidates).toEqual([
       { strategy: 'role', role: 'link', name: 'Member Lookup' },
       { strategy: 'text', text: 'Member Lookup' },
     ]);
-    expect(targets['content.memberId'].candidates).toEqual([
+    expect(targets['content.memberId']?.candidates).toEqual([
       { strategy: 'label', text: 'Member ID:' },
       { strategy: 'attribute', name: 'name', value: ASPNET.name },
       { strategy: 'attribute', name: 'id', value: ASPNET.id },
@@ -204,23 +205,23 @@ describe('synthesizeArtifact', () => {
 
   it('refuses a read it cannot locate without the value itself', () => {
     const trace = readFlow();
-    trace[5] = { ...trace[5], element: { node: BALANCE, descriptor: { attributes: {} } } };
+    trace[5] = { ...at(trace, 5), element: { node: BALANCE, descriptor: { attributes: {} } } };
 
     expect(errorOf(synthesizeArtifact(trace, REQUEST, CATALOG, PROVENANCE))).toMatchObject({ code: 'untargetable_element', stepId: 'step-6' });
   });
 
   it('drops candidates built from redacted text', () => {
     const trace = readFlow();
-    trace[2] = { ...trace[2], element: { node: TEXTBOX, descriptor: { attributes: ASPNET, label: '[REDACTED:secret]' } } };
+    trace[2] = { ...at(trace, 2), element: { node: TEXTBOX, descriptor: { attributes: ASPNET, label: '[REDACTED:secret]' } } };
 
     const { targets } = artifact(synthesizeArtifact(trace, REQUEST, CATALOG, PROVENANCE));
 
-    expect(targets['content.txtMemberId'].candidates.map((candidate) => candidate.strategy)).toEqual(['attribute', 'attribute']);
+    expect(targets['content.txtMemberId']?.candidates.map((candidate) => candidate.strategy)).toEqual(['attribute', 'attribute']);
   });
 
   it('refuses an artifact that does not use every input', () => {
     const trace = readFlow();
-    trace[5] = { ...trace[5], element: { node: BALANCE, descriptor: { attributes: { id: 'savingsBalance' } } } };
+    trace[5] = { ...at(trace, 5), element: { node: BALANCE, descriptor: { attributes: { id: 'savingsBalance' } } } };
 
     expect(errorOf(synthesizeArtifact(trace, REQUEST, CATALOG, PROVENANCE))).toMatchObject({ code: 'input_not_used' });
   });
@@ -231,7 +232,7 @@ describe('synthesizeArtifact', () => {
 
   it('refuses a click whose effect it cannot check', () => {
     const trace = readFlow();
-    trace[3] = { ...trace[3], observationAfter: screen([MENU, { role: 'text', name: '10001', frame: 'content' }]) };
+    trace[3] = { ...at(trace, 3), observationAfter: screen([MENU, { role: 'text', name: '10001', frame: 'content' }]) };
 
     expect(errorOf(synthesizeArtifact(trace, REQUEST, CATALOG, PROVENANCE))).toMatchObject({ code: 'no_checkpoint', stepId: 'step-4' });
   });

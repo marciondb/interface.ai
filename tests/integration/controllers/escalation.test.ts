@@ -13,6 +13,7 @@ import { createPlaywrightDriver } from '../../../src/diplomat/surface/playwright
 import { systemClock } from '../../../src/infrastructure/clock';
 import type { ExecutionResult } from '../../../src/models/execution-result';
 import { InterventionRequestSchema } from '../../../src/models/intervention';
+import { at } from '../../support/at';
 import { readEvents, runDir } from '../../support/evidence';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
 import { createHumanActor, type ActorContext, type HumanActor } from '../../support/human-actor';
@@ -79,8 +80,8 @@ describe('human handoff of the live session', { timeout: 60_000 }, () => {
     const run = await closeAccount(operator);
 
     expect(run.result).toMatchObject({ status: 'succeeded', outputs: {} });
-    const [interventionId] = run.result.interventions;
     expect(run.result.interventions).toEqual([expect.stringMatching(/^int-/)]);
+    const interventionId = at(run.result.interventions, 0);
     expect(cookies).toHaveLength(2);
     expect(cookies[0]).toBeDefined();
     expect(cookies[1]).toBe(cookies[0]);

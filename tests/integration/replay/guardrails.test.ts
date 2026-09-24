@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ExecutionResult } from '../../../src/models/execution-result';
+import { at } from '../../support/at';
 import { readEvents, readSnapshots, runDir } from '../../support/evidence';
 import { startFixture, type FixtureHandle } from '../../support/fixture';
 import { referenceCapabilities, runReplay, type HarnessOptions, type HarnessRun } from '../../support/replay-harness';
@@ -94,7 +95,7 @@ describe('replay guardrails against the fixture', { timeout: 30_000 }, () => {
     expect(replayRun.driverCalls.filter((call) => call.stepId === 'sign-off')).toEqual([]);
     const policy = (await readEvents(replayRun)).find((event) => event.type === 'policy' && event.stepId === 'sign-off');
     expect(policy).toMatchObject({ decision: 'deny', reason: 'destination: route /logout is not allowed' });
-    const [snapshot] = await readSnapshots(replayRun);
+    const snapshot = at(await readSnapshots(replayRun), 0);
     expect(snapshot.frames.map((frame) => frame.url).filter((url) => url.includes('/login'))).toEqual([]);
   });
 
@@ -115,13 +116,13 @@ describe('replay guardrails against the fixture', { timeout: 30_000 }, () => {
       'result',
     ]);
     expect(events.find((event) => event.type === 'handoff_requested')).toMatchObject({ interventionId: escalated.interventionId, reason: 'risky_action' });
-    const [snapshot] = await readSnapshots(replayRun);
+    const snapshot = at(await readSnapshots(replayRun), 0);
     const frameUrls = snapshot.frames.map((frame) => frame.url);
     expect(frameUrls.some((url) => url.includes('/member/detail'))).toBe(true);
     expect(frameUrls.filter((url) => url.includes('/member/danger/'))).toEqual([]);
     const screenshots = await readdir(join(runDir(replayRun), 'screenshots'));
     expect(screenshots).toEqual([expect.stringMatching(new RegExp(`-handoff-${escalated.interventionId}-before\\.png$`))]);
-    expect(existsSync(join(runDir(replayRun), 'screenshots', screenshots[0]))).toBe(true);
+    expect(existsSync(join(runDir(replayRun), 'screenshots', at(screenshots, 0)))).toBe(true);
   });
 
   it('escalates a risky control the artifact marked safe, caught by the policy', async () => {

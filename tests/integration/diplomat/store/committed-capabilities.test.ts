@@ -9,7 +9,7 @@ const ROOT = fileURLToPath(new URL('../../../../capabilities', import.meta.url))
 const committed = (await readdir(ROOT, { recursive: true }))
   .filter((file) => file.endsWith('.json'))
   .map((file) => {
-    const [id, name] = file.split('/');
+    const [id = '', name = ''] = file.split('/');
     return { file, id, version: name.replace(/\.json$/, '') };
   });
 

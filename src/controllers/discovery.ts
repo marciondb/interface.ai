@@ -343,7 +343,7 @@ export async function discover(deps: DiscoveryDeps, run: DiscoveryRun, options: 
     const outcome = await gateway.perform({ stepId, purpose: 'step', action, timeoutMs: options.stepTimeoutMs });
     const value = output !== undefined && outcome.status === 'done' ? outcome.value : undefined;
     // Before the action is recorded: the element it names may show the value.
-    const sensitivity = output === undefined ? undefined : request.outputs[output].sensitivity;
+    const sensitivity = output === undefined ? undefined : request.outputs[output]?.sensitivity;
     if (value !== undefined && sensitivity !== undefined && sensitivity !== 'none') evidence.protect([{ value, sensitivity }]);
     const described = node === undefined ? undefined : `${node.role} ${JSON.stringify(node.name === '' ? (node.label ?? '') : node.name)}`;
     await recordAction(stepId, action, described, output, outcome);

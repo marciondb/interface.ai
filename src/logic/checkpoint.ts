@@ -59,7 +59,12 @@ function describeCandidate(candidate: Candidate): string {
 // "role link "Member Lookup" matched 0, text "Member Lookup" matched 2"; candidates not tried are omitted.
 export function describeCounts(candidates: readonly Candidate[], counts: readonly number[]): string {
   if (counts.length === 0) return 'no candidate could be tried';
-  return counts.map((count, index) => `${describeCandidate(candidates[index])} matched ${String(count)}`).join(', ');
+  return candidates
+    .flatMap((candidate, index) => {
+      const count = counts[index];
+      return count === undefined ? [] : [`${describeCandidate(candidate)} matched ${String(count)}`];
+    })
+    .join(', ');
 }
 
 function normalize(text: string): string {
@@ -97,7 +102,7 @@ export function evaluatePredicate(predicate: Predicate, facts: Facts): Predicate
       };
     }
     case 'target_visible': {
-      const fact = facts.targets[predicate.target] as TargetFact | undefined;
+      const fact = facts.targets[predicate.target];
       const holds = fact?.resolved === true;
       return {
         holds,
@@ -107,7 +112,7 @@ export function evaluatePredicate(predicate: Predicate, facts: Facts): Predicate
     }
     case 'value_equals':
     case 'value_matches': {
-      const fact = facts.targets[predicate.target] as TargetFact | undefined;
+      const fact = facts.targets[predicate.target];
       const expected =
         predicate.kind === 'value_equals'
           ? `${predicate.target} value ${JSON.stringify(predicate.value)}`

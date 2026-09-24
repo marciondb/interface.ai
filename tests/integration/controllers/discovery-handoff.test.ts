@@ -76,7 +76,7 @@ describe('discovery with a human handoff', { timeout: 60_000 }, () => {
       risk: 'risky',
       checkpoint: { kind: 'text_visible', frame: 'content' },
     });
-    expect(capability.targets['content.closeAccount'].candidates).toEqual([{ strategy: 'role', role: 'button', name: 'Close Account' }]);
+    expect(capability.targets['content.closeAccount']?.candidates).toEqual([{ strategy: 'role', role: 'button', name: 'Close Account' }]);
 
     const replayOperator = humanDoesIt();
     const replayed = await runReplay(fixture, { memberId: '10002', accountType: 'Savings' }, {

@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { checkRequest, renderGoal } from '../../../src/logic/capability-request';
-import type { CapabilityRequest } from '../../../src/models/capability-request';
+import type { CapabilityRequest, RequestInput } from '../../../src/models/capability-request';
 import type { OutcomeCatalog } from '../../../src/models/outcome-catalog';
+
+function inputs() {
+  return {
+    memberId: { type: 'string', description: 'Member ID', pattern: '^[0-9]{1,12}$', sensitivity: 'internal', example: '10001' },
+    accountType: { type: 'string', description: 'Account type', enum: ['Checking', 'Savings'], sensitivity: 'none', example: 'Savings' },
+  } satisfies Record<string, RequestInput>;
+}
 
 function request(): CapabilityRequest {
   return {
@@ -12,10 +19,7 @@ function request(): CapabilityRequest {
       app: { product: 'legacy-member-console', surface: 'web' },
     },
     goal: 'Look up member {{memberId}} and read the balance of their {{accountType}} account',
-    inputs: {
-      memberId: { type: 'string', description: 'Member ID', pattern: '^[0-9]{1,12}$', sensitivity: 'internal', example: '10001' },
-      accountType: { type: 'string', description: 'Account type', enum: ['Checking', 'Savings'], sensitivity: 'none', example: 'Savings' },
-    },
+    inputs: inputs(),
     outputs: { balance: { type: 'string', description: 'Balance', sensitivity: 'financial' } },
     outcomes: ['member_not_found'],
   };
@@ -59,8 +63,8 @@ describe('checkRequest', () => {
     const bad: CapabilityRequest = {
       ...base,
       inputs: {
-        memberId: { ...base.inputs.memberId, example: 'Savings' },
-        accountType: { ...base.inputs.accountType, example: 'Savings' },
+        memberId: { ...inputs().memberId, example: 'Savings' },
+        accountType: { ...inputs().accountType, example: 'Savings' },
       },
     };
 

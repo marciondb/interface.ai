@@ -7,7 +7,7 @@ function canonicalPath(pathname: string): string | undefined {
   for (const raw of pathname.split('/')) {
     let segment: string;
     try {
-      segment = decodeURIComponent(raw.split(';')[0]);
+      segment = decodeURIComponent(raw.replace(/;.*/s, ''));
     } catch {
       return undefined;
     }

@@ -48,13 +48,13 @@ describe('validateInputs', () => {
 describe('bindInputs', () => {
   it('replaces placeholders in candidates, actions and checkpoints', () => {
     const bound = bindInputs(capability(), valid);
-    expect(bound.targets['detail.balance'].candidates[0]).toEqual({
+    expect(bound.targets['detail.balance']?.candidates[0]).toEqual({
       strategy: 'table_cell',
       row: { column: 'Acct Type', equals: 'Savings' },
       column: 'Balance',
     });
-    expect(bound.steps[0].action).toEqual({ kind: 'fill', target: 'lookup.memberId', value: '10002' });
-    expect(bound.steps[0].checkpoint).toEqual({ kind: 'value_equals', target: 'lookup.memberId', value: '10002' });
+    expect(bound.steps[0]?.action).toEqual({ kind: 'fill', target: 'lookup.memberId', value: '10002' });
+    expect(bound.steps[0]?.checkpoint).toEqual({ kind: 'value_equals', target: 'lookup.memberId', value: '10002' });
     expect(JSON.stringify(bound)).not.toContain('{{');
   });
 

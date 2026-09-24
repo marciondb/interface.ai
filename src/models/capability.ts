@@ -212,7 +212,7 @@ export const CapabilitySchema = z
     for (const section of ['targets', 'steps', 'outcomes'] as const) {
       for (const [path, text] of strings(capability[section], [section])) {
         for (const [, name] of text.matchAll(PLACEHOLDER)) {
-          if (!Object.hasOwn(capability.inputs, name)) issue(path, `placeholder names undeclared input ${name}`);
+          if (name !== undefined && !Object.hasOwn(capability.inputs, name)) issue(path, `placeholder names undeclared input ${name}`);
         }
         const rest = text.replace(PLACEHOLDER, '');
         if (rest.includes('{{') || rest.includes('}}')) issue(path, 'placeholders must look like {{inputs.<name>}}');

@@ -8,6 +8,7 @@ import type { ElementDescriptor } from '../../../src/models/element-descriptor';
 import type { HumanAction } from '../../../src/models/intervention';
 import type { Observation, ObservationNode } from '../../../src/models/observation';
 import type { OutcomeCatalog } from '../../../src/models/outcome-catalog';
+import { at } from '../../support/at';
 import { surfaceDecision } from '../../support/decisions';
 
 // The write flow as discovery records it: the model fills the form up to the review, the
@@ -201,7 +202,7 @@ describe('synthesizeArtifact on the write flow', () => {
     const { targets } = artifact(synthesizeArtifact(writeFlow(), REQUEST, CATALOG, PROVENANCE));
 
     expect(targets['content.newAccountNumber']).toEqual({ frame: 'content', candidates: [{ strategy: 'label', text: 'New Account Number:' }] });
-    expect(targets['content.confirm'].candidates).toEqual([
+    expect(targets['content.confirm']?.candidates).toEqual([
       { strategy: 'role', role: 'button', name: 'Confirm' },
       { strategy: 'attribute', name: 'name', value: CONFIRM_TARGET.nameAttr },
       { strategy: 'attribute', name: 'id', value: CONFIRM_TARGET.id },
@@ -223,7 +224,7 @@ describe('synthesizeArtifact on the write flow', () => {
     const rejected = screen([...empty.nodes, content('e27', 'cell', 'Initial deposit must be at least $25.00')]);
     const trace = writeFlow();
     const premature = agent('step-8a', ['click', CONTINUE], { attributes: {} }, empty, rejected);
-    const fill = trace[7];
+    const fill = at(trace, 7);
     if (fill.actor === 'human') throw new Error('expected the deposit fill');
     trace.splice(7, 1, premature, { ...fill, observation: rejected, observationAfter: screen([...rejected.nodes.slice(0, -1), { ...DEPOSIT, value: '250.00' }, rejected.nodes.at(-1) ?? MENU]) });
 

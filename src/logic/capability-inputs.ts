@@ -21,7 +21,8 @@ export function validateInputs(capability: Capability, raw: Record<string, strin
     }
   }
   for (const [name, spec] of Object.entries(capability.inputs)) {
-    const error = Object.hasOwn(raw, name) ? checkValue(spec, raw[name]) : { code: 'missing' as const, message: 'is required' };
+    const value = Object.hasOwn(raw, name) ? raw[name] : undefined;
+    const error = value === undefined ? { code: 'missing' as const, message: 'is required' } : checkValue(spec, value);
     if (error !== undefined) errors.push({ input: name, code: error.code, message: `${name} ${error.message}` });
   }
   if (errors.length > 0) return { ok: false, errors };
@@ -53,8 +54,9 @@ export function bindInputs(capability: Capability, values: Record<string, string
 function bindStrings(value: unknown, values: Record<string, string>): unknown {
   if (typeof value === 'string') {
     return value.replace(PLACEHOLDER, (_, name: string) => {
-      if (!Object.hasOwn(values, name)) throw new Error(`no value bound for input ${name}`);
-      return values[name];
+      const value = Object.hasOwn(values, name) ? values[name] : undefined;
+      if (value === undefined) throw new Error(`no value bound for input ${name}`);
+      return value;
     });
   }
   if (Array.isArray(value)) return value.map((item) => bindStrings(item, values));

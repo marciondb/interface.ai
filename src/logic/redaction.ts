@@ -115,7 +115,7 @@ export function sensitiveValuesOf(
 ): SensitiveValue[] {
   const pick = (specs: Record<string, { sensitivity: Sensitivity }>, values: Readonly<Record<string, string>>): SensitiveValue[] =>
     Object.entries(values).flatMap(([name, value]) => {
-      const sensitivity = Object.hasOwn(specs, name) ? specs[name].sensitivity : 'none';
+      const sensitivity = (Object.hasOwn(specs, name) ? specs[name]?.sensitivity : undefined) ?? 'none';
       return sensitivity === 'none' ? [] : [{ value, sensitivity }];
     });
   return [...pick(capability.inputs, inputs), ...pick(capability.outputs, outputs)];

@@ -2,6 +2,7 @@ import type { SensitiveValue } from '../../logic/redaction';
 import type { Capability } from '../../models/capability';
 import type { DiscoveryResult } from '../../models/discovery';
 import type { ExecutionResult } from '../../models/execution-result';
+import type { InterventionRequest } from '../../models/intervention';
 import type { Observation } from '../../models/observation';
 import type { RunEvent, RunMode } from '../../models/run-event';
 
@@ -30,6 +31,8 @@ export type EvidenceRecorder = {
   event(event: RunEvent): Promise<void>;
   // Writes screenshots/<seq>-<stepId>.png and snapshots/<seq>-<stepId>.json.
   capture(stepId: string, capture: Capture): Promise<CapturePaths>;
+  // Writes intervention.json: the latest handoff request of the run (RFC-005).
+  intervention(request: InterventionRequest): Promise<void>;
   // Writes artifact.json: the capability a discovery run produced.
   artifact(capability: Capability): Promise<void>;
   // Writes result.json.

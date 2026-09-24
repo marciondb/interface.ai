@@ -81,6 +81,10 @@ export function createFsRecorder(options: FsRecorderOptions): EvidenceRecorder {
       return paths satisfies CapturePaths;
     },
 
+    async intervention(request) {
+      await writeFile(join(active().dir, 'intervention.json'), `${json(request)}\n`, 'utf8');
+    },
+
     async artifact(capability) {
       await writeFile(join(active().dir, 'artifact.json'), `${json(toCapabilityFile(capability))}\n`, 'utf8');
     },

@@ -1,8 +1,9 @@
 import type { Verb } from './action';
 import type { Candidate } from './capability';
 import type { Classification, ClassificationTrigger } from './classification';
-import type { DiscoveryEscalationReason, DiscoveryFailureReason, DiscoveryLimits } from './discovery';
+import type { DiscoveryFailureReason, DiscoveryLimits } from './discovery';
 import type { EscalationReason, ExecutionStatus, Recovery } from './execution-result';
+import type { HumanAction, InterventionReason } from './intervention';
 import type { Navigation } from './resolution';
 
 export type RunMode = 'replay' | 'discovery';
@@ -56,6 +57,8 @@ export type RunEvent =
       readonly holds: boolean;
       readonly expected: string;
       readonly observed: string;
+      // Set when a human performed the step during a handoff.
+      readonly performedBy?: 'human';
     }
   | {
       readonly type: 'classification';
@@ -65,12 +68,31 @@ export type RunEvent =
     }
   | { readonly type: 'recovery'; readonly stepId: string; readonly recovery: Recovery; readonly delayMs?: number }
   | { readonly type: 'output'; readonly stepId: string; readonly name: string; readonly value: string }
+  // Human handoff (RFC-005); the full request is in intervention.json.
   | {
-      readonly type: 'escalation';
+      readonly type: 'handoff_requested';
       readonly stepId: string;
       readonly interventionId: string;
-      readonly reason: EscalationReason | DiscoveryEscalationReason;
+      readonly reason: InterventionReason;
       readonly message: string;
+      readonly expiresAt: string;
+    }
+  | { readonly type: 'handoff_taken'; readonly stepId: string; readonly interventionId: string; readonly by: string }
+  | { readonly type: 'handoff_human_action'; readonly stepId: string; readonly interventionId: string; readonly action: HumanAction }
+  | {
+      readonly type: 'handoff_verify_failed';
+      readonly stepId: string;
+      readonly interventionId: string;
+      readonly expected: string;
+      readonly observed: string;
+    }
+  | { readonly type: 'handoff_resumed'; readonly stepId: string; readonly interventionId: string; readonly by: string; readonly actions: number }
+  | {
+      readonly type: 'handoff_aborted';
+      readonly stepId: string;
+      readonly interventionId: string;
+      readonly cause: EscalationReason;
+      readonly by?: string;
     }
   | {
       readonly type: 'discovery_started';
@@ -101,7 +123,7 @@ export type RunEvent =
       readonly type: 'result';
       readonly status: ExecutionStatus;
       readonly stepId?: string;
-      readonly reason?: DiscoveryFailureReason | DiscoveryEscalationReason;
+      readonly reason?: DiscoveryFailureReason | EscalationReason;
     };
 
 export type RunEventType = RunEvent['type'];

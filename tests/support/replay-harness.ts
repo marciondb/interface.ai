@@ -1,9 +1,12 @@
 import { copyFile, mkdir, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { fromPolicyFile } from '../../src/adapters/policy-file';
+import { createEscalationController } from '../../src/controllers/escalation';
 import { replay } from '../../src/controllers/replay';
+import { createCliBroker } from '../../src/diplomat/escalation/cli-broker';
 import { createFsRecorder } from '../../src/diplomat/evidence/fs-recorder';
 import { createActionGateway } from '../../src/diplomat/gateway/action-gateway';
 import type { ActionGateway } from '../../src/diplomat/gateway/port';
@@ -18,9 +21,11 @@ import type { ExecutionResult } from '../../src/models/execution-result';
 import type { Policy } from '../../src/models/policy';
 import type { ActionPurpose } from '../../src/models/run-event';
 import type { FaultKind, FixtureHandle } from './fixture';
+import type { HumanActor } from './human-actor';
 
 export const PASSWORD = 'training';
 export const STEP_TIMEOUT_MS = 2_000;
+export const OPERATOR_ID = 'test-operator';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -58,6 +63,8 @@ export type HarnessRun = {
   readonly result: ExecutionResult;
   readonly evidenceRoot: string;
   readonly driverCalls: readonly DriverCall[];
+  // Sign-ins through the session provider (the first one included).
+  readonly sessionsEstablished: number;
 };
 
 export type HarnessOptions = {
@@ -69,6 +76,9 @@ export type HarnessOptions = {
   readonly capabilitiesDir?: string;
   // Adjusts the committed policy.json (its origin already points at the fixture).
   readonly policy?: (policy: Policy) => Policy;
+  // The operator of a handoff; without one there is no operator surface.
+  readonly operator?: HumanActor;
+  readonly handoffTtlMs?: number;
 };
 
 // A store holding only the hand-written read-account-balance@1.0.0, the reference the replay
@@ -93,6 +103,12 @@ export async function runReplay(
   const evidenceRoot = await mkdtemp(join(tmpdir(), 'replay-evidence-'));
 
   const driver = createPlaywrightDriver();
+  const evidence = createFsRecorder({ root: evidenceRoot, secrets: [PASSWORD] });
+  const broker = options.operator?.broker ?? createCliBroker({ input: new PassThrough(), output: new PassThrough() });
+  const escalation = createEscalationController(
+    { surface: driver, broker, evidence, clock: systemClock },
+    { ttlMs: options.handoffTtlMs ?? 30_000, humanSurfaceAvailable: options.operator !== undefined, operatorId: OPERATOR_ID },
+  );
   const driverCalls: DriverCall[] = [];
   let current: Omit<DriverCall, 'verb'> = { stepId: '', purpose: 'step' };
   const spiedDriver: SurfaceDriver = {
@@ -102,7 +118,7 @@ export async function runReplay(
       return driver.perform(action, performOptions);
     },
   };
-  const policed = createActionGateway({ driver: spiedDriver, policy });
+  const policed = createActionGateway({ driver: spiedDriver, policy, controlOwner: escalation.owner });
   const gateway: ActionGateway = {
     ...policed,
     perform(request) {
@@ -110,14 +126,30 @@ export async function runReplay(
       return policed.perform(request);
     },
   };
+  options.operator?.attach({
+    // The page exists once the run opens the target.
+    get page() {
+      return driver.page();
+    },
+    gateway,
+  });
+  const provider = createFixtureSessionProvider({ username: 'operator', password: PASSWORD });
+  let sessionsEstablished = 0;
 
   try {
     const result = await replay(
       {
         store: createFsArtifactStore(options.capabilitiesDir ?? join(ROOT, 'capabilities')),
-        session: createFixtureSessionProvider({ username: 'operator', password: PASSWORD }),
+        session: {
+          ...provider,
+          establish(targetUrl) {
+            sessionsEstablished += 1;
+            return provider.establish(targetUrl);
+          },
+        },
         gateway: options.arm === undefined ? gateway : armBefore(gateway, fixture, options.arm),
-        evidence: createFsRecorder({ root: evidenceRoot, secrets: [PASSWORD] }),
+        evidence,
+        escalation,
         clock: systemClock,
       },
       {
@@ -128,8 +160,9 @@ export async function runReplay(
       },
       { stepTimeoutMs: options.stepTimeoutMs ?? STEP_TIMEOUT_MS },
     );
-    return { result, evidenceRoot, driverCalls };
+    return { result, evidenceRoot, driverCalls, sessionsEstablished };
   } finally {
+    broker.close();
     await driver.close();
   }
 }

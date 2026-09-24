@@ -97,30 +97,32 @@ describe('replay guardrails against the fixture', { timeout: 30_000 }, () => {
     const replayRun = await run('test.close-account', MARIA);
 
     const escalated = escalation(replayRun.result);
-    expect(escalated).toMatchObject({ reason: 'risky_action', stepId: 'close-account' });
+    expect(escalated).toMatchObject({ reason: 'no_operator_surface', stepId: 'close-account' });
     expect(escalated.interventionId).toMatch(/^int-/);
+    expect(escalated.interventions).toEqual([escalated.interventionId]);
     expect(replayRun.driverCalls.filter((call) => call.stepId === 'close-account')).toEqual([]);
     const events = await readEvents(replayRun);
     expect(events.filter((event) => event.stepId === 'close-account').map((event) => event.type)).toEqual([
       'step_started',
       'target_resolved',
-      'escalation',
+      'handoff_requested',
+      'handoff_aborted',
       'result',
     ]);
-    expect(events.find((event) => event.type === 'escalation')).toMatchObject({ interventionId: escalated.interventionId, reason: 'risky_action' });
+    expect(events.find((event) => event.type === 'handoff_requested')).toMatchObject({ interventionId: escalated.interventionId, reason: 'risky_action' });
     const [snapshot] = await readSnapshots(replayRun);
     const frameUrls = snapshot.frames.map((frame) => frame.url);
     expect(frameUrls.some((url) => url.includes('/member/detail'))).toBe(true);
     expect(frameUrls.filter((url) => url.includes('/member/danger/'))).toEqual([]);
     const screenshots = await readdir(join(runDir(replayRun), 'screenshots'));
-    expect(screenshots).toEqual([expect.stringMatching(/-close-account\.png$/)]);
+    expect(screenshots).toEqual([expect.stringMatching(new RegExp(`-handoff-${escalated.interventionId}-before\\.png$`))]);
     expect(existsSync(join(runDir(replayRun), 'screenshots', screenshots[0]))).toBe(true);
   });
 
   it('escalates a risky control the artifact marked safe, caught by the policy', async () => {
     const replayRun = await run('test.close-account-unmarked', MARIA);
 
-    expect(replayRun.result).toMatchObject({ status: 'escalated', reason: 'risky_action', stepId: 'close-account' });
+    expect(replayRun.result).toMatchObject({ status: 'escalated', reason: 'no_operator_surface', stepId: 'close-account' });
     expect(replayRun.driverCalls.filter((call) => call.stepId === 'close-account')).toEqual([]);
     const policy = (await readEvents(replayRun)).find((event) => event.type === 'policy' && event.stepId === 'close-account');
     expect(policy).toMatchObject({ decision: 'requires_human', reason: 'destination: route /member/danger/close is risky' });
@@ -129,7 +131,7 @@ describe('replay guardrails against the fixture', { timeout: 30_000 }, () => {
   it('honors the artifact risk even when the policy has no risky rules', async () => {
     const replayRun = await run('test.close-account', MARIA, { policy: (policy) => ({ ...policy, risky: { routes: [], controlText: [] } }) });
 
-    expect(replayRun.result).toMatchObject({ status: 'escalated', reason: 'risky_action', stepId: 'close-account' });
+    expect(replayRun.result).toMatchObject({ status: 'escalated', reason: 'no_operator_surface', stepId: 'close-account' });
     expect(replayRun.driverCalls.filter((call) => call.stepId === 'close-account')).toEqual([]);
   });
 });

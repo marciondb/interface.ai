@@ -3,7 +3,6 @@ import type { ActionGateway, GatewayOutcome } from '../diplomat/gateway/port';
 import type { SessionCookie, SessionProvider } from '../diplomat/session/port';
 import type { ArtifactStore } from '../diplomat/store/port';
 import type { Clock } from '../infrastructure/clock';
-import { newId } from '../infrastructure/ids';
 import { bindInputs, validateInputs } from '../logic/capability-inputs';
 import { describeCounts, evaluateCheckpoint, factsNeeded, type Facts, type TargetFact } from '../logic/checkpoint';
 import { classify, describeClassification, isDefinitive } from '../logic/outcome-classifier';
@@ -17,12 +16,15 @@ import type { EscalationReason, ExecutionResult, Failure, FailureCode, Recovery 
 import type { Observation, Ref } from '../models/observation';
 import type { ReplayRequest } from '../models/replay-request';
 import type { ActionPurpose } from '../models/run-event';
+import type { Escalation, Verification } from './escalation';
 
 export type ReplayDeps = {
   readonly store: ArtifactStore;
   readonly session: SessionProvider;
   readonly gateway: ActionGateway;
   readonly evidence: EvidenceRecorder;
+  // Hands the live session to a human at a risky step (RFC-005).
+  readonly escalation: Escalation;
   readonly clock: Clock;
 };
 
@@ -81,12 +83,13 @@ function errorMessage(error: unknown): string {
 // Executes a capability without a model (RFC-004): every step is resolved, performed through
 // the gateway and verified; anything else is classified against the artifact's declared outcomes.
 export async function replay(deps: ReplayDeps, request: ReplayRequest, options: ReplayOptions): Promise<ExecutionResult> {
-  const { store, session, gateway, evidence, clock } = deps;
+  const { store, session, gateway, evidence, escalation, clock } = deps;
   const { stepTimeoutMs } = options;
   const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
   const startedAt = clock.now();
   const run = await evidence.startRun({ mode: 'replay', capabilityId: request.capabilityId });
   const recoveries: Recovery[] = [];
+  const interventions: string[] = [];
   let capabilityRef = { id: request.capabilityId, version: String(request.major) };
   let surfaceOpened = false;
   let currentStepId = 'artifact';
@@ -97,7 +100,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
       capability: capabilityRef,
       durationMs: clock.now() - startedAt,
       recoveries,
-      interventions: [],
+      interventions,
     };
     let result: ExecutionResult;
     switch (ending.status) {
@@ -150,12 +153,40 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
     return { status: 'failed', failure: { stepId, code, expected, observed, evidence: evidencePath } };
   }
 
-  // Stops before a risky action with the page as it is; the human handoff (RFC-005) takes it from here.
-  async function escalated(stepId: string, message: string): Promise<Ending> {
-    await captureEvidence(stepId, undefined);
-    const interventionId = newId('int');
-    await evidence.event({ type: 'escalation', stepId, interventionId, reason: 'risky_action', message });
-    return { status: 'escalated', interventionId, stepId, reason: 'risky_action', message };
+  // Stops before a risky action with the page as it is and hands the same session to a human
+  // (RFC-005). undefined when the human did it and `verify` confirmed it: the run goes on.
+  async function handOff(stepId: string, message: string, verify: () => Promise<Verification>): Promise<Ending | undefined> {
+    const outcome = await escalation.handOff({
+      run,
+      mode: 'replay',
+      capability: `${capabilityRef.id}@${capabilityRef.version}`,
+      stepId,
+      reason: 'risky_action',
+      message,
+      verify,
+    });
+    interventions.push(outcome.interventionId);
+    if (outcome.status === 'resumed') return undefined;
+    return { status: 'escalated', interventionId: outcome.interventionId, stepId, reason: outcome.cause, message: `${message} (handoff ${outcome.cause})` };
+  }
+
+  // The human performed the step: its checkpoint must hold within the step timeout.
+  async function verifyStep(capability: Capability, step: Step): Promise<Verification> {
+    const deadline = clock.now() + stepTimeoutMs;
+    for (;;) {
+      let checkpoint: { holds: boolean; expected: string; observed: string };
+      try {
+        const facts = await gatherFacts(capability, step.id, await gateway.observe(), [step.checkpoint]);
+        checkpoint = evaluateCheckpoint(step.checkpoint, facts);
+      } catch (error) {
+        checkpoint = { holds: false, expected: 'the page to be readable', observed: errorMessage(error) };
+      }
+      if (checkpoint.holds || clock.now() >= deadline) {
+        await evidence.event({ type: 'checkpoint', stepId: step.id, ...checkpoint, performedBy: 'human' });
+        return checkpoint.holds ? { held: true } : { held: false, expected: checkpoint.expected, observed: checkpoint.observed };
+      }
+      await clock.sleep(pollIntervalMs);
+    }
   }
 
   async function recordRecovery(recovery: Recovery, delayMs?: number): Promise<void> {
@@ -363,7 +394,14 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
     const click = toSurfaceAction(stepId, move.recover, resolution.ref, request.targetUrl);
     const outcome = await perform(stepId, 'recovery', click, name);
     if (outcome.status === 'denied') return failed(stepId, 'policy_denied', `click on ${name} allowed by policy`, outcome.reason);
-    if (outcome.status === 'requires_human') return escalated(stepId, `click on ${name} needs a human: ${outcome.reason}`);
+    if (outcome.status === 'requires_human') {
+      const condition = capability.outcomes.find((declared) => declared.id === move.outcomeId)?.when;
+      return handOff(stepId, `click on ${name} needs a human: ${outcome.reason}`, async () => {
+        if (condition === undefined) return { held: true };
+        const shown = evaluateCheckpoint(condition, await gatherFacts(capability, stepId, await gateway.observe(), [condition]));
+        return shown.holds ? { held: false, expected: `${move.outcomeId} to be dismissed`, observed: shown.observed } : { held: true };
+      });
+    }
     if (outcome.status === 'error') return failed(stepId, 'driver_error', `click on ${name} to complete`, outcome.message);
     return undefined;
   }
@@ -384,7 +422,11 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
           break;
         }
         if (outcome.kind === 'failed') return end(await failed(step.id, outcome.code, outcome.expected, outcome.observed));
-        if (outcome.kind === 'requires_human') return end(await escalated(step.id, outcome.message));
+        if (outcome.kind === 'requires_human') {
+          const ended = await handOff(step.id, outcome.message, () => verifyStep(capability, step));
+          if (ended !== undefined) return end(ended);
+          break;
+        }
 
         const { trigger, classification } = outcome;
         await evidence.event({ type: 'classification', stepId: step.id, trigger, classification });
@@ -446,8 +488,9 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
         break;
       case 'deny':
         return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed by policy`, decision.reason);
+      // Nothing is open yet, so there is no session to hand over.
       case 'requires_human':
-        return escalated('preconditions', `opening ${request.targetUrl} needs a human: ${decision.reason}`);
+        return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed for automation`, `needs a human: ${decision.reason}`);
       default: {
         const unhandled: never = decision;
         return unhandled;

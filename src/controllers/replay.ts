@@ -146,13 +146,13 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
 
   async function perform(stepId: string, purpose: ActionPurpose, action: Action, target?: string): Promise<GatewayOutcome> {
     const outcome = await gateway.perform({ stepId, purpose, action, timeoutMs: stepTimeoutMs });
-    if (purpose === 'checkpoint' && outcome.status !== 'denied') return outcome;
-    await evidence.event(
-      outcome.status === 'denied'
-        ? { type: 'policy', stepId, purpose, verb: action.verb, decision: 'deny', reason: outcome.reason }
-        : { type: 'policy', stepId, purpose, verb: action.verb, decision: 'allow' },
-    );
-    if (outcome.status === 'denied') return outcome;
+    if (outcome.status === 'denied' || outcome.status === 'requires_human') {
+      const decision = outcome.status === 'denied' ? 'deny' : 'requires_human';
+      await evidence.event({ type: 'policy', stepId, purpose, verb: action.verb, decision, reason: outcome.reason });
+      return outcome;
+    }
+    if (purpose === 'checkpoint') return outcome;
+    await evidence.event({ type: 'policy', stepId, purpose, verb: action.verb, decision: 'allow' });
     const argument = action.argument ?? undefined;
     await evidence.event({
       type: 'action',
@@ -287,6 +287,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
     let value: string | undefined;
     switch (outcome.status) {
       case 'denied':
+      case 'requires_human':
         return { kind: 'failed', code: 'policy_denied', expected: `${what} allowed by policy`, observed: outcome.reason };
       case 'error':
         return { kind: 'failed', code: 'driver_error', expected: `${what} to complete`, observed: outcome.message };
@@ -331,7 +332,9 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
     }
     const click = toSurfaceAction(stepId, move.recover, resolution.ref, request.targetUrl);
     const outcome = await perform(stepId, 'recovery', click, name);
-    if (outcome.status === 'denied') return failed(stepId, 'policy_denied', `click on ${name} allowed by policy`, outcome.reason);
+    if (outcome.status === 'denied' || outcome.status === 'requires_human') {
+      return failed(stepId, 'policy_denied', `click on ${name} allowed by policy`, outcome.reason);
+    }
     if (outcome.status === 'error') return failed(stepId, 'driver_error', `click on ${name} to complete`, outcome.message);
     return undefined;
   }
@@ -408,7 +411,7 @@ export async function replay(deps: ReplayDeps, request: ReplayRequest, options: 
       await evidence.event({ type: 'session', event: reauthenticating ? 'reauthenticated' : 'established' });
     }
     const decision = await gateway.open(request.targetUrl, cookies);
-    if (decision.decision === 'deny') {
+    if (decision.decision !== 'allow') {
       return failed('preconditions', 'policy_denied', `opening ${request.targetUrl} allowed by policy`, decision.reason);
     }
     surfaceOpened = true;

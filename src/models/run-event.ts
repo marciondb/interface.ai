@@ -33,7 +33,7 @@ export type RunEvent =
       readonly stepId: string;
       readonly purpose: ActionPurpose;
       readonly verb: Verb;
-      readonly decision: 'allow' | 'deny';
+      readonly decision: 'allow' | 'deny' | 'requires_human';
       readonly reason?: string;
     }
   | {

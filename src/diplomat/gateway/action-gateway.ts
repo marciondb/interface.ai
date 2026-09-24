@@ -26,8 +26,18 @@ export function createActionGateway({ driver, policy }: ActionGatewayOptions): A
     async perform({ action, timeoutMs }) {
       const element = action.target === null ? undefined : await driver.describe(action.target);
       const decision = evaluatePolicy({ action, element, currentUrl: driver.currentUrl() }, policy);
-      if (decision.decision === 'deny') return { status: 'denied', reason: decision.reason };
-      return driver.perform(action, { timeoutMs });
+      switch (decision.decision) {
+        case 'allow':
+          return driver.perform(action, { timeoutMs });
+        case 'deny':
+          return { status: 'denied', reason: decision.reason };
+        case 'requires_human':
+          return { status: 'requires_human', reason: decision.reason };
+        default: {
+          const unhandled: never = decision;
+          return unhandled;
+        }
+      }
     },
 
     screenshot: () => driver.screenshot(),

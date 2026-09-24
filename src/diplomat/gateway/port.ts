@@ -13,12 +13,17 @@ export type GatewayRequest = {
   readonly timeoutMs: number;
 };
 
-export type GatewayOutcome = PerformOutcome | { readonly status: 'denied'; readonly reason: string };
+// `denied` and `requires_human` mean the driver was not called. `denied` is outside the
+// allowlist; `requires_human` is a risky action only a human may perform (RFC-005).
+export type GatewayOutcome =
+  | PerformOutcome
+  | { readonly status: 'denied'; readonly reason: string }
+  | { readonly status: 'requires_human'; readonly reason: string };
 
 // The only way controllers reach the surface (ADR-011): every action is checked against
 // the policy before the driver is called. Observing and resolving do not change the page.
 export type ActionGateway = {
-  // Loads url with the session cookies after checking it against the policy.
+  // Loads url with the session cookies only when the policy allows it.
   open(url: string, session: readonly SessionCookie[]): Promise<PolicyDecision>;
   observe(): Promise<Observation>;
   resolve(target: TargetSpec): Promise<Resolution>;

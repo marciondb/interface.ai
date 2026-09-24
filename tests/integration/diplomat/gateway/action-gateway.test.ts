@@ -69,12 +69,27 @@ describe('action gateway', () => {
     expect(calls).toEqual([]);
   });
 
-  it('opens only allowlisted URLs', async () => {
+  it('requires a human without calling the driver for a risky control', async () => {
+    const { driver, calls } = fakeDriver({
+      role: 'button',
+      name: 'Close Account',
+      frameUrl: 'http://localhost:8080/member/detail?memberId=10001',
+      destination: 'http://localhost:8080/member/danger/close?memberId=10001',
+    });
+
+    const outcome = await createActionGateway({ driver, policy: POLICY }).perform({ stepId: 's', purpose: 'step', action: click(), timeoutMs: 1 });
+
+    expect(outcome).toEqual({ status: 'requires_human', reason: 'destination: route /member/danger/close is risky' });
+    expect(calls).toEqual([]);
+  });
+
+  it('opens only allowlisted, non-risky URLs', async () => {
     const { driver, calls } = fakeDriver({ role: 'x', name: '', frameUrl: SEARCH_FRAME });
     const gateway = createActionGateway({ driver, policy: { ...POLICY, allowedActions: ['navigate'] } });
 
     expect(await gateway.open('http://localhost:8080/', [])).toEqual({ decision: 'allow' });
     expect(await gateway.open('http://localhost:9999/', [])).toMatchObject({ decision: 'deny' });
+    expect(await gateway.open('http://localhost:8080/member/danger/close', [])).toMatchObject({ decision: 'requires_human' });
     expect(calls).toEqual(['open http://localhost:8080/']);
   });
 });

@@ -11,14 +11,16 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:live": "RUN_LIVE_MODEL=1 vitest run tests/live --passWithNoTests",
-    "verify": "npm run typecheck && npm run lint && npm run test",
-    "fixture": "node fixture/server.js"
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run depcruise",
+    "fixture": "node fixture/server.js",
+    "depcruise": "depcruise src"
   },
   "dependencies": {
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^24.13.6",
+    "dependency-cruiser": "^18.4.0",
     "eslint": "^9.39.5",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",

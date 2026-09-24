@@ -6,8 +6,15 @@
 | **Author** | Marcio Dias |
 | **Contributors** | N/A |
 | **Started at** | 2026-09-24 |
-| **Status** | ACCEPTED |
+| **Status** | SUPERSEDED by ADR-015 |
 | **Description** | Discovery uses a frontier model through tool calling, with each permitted action type exposed as a typed tool. The provider sits behind the reasoner port and can be swapped. |
+
+---
+
+> **Superseded.** The default reasoner is now a local model with schema-constrained
+> output — see [ADR-015](ADR-015-local-reasoner-schema-constrained.md). The reasoner
+> port and the rule that model output is validated before use still hold. This
+> record is kept for the reasoning that led there.
 
 ---
 

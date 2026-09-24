@@ -50,5 +50,5 @@ step marked risky escalates instead of executing.
 
 ## Related
 
-- ADR-010 — LLM Provider and Structured Tool Calling
+- ADR-015 — Local Reasoner with Schema-Constrained Output
 - RFC-006 — Safety, Guardrails & Regulated Data Handling

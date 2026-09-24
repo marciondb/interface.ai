@@ -130,7 +130,7 @@ is a Wire shape until it has been validated and adapted into a Model.
 
 **What it represents** — translation between Wire and Model.
 
-Examples in this system: serialized artifact ↔ capability model; model tool call
+Examples in this system: serialized artifact ↔ capability model; model response
 → agent decision; raw surface snapshot → observation.
 
 **Rules**

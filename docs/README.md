@@ -32,10 +32,10 @@ consequences. An ADR is narrow and does not describe a whole subsystem.
 
 ## Start Here
 
-The system records a UI flow once using a language model, then replays it
-deterministically with no model in the decision loop. The guarantee that replay
-never reasons is enforced structurally, by the dependency graph, rather than by a
-runtime flag.
+The system records a UI flow once using a language model — local by default, so
+observations never leave the machine — then replays it deterministically with no
+model in the decision loop. The guarantee that replay never reasons is enforced
+structurally, by the dependency graph, rather than by a runtime flag.
 
 [RFC-001 — System Scope & Component Landscape](rfcs/RFC-001-system-scope-and-component-landscape.md) ·
 [Service Design Principles](architecture/service-design-principles.md) ·
@@ -78,8 +78,9 @@ runtime flag.
 | [ADR-007](decisions/ADR-007-artifact-format-and-versioning.md) | Artifact Serialization Format and Versioning | ACCEPTED |
 | [ADR-008](decisions/ADR-008-ordered-locator-candidate-chain.md) | Ordered Locator Candidate Chain | ACCEPTED |
 | [ADR-009](decisions/ADR-009-discriminated-union-result-contract.md) | Discriminated-Union Execution Result Contract | ACCEPTED |
-| [ADR-010](decisions/ADR-010-llm-provider-and-tool-calling.md) | LLM Provider and Structured Tool Calling | ACCEPTED |
+| [ADR-010](decisions/ADR-010-llm-provider-and-tool-calling.md) | LLM Provider and Structured Tool Calling | SUPERSEDED by ADR-015 |
 | [ADR-011](decisions/ADR-011-single-action-gateway.md) | Guardrail Enforcement at a Single Action Gateway | ACCEPTED |
 | [ADR-012](decisions/ADR-012-same-session-control-transfer.md) | Same-Session Control Transfer for Human Handoff | ACCEPTED |
 | [ADR-013](decisions/ADR-013-authentication-as-precondition.md) | Authentication as Environment Precondition | ACCEPTED |
 | [ADR-014](decisions/ADR-014-per-run-evidence-bundle.md) | Per-Run Evidence Bundle Layout | ACCEPTED |
+| [ADR-015](decisions/ADR-015-local-reasoner-schema-constrained.md) | Local Reasoner with Schema-Constrained Output | ACCEPTED |

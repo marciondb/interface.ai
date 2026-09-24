@@ -168,7 +168,7 @@ expressed structurally rather than as a runtime condition. See ADR-001.
 | **Discovery Controller** | Controller | Runs the observe → decide → act loop until the goal is met or a stopping condition fires |
 | **Replay Controller** | Controller | Executes a capability's steps against the surface and produces a structured result |
 | **Escalation Controller** | Controller | Suspends a run, publishes an intervention request, awaits and validates resumption |
-| **Reasoner Client** | Diplomat (outbound) | Calls the language model. Exists only on the discovery path |
+| **Reasoner Client** | Diplomat (outbound) | Calls the language model — a local model by default, a hosted one on request (ADR-015). Exists only on the discovery path |
 | **Surface Driver** | Diplomat (outbound) | Observes and acts on a live application. The seam for surface heterogeneity |
 | **Action Gateway** | Diplomat | The single point through which every action reaches a surface. Where guardrail policy is applied |
 | **Artifact Store** | Diplomat (outbound) | Persists and loads versioned capability artifacts |
@@ -281,7 +281,8 @@ reviewer verifying that a run genuinely occurred.
 
 ### In scope
 
-- A goal-driven discovery loop against a live surface, with real model calls
+- A goal-driven discovery loop against a live surface, with real model calls to
+  a local model by default
 - A typed, versioned, parameterized capability artifact
 - Deterministic replay with checkpoint verification and typed outputs
 - An explicit result contract separating business outcomes, recoverable

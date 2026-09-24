@@ -27,7 +27,7 @@ replay engine acts on it.
 Beyond that, the system needs:
 
 - Mature browser automation, including accessibility-tree access
-- A first-class client for a language model provider
+- An HTTP client for a local or hosted language model
 - Fast iteration
 - Low friction for a reviewer running it for the first time
 

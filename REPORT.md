@@ -14,8 +14,8 @@ composition root wires the CLIs, the test harnesses and the demo
 [ADR-001](docs/decisions/ADR-001-diplomat-architecture.md)).
 
 - **Replay cannot reach the model.** A dependency-cruiser rule in `npm run verify`
-  fails the build if the replay controller, composition, CLI or demo reaches
-  `src/diplomat/reasoner/`, even transitively: structural, not a flag.
+  fails the build if any replay code reaches `src/diplomat/reasoner/`, even
+  transitively: structural, not a flag.
 - **One action gateway.** Every action on both paths goes through it; it is where
   policy and control ownership are enforced
   ([ADR-011](docs/decisions/ADR-011-single-action-gateway.md)).
@@ -25,16 +25,16 @@ composition root wires the CLIs, the test harnesses and the demo
   [ADR-006](docs/decisions/ADR-006-playwright-driver.md)).
 - **Local model by default:** `qwen3:14b` on Ollama, output constrained to a per-step
   JSON Schema whose `target` is an enum of the refs on screen, so an invented element
-  cannot be generated; temperature 0. `qwen3:8b` failed the first live decision 3/3;
-  `qwen3:14b` passed 3/3. A hosted OpenAI-compatible adapter is opt-in
+  cannot be generated; temperature 0 (`qwen3:8b` failed the first live decision 3/3,
+  `qwen3:14b` passed 3/3). A hosted OpenAI-compatible adapter is opt-in
   ([ADR-015](docs/decisions/ADR-015-local-reasoner-schema-constrained.md),
   [RFC-003](docs/rfcs/RFC-003-discovery-agent-loop.md)).
-- **Real discoveries:** the read flow took 6 decisions in 31 s; the write flow 13
-  decisions in 45 s, with one handoff at `Confirm`; each decision records its
-  rationale, latency and token counts ([evidence](evidence/README.md)).
+- **Real discoveries:** read flow, 6 decisions in 31 s; write flow, 13 in 45 s with
+  one handoff at `Confirm`; each decision logs its rationale, latency and token counts
+  ([evidence](evidence/README.md)).
 - **Trade-offs:** one session at a time, no durable run history, a handoff bounded by
   the process ([ADR-003](docs/decisions/ADR-003-single-process-cli-composition.md));
-  a local model is slower and weaker, which the constrained output offsets.
+  a local model is weaker, which the constrained output offsets.
 
 ## 2. Artifact schema
 
@@ -49,8 +49,7 @@ declared `outcomes`, `provenance`. Excerpt of the discovered
 "targets": {
   "content.memberId": { "frame": "content", "candidates": [
     { "strategy": "label", "text": "Member ID:" },
-    { "strategy": "attribute", "name": "name", "value": "ctl00$ContentPlaceHolder1$txtMemberId" },
-    { "strategy": "attribute", "name": "id", "value": "ctl00_ContentPlaceHolder1_txtMemberId" } ] },
+    { "strategy": "attribute", "name": "name", "value": "ctl00$ContentPlaceHolder1$txtMemberId" } ] },
   "content.balance": { "frame": "content", "candidates": [
     { "strategy": "table_cell", "row": { "column": "Acct Type", "equals": "{{inputs.accountType}}" }, "column": "Balance" } ] }
 },
@@ -65,8 +64,7 @@ declared `outcomes`, `provenance`. Excerpt of the discovered
 - **Targets are separate from steps**, so a control is described once and a tenant
   overlay can replace targets without touching the flow.
 - **Ordered locator candidates**, most semantic first (role/name, label, table
-  structure), ids last; the input above has no accessible name, so its chain starts at
-  its visible label. Discovered targets carry `notes` on why the chain should hold
+  structure), ids last; discovered targets carry `notes` on why the chain should hold
   ([ADR-008](docs/decisions/ADR-008-ordered-locator-candidate-chain.md)).
 - **Every step has a checkpoint**, and a step's `risk` is part of the contract.
 - **Outcomes are declared** (business or recoverable, with a detector), never
@@ -80,9 +78,9 @@ declared `outcomes`, `provenance`. Excerpt of the discovered
 
 ## 3. Determinism & error handling
 
-Replay validates the artifact and inputs, signs in, then for each step resolves the
-target, acts through the gateway with an explicit timeout, and checks the checkpoint.
-When any of these fails, a pure classifier decides what the page means
+Replay validates the artifact and inputs, signs in, then per step resolves the target,
+acts through the gateway with a timeout, and checks the checkpoint; on any failure a
+pure classifier decides what the page means
 ([RFC-004](docs/rfcs/RFC-004-deterministic-replay.md)).
 The result is a discriminated union
 ([ADR-009](docs/decisions/ADR-009-discriminated-union-result-contract.md)):
@@ -102,8 +100,8 @@ The result is a discriminated union
   run instead of restarting it.
 - **Drift (secondary):** replay records which candidate matched; a fallback is
   visible in the log, but there is no self-healing.
-- **Proof:** `npm run demo` replays 8 scenarios with no model (`8/8 as expected`);
-  curated runs are in [`evidence/`](evidence/README.md).
+- **Proof:** `npm run demo` replays 8 scenarios with no model; curated runs are in
+  [`evidence/`](evidence/README.md).
 
 ## 4. Heterogeneity & multi-tenant
 
@@ -112,17 +110,15 @@ Design only; the seams exist in code
 
 - **Surface seam:** the `SurfaceDriver` port (`observe`, `resolve`, `perform`,
   `inspect`, `screenshot`). The artifact speaks in roles, names, labels, table
-  structure and frames; legacy web is the implemented case, and a desktop app needs a
-  driver (UI Automation, macOS AX) with the same role/name model. Surfaces with no
-  accessibility (Citrix, canvas) would add a last-resort visual candidate. Artifacts,
-  replay, policy and classification do not change.
+  structure and frames; legacy web is implemented, and a desktop app needs only a
+  driver with the same role/name model (UI Automation, macOS AX). Surfaces with no
+  accessibility (Citrix, canvas) would add a last-resort visual candidate.
 - **Multi-tenant reuse:** one base artifact per vendor product version (the optional
   `app.productVersion`) plus a per-tenant overlay that may replace only targets and
   outcome detectors, never steps, inputs or outputs, so the contract an agent calls is
   identical across tenants. The effective artifact is validated like any other.
 - **Drift management:** a tenant that keeps matching lower candidates, or whose
-  checkpoints fail after a vendor upgrade, needs a new base version or an overlay;
-  synthesis already puts semantic candidates before tenant-specific ids.
+  checkpoints fail after an upgrade, needs a new base version or an overlay.
 
 ## 5. Escalation & handoff
 
@@ -134,26 +130,22 @@ Design only; the seams exist in code
   both paths, a `risky` step or a gateway answer of `requires_human`.
 - **Routing:** an intervention request (capability or goal, step, reason, URL, masked
   screenshot, expiry) is written to `intervention.json` and printed to the operator.
-- **Control model:** one owner at a time (`automation` or `human`), held by the
-  escalation controller; while a human holds control the gateway refuses every
-  automation action except `read`.
+- **Control model:** one owner at a time (`automation` or `human`); while a human
+  holds control the gateway refuses every automation action except `read`.
 - **Same live session:** the operator types `take` and works in the run's own headed
   window; tests assert an unchanged session cookie and a single sign-in.
 - **Handing back:** `resume` re-observes and verifies the step's checkpoint; if it
   fails, the human keeps control. `abort`, TTL expiry (10 min), a closed window, or no
   `--headed` window end the run as `escalated` with that reason.
-- **Recording:** clicks, navigations (no query string), typed values as `[redacted]`
-  and dialog answers become `handoff_*` events, with before/after screenshots; in
-  discovery, a human's single click becomes a `risky` artifact step.
-- **Telling a stateless model:** after a handoff the goal line says what a person did
-  (`a person already did: click button "Confirm"`) and the prompt forbids repeating
-  it. We added this after a live run where the model, unaware of the human's
-  confirmation, went back toward the confirm page; the gateway answered
-  `requires_human` and the run escalated.
-- **Mocked:** the operator console is the headed window plus a stdin prompt; in
-  production, a web console would stream the session and queue requests, with the same
-  control model. Every committed handoff was performed by a scripted operator through
-  the real prompt and page.
+- **Recording:** clicks, navigations, typed values as `[redacted]` and dialog answers
+  become `handoff_*` events with before/after screenshots; in discovery, the human's
+  click becomes the artifact's `risky` step.
+- **Telling a stateless model:** the goal line says what a person did (`a person
+  already did: click button "Confirm"`) and the prompt forbids repeating it; a live
+  run without this sent the model back toward the confirm page (the gateway held it).
+- **Mocked:** the console is the headed window plus a stdin prompt; production would
+  stream the session and queue requests with the same control model. Committed
+  handoffs were done by a scripted operator through the real prompt and page.
 
 ## 6. Safety
 
@@ -164,24 +156,22 @@ Design only; the seams exist in code
 - **Allowlist:** [`policy.json`](policy.json) lists origins, routes and action types;
   anything else is denied at the gateway before the driver is called.
 - **Risk classes:** an action is risky if its control text, destination or current
-  page matches the policy's risky list; precedence is deny > `requires_human` > allow,
-  and a policy without a risky list fails to load. Risky actions are **blocked for
-  automation and done by a human** in the live session: a confirmation the automation
-  answers itself protects nothing, while a handoff puts a named person on the
-  irreversible step. A step's `risk` in the artifact holds even if the policy changes.
+  page matches the policy's risky list; precedence is deny > `requires_human` > allow.
+  Risky actions are **blocked for automation and done by a human** in the live
+  session: a confirmation the automation answers itself protects nothing, while a
+  handoff puts a named person on the irreversible step. A step's `risk` in the
+  artifact holds even if the policy changes.
 - **Secrets:** sign-in happens over HTTP before the browser opens, so credentials never
-  enter the page, observations, artifacts or evidence; the password is also masked by
-  value everywhere.
+  enter the page, observations, artifacts or evidence; the password is masked anyway.
 - **Sensitive data:** declared sensitive inputs and outputs show as
   `[REDACTED:<sensitivity>]` in every evidence JSON file and are boxed in every
   screenshot; in text, account numbers keep their last 4 digits and SSNs are masked.
   The model sees secrets and every sensitive output read so far masked, but inputs in
-  clear, since it must type them. Outputs reach the caller unmasked, on stdout only.
-- **Residency:** the local default keeps observations on the machine.
-- **Limits:** undeclared page data (a member's name, balances not read) stays
-  visible, and screenshot boxes cover declared values only (the patterns apply to
-  text, not pixels); risk classification by text and route is per-app configuration
-  and can be wrong; the operator must be at the machine running the browser.
+  clear, since it must type them. Outputs reach the caller unmasked, on stdout only;
+  the local model keeps observations on the machine.
+- **Limits:** undeclared page data (a name, balances not read) stays visible, and
+  screenshot boxes cover declared values only; risk by text and route is per-app
+  configuration and can be wrong; the operator must be at the browser's machine.
 
 ## 7. Cuts
 

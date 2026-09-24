@@ -300,22 +300,31 @@ stdout (exit 0 `succeeded`, 3 `failed`, 4 `escalated`). The new artifact is writ
 with `"status": "draft"` to `capabilities/member.read-account-balance/1.0.3.json`, and
 the run's evidence to `evidence/runs/<run>/`. Review it (a new file in `git status`,
 comparable with the committed `1.0.2.json`) and set `"status": "approved"` before
-committing it. Instead of a request file, `--goal <text> --capability <id>
---input name=example[:sensitivity] --output name[:sensitivity]` describes the request
-on the command line.
+committing it.
 
-**Replay** it — `@1` resolves to the latest approved `1.x` (`1.0.2` today; add
-`--allow-draft` to include an unreviewed draft such as your `1.0.3`), and no model is
-involved:
+The same discovery with the goal in natural language on the command line instead of a
+request file (`{{name}}` marks an input; each `--input` gives the example the model
+uses, and its sensitivity, `internal` when omitted):
 
 ```bash
-npm run replay -- --capability member.read-account-balance@1 --input memberId=10002 --input accountType=Savings
+npm run discover -- --goal "Look up member {{memberId}} and read the balance of their {{accountType}} account" \
+  --capability member.read-account-balance --version 1.0.3 \
+  --input memberId=10001:internal --input accountType=Savings:none \
+  --output balance:financial --outcome member_not_found
+```
+
+**Replay** the artifact you just discovered — no model is involved. `@1` resolves to
+the latest `1.x`; `--allow-draft` lets it pick your unreviewed `1.0.3` (without it,
+replay only runs approved versions and uses the committed `1.0.2`):
+
+```bash
+npm run replay -- --capability member.read-account-balance@1 --allow-draft --input memberId=10002 --input accountType=Savings
 # exit 0: "status": "succeeded", "outputs": { "balance": "3,100.55" }
 
-npm run replay -- --capability member.read-account-balance@1 --input memberId=99999 --input accountType=Savings
+npm run replay -- --capability member.read-account-balance@1 --allow-draft --input memberId=99999 --input accountType=Savings
 # exit 2: "status": "business_outcome", "outcome": "member_not_found"
 
-npm run replay -- --capability member.read-account-balance@1 --input memberId=abc --input accountType=Savings
+npm run replay -- --capability member.read-account-balance@1 --allow-draft --input memberId=abc --input accountType=Savings
 # exit 3: "status": "failed", "failure": { "stepId": "inputs", "code": "invalid_input", ... }
 ```
 

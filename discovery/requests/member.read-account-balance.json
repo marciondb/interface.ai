@@ -33,7 +33,7 @@
   "outputs": {
     "balance": {
       "type": "string",
-      "description": "Account balance as displayed, e.g. 4,812.37",
+      "description": "Account balance as displayed, e.g. 1,234.56",
       "sensitivity": "financial"
     }
   },

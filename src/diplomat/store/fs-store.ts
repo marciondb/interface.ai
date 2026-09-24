@@ -2,12 +2,17 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fromCapabilityFile, toCapabilityFile } from '../../adapters/capability-file';
 import { errnoCode, errorMessage } from '../../infrastructure/errors';
-import { CapabilityIdSchema, SemverSchema, type Capability } from '../../models/capability';
-import type { ArtifactStore, LoadResult, SaveResult } from './port';
+import { capabilityStatus, CapabilityIdSchema, SemverSchema, type Capability } from '../../models/capability';
+import type { ArtifactStore, LoadLatestOptions, LoadResult, SaveResult } from './port';
 
 const VERSION_FILE = /^([0-9]+)\.([0-9]+)\.([0-9]+)\.json$/;
 
-export function createFsArtifactStore(rootDir: string): ArtifactStore {
+export type FsArtifactStoreOptions = {
+  // Default for loadLatest when a call does not say.
+  readonly includeDrafts?: boolean;
+};
+
+export function createFsArtifactStore(rootDir: string, defaults: FsArtifactStoreOptions = {}): ArtifactStore {
   const fileOf = (id: string, version: string) => join(rootDir, id, `${version}.json`);
 
   async function load(id: string, version: string): Promise<LoadResult> {
@@ -37,10 +42,11 @@ export function createFsArtifactStore(rootDir: string): ArtifactStore {
       const found = `${capability.capability.id}@${capability.capability.version}`;
       return { ok: false, code: 'invalid', path, issues: [`capability: file declares ${found}, path expects ${id}@${version}`] };
     }
-    return { ok: true, capability, path };
+    return { ok: true, capability, status: capabilityStatus(capability), path };
   }
 
-  async function loadLatest(id: string, major: number): Promise<LoadResult> {
+  async function loadLatest(id: string, major: number, options: LoadLatestOptions = {}): Promise<LoadResult> {
+    const includeDrafts = options.includeDrafts ?? defaults.includeDrafts ?? false;
     const dir = join(rootDir, id);
     const refused = checkReference(id, `${String(major)}.0.0`);
     if (refused.length > 0) return { ok: false, code: 'invalid', path: dir, issues: refused };
@@ -53,17 +59,30 @@ export function createFsArtifactStore(rootDir: string): ArtifactStore {
       throw error;
     }
 
-    const latest = files
+    const versions = files
       .map((file) => VERSION_FILE.exec(file))
       .filter((match) => match !== null)
       .map((match): [number, number, number] => [Number(match[1]), Number(match[2]), Number(match[3])])
       .filter(([fileMajor]) => fileMajor === major)
       .sort((a, b) => b[1] - a[1] || b[2] - a[2])
-      .at(0);
-    if (latest === undefined) {
+      .map((version) => version.join('.'));
+    if (versions.length === 0) {
       return { ok: false, code: 'not_found', path: dir, issues: [`no ${id} artifact with major version ${String(major)}`] };
     }
-    return load(id, latest.join('.'));
+
+    // Newest first; an invalid file stops the search rather than silently falling back.
+    const drafts: string[] = [];
+    for (const version of versions) {
+      const loaded = await load(id, version);
+      if (!loaded.ok || loaded.status === 'approved' || includeDrafts) return loaded;
+      drafts.push(version);
+    }
+    return {
+      ok: false,
+      code: 'not_found',
+      path: dir,
+      issues: [`no approved ${id} artifact with major version ${String(major)}; unreviewed drafts: ${drafts.join(', ')}`],
+    };
   }
 
   async function save(capability: Capability): Promise<SaveResult> {

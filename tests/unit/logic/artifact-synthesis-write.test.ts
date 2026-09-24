@@ -201,7 +201,9 @@ describe('synthesizeArtifact on the write flow', () => {
   it('locates the new account number by the label beside it, never by its value', () => {
     const { targets } = artifact(synthesizeArtifact(writeFlow(), REQUEST, CATALOG, PROVENANCE));
 
-    expect(targets['content.newAccountNumber']).toEqual({ frame: 'content', candidates: [{ strategy: 'label', text: 'New Account Number:' }] });
+    expect(targets['content.newAccountNumber']?.frame).toBe('content');
+    expect(targets['content.newAccountNumber']?.candidates).toEqual([{ strategy: 'label', text: 'New Account Number:' }]);
+    expect(targets['content.newAccountNumber']?.notes).toContain('record data');
     expect(targets['content.confirm']?.candidates).toEqual([
       { strategy: 'role', role: 'button', name: 'Confirm' },
       { strategy: 'attribute', name: 'name', value: CONFIRM_TARGET.nameAttr },

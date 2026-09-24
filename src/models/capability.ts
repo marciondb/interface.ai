@@ -30,16 +30,35 @@ export const CapabilityInfoSchema = z.strictObject({
   id: CapabilityIdSchema,
   version: SemverSchema,
   description: z.string().min(1),
-  app: z.strictObject({ product: z.string().min(1), surface: z.literal('web') }),
+  app: z.strictObject({
+    product: z.string().min(1),
+    // Release of the app the artifact was discovered or written against, as the app reports it.
+    productVersion: z.string().min(1).optional(),
+    surface: z.literal('web'),
+  }),
 });
 
 export const PreconditionSchema = z.strictObject({ kind: z.literal('authenticated_session') });
+
+export const MAX_PATTERN_LENGTH = 200;
+// A group holding an unbounded quantifier that is itself repeated, e.g. (a+)+ or (\w+\s?)*,
+// once character classes and escapes are blanked out.
+const NESTED_QUANTIFIER = /\([^()]*(?:[+*]|\{[0-9]+,\})[^()]*\)(?:[+*]|\{[0-9]+,\})/;
+
+// Artifact files are untrusted, and their patterns run against live values.
+export const PatternSchema = z
+  .string()
+  .max(MAX_PATTERN_LENGTH, `pattern must be at most ${String(MAX_PATTERN_LENGTH)} characters`)
+  .refine(
+    (pattern) => !NESTED_QUANTIFIER.test(pattern.replace(/\\./g, 'x').replace(/\[[^\]]*\]/g, 'x')),
+    'pattern repeats a group that holds an unbounded quantifier, which can backtrack catastrophically',
+  );
 
 // pattern is an ECMAScript regex tested against the raw value; include anchors for a full match.
 export const InputSpecSchema = z.strictObject({
   type: FieldTypeSchema,
   description: z.string().min(1),
-  pattern: z.string().optional(),
+  pattern: PatternSchema.optional(),
   enum: z.array(z.string()).min(1).optional(),
   sensitivity: SensitivitySchema,
 });
@@ -80,7 +99,7 @@ export const PredicateSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('text_visible'), text: z.string().min(1), frame: z.string().min(1).optional() }),
   z.strictObject({ kind: z.literal('target_visible'), target: TargetNameSchema }),
   z.strictObject({ kind: z.literal('value_equals'), target: TargetNameSchema, value: z.string() }),
-  z.strictObject({ kind: z.literal('value_matches'), target: TargetNameSchema, pattern: z.string().min(1) }),
+  z.strictObject({ kind: z.literal('value_matches'), target: TargetNameSchema, pattern: PatternSchema.min(1) }),
 ]);
 
 const ClickActionSchema = z.strictObject({ kind: z.literal('click'), target: TargetNameSchema });
@@ -135,8 +154,13 @@ export const ProvenanceSchema = z.discriminatedUnion('method', [
   }),
 ]);
 
+// Discovery publishes drafts; a reviewer approves one by setting `approved` before committing it.
+// Absent means approved, so files written before the field existed keep replaying (ADR-007).
+export const CapabilityStatusSchema = z.enum(['draft', 'approved']);
+
 export const CapabilitySchema = z
   .strictObject({
+    status: CapabilityStatusSchema.optional(),
     capability: CapabilityInfoSchema,
     preconditions: z.array(PreconditionSchema),
     inputs: z.record(FieldNameSchema, InputSpecSchema),
@@ -254,6 +278,10 @@ export function actionTarget(action: StepAction): string | undefined {
   }
 }
 
+export function capabilityStatus(capability: Capability): CapabilityStatus {
+  return capability.status ?? 'approved';
+}
+
 export function predicateTarget(predicate: Predicate): string | undefined {
   switch (predicate.kind) {
     case 'target_visible':
@@ -284,4 +312,5 @@ export type Step = z.infer<typeof StepSchema>;
 export type Outcome = z.infer<typeof OutcomeSchema>;
 export type ReasonerInfo = z.infer<typeof ReasonerInfoSchema>;
 export type Provenance = z.infer<typeof ProvenanceSchema>;
+export type CapabilityStatus = z.infer<typeof CapabilityStatusSchema>;
 export type Capability = z.infer<typeof CapabilitySchema>;

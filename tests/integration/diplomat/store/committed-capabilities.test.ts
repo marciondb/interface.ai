@@ -25,6 +25,11 @@ describe('committed capabilities', () => {
     expect(text).toBe(`${JSON.stringify(toCapabilityFile(result.capability), null, 2)}\n`);
   });
 
+  // A committed draft would never replay by default: approval happens before the commit.
+  it.each(committed)('$file is approved', async ({ id, version }) => {
+    expect(await createFsArtifactStore(ROOT).load(id, version)).toMatchObject({ ok: true, status: 'approved' });
+  });
+
   it('keep the hand-written reference steps in read-account-balance@1.0.0', async () => {
     const result = await createFsArtifactStore(ROOT).load('member.read-account-balance', '1.0.0');
     expect(result.ok && result.capability.steps.map((step) => step.id)).toEqual([

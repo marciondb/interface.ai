@@ -37,8 +37,68 @@ describe('fs artifact store', () => {
     const store = createFsArtifactStore(root);
     const path = join(root, ID, '1.0.0.json');
     expect(await store.save(capability())).toEqual({ ok: true, path });
-    expect(await store.load(ID, '1.0.0')).toEqual({ ok: true, capability: capability(), path });
-    expect(await store.loadLatest(ID, 1)).toEqual({ ok: true, capability: capability(), path });
+    expect(await store.load(ID, '1.0.0')).toEqual({ ok: true, capability: capability(), status: 'approved', path });
+    expect(await store.loadLatest(ID, 1)).toEqual({ ok: true, capability: capability(), status: 'approved', path });
+  });
+
+  describe('drafts', () => {
+    const draft = (version: string): Capability => ({ ...capability(version), status: 'draft' });
+
+    it('loads an exact version whatever its status, and reports the status', async () => {
+      const store = createFsArtifactStore(root);
+      await store.save(draft('1.0.0'));
+      await store.save({ ...capability('1.0.1'), status: 'approved' });
+
+      expect(await store.load(ID, '1.0.0')).toMatchObject({ ok: true, status: 'draft', capability: { status: 'draft' } });
+      expect(await store.load(ID, '1.0.1')).toMatchObject({ ok: true, status: 'approved' });
+    });
+
+    it('resolves a major to the newest approved version, skipping newer drafts', async () => {
+      const store = createFsArtifactStore(root);
+      await store.save(capability('1.0.0'));
+      await store.save(draft('1.1.0'));
+
+      const latest = await store.loadLatest(ID, 1);
+      expect(latest).toMatchObject({ ok: true, status: 'approved', capability: { capability: { version: '1.0.0' } } });
+    });
+
+    it('resolves to a draft only when drafts are included, per call or by default', async () => {
+      await createFsArtifactStore(root).save(capability('1.0.0'));
+      await createFsArtifactStore(root).save(draft('1.1.0'));
+
+      const perCall = await createFsArtifactStore(root).loadLatest(ID, 1, { includeDrafts: true });
+      expect(perCall).toMatchObject({ ok: true, status: 'draft', capability: { capability: { version: '1.1.0' } } });
+      const byDefault = await createFsArtifactStore(root, { includeDrafts: true }).loadLatest(ID, 1);
+      expect(byDefault).toMatchObject({ ok: true, status: 'draft' });
+      const overridden = await createFsArtifactStore(root, { includeDrafts: true }).loadLatest(ID, 1, { includeDrafts: false });
+      expect(overridden).toMatchObject({ ok: true, status: 'approved' });
+    });
+
+    it('reports not_found, naming the drafts, when a major has only drafts', async () => {
+      const store = createFsArtifactStore(root);
+      await store.save(draft('1.0.0'));
+      await store.save(draft('1.0.1'));
+
+      expect(await store.loadLatest(ID, 1)).toMatchObject({
+        ok: false,
+        code: 'not_found',
+        issues: [`no approved ${ID} artifact with major version 1; unreviewed drafts: 1.0.1, 1.0.0`],
+      });
+    });
+
+    it('stops at an invalid newest file instead of falling back to an older version', async () => {
+      const store = createFsArtifactStore(root);
+      await store.save(capability('1.0.0'));
+      await writeRaw(root, '1.1.0', '{ "schemaVersion": 1,');
+
+      expect(await store.loadLatest(ID, 1)).toMatchObject({ ok: false, code: 'invalid' });
+    });
+
+    it('writes status right after schemaVersion so reviewers see it first', async () => {
+      await createFsArtifactStore(root).save(draft('1.0.0'));
+      const text = await readFile(join(root, ID, '1.0.0.json'), 'utf8');
+      expect(text.startsWith('{\n  "schemaVersion": 1,\n  "status": "draft",\n  "capability": {')).toBe(true);
+    });
   });
 
   it('writes pretty-printed JSON with schemaVersion first and a trailing newline', async () => {
@@ -50,8 +110,7 @@ describe('fs artifact store', () => {
 
   it('picks the highest version within the requested major', async () => {
     const store = createFsArtifactStore(root);
-    for (const version of ['1.0.0', '1.2.0', '1.10.1', '2.0.0']) await store.save(capability(version));
-    await writeRaw(root, 'README', 'not an artifact');
+    for (const version of ['1.0.0', '1.2.0', '1.10.1', '2.0.0']) await store.save(capability(version));    await writeRaw(root, 'README', 'not an artifact');
 
     const latest = await store.loadLatest(ID, 1);
     expect(latest.ok && latest.capability.capability.version).toBe('1.10.1');

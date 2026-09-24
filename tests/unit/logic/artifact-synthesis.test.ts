@@ -160,14 +160,16 @@ describe('synthesizeArtifact', () => {
   it('locates elements in a row holding an input value only by their column in that row', () => {
     const { targets } = artifact(synthesizeArtifact(readFlow(), REQUEST, CATALOG, PROVENANCE));
 
-    expect(targets['content.balance']).toEqual({
+    expect(targets['content.balance']).toMatchObject({
       frame: 'content',
       candidates: [{ strategy: 'table_cell', row: { column: 'Acct Type', equals: '{{inputs.accountType}}' }, column: 'Balance' }],
     });
-    expect(targets['content.name']).toEqual({
+    expect(targets['content.name']).toMatchObject({
       frame: 'content',
       candidates: [{ strategy: 'table_cell', row: { column: 'Member ID', equals: '{{inputs.memberId}}' }, column: 'Name', role: 'link' }],
     });
+    expect(targets['content.balance']?.candidates).toHaveLength(1);
+    expect(targets['content.name']?.candidates).toHaveLength(1);
   });
 
   it('builds the ADR-008 chain from role, label and attributes elsewhere', () => {
@@ -266,9 +268,54 @@ describe('synthesizeArtifact', () => {
       risk: 'risky',
       checkpoint: { kind: 'text_visible', text: 'Return to Member Detail', frame: 'content' },
     });
-    expect(targets['content.closeAccount']).toEqual({ frame: 'content', candidates: [{ strategy: 'role', role: 'button', name: 'Close Account' }] });
+    expect(targets['content.closeAccount']).toMatchObject({ frame: 'content', candidates: [{ strategy: 'role', role: 'button', name: 'Close Account' }] });
+    expect(targets['content.closeAccount']?.candidates).toHaveLength(1);
 
     const typed = [...trace, human({ kind: 'input', target: { frame: 'content', tag: 'input' }, value: '[redacted]', at })];
     expect(errorOf(synthesizeArtifact(typed, REQUEST, CATALOG, PROVENANCE))).toMatchObject({ code: 'unsupported_human_steps', stepId: 'step-7' });
+  });
+
+  it('publishes a draft that a reviewer must approve', () => {
+    expect(artifact(synthesizeArtifact(readFlow(), REQUEST, CATALOG, PROVENANCE)).status).toBe('draft');
+  });
+
+  it('copies the product version the request declares', () => {
+    const app = { ...REQUEST.capability.app, productVersion: '4.2.1' };
+    const request: CapabilityRequest = { ...REQUEST, capability: { ...REQUEST.capability, app } };
+
+    expect(artifact(synthesizeArtifact(readFlow(), request, CATALOG, PROVENANCE)).capability.app).toEqual(app);
+    expect(artifact(synthesizeArtifact(readFlow(), REQUEST, CATALOG, PROVENANCE)).capability.app).not.toHaveProperty('productVersion');
+  });
+
+  it('explains, for every target it located, why its chain is robust', () => {
+    const { targets } = artifact(synthesizeArtifact(readFlow(), REQUEST, CATALOG, PROVENANCE));
+    const synthesized = Object.entries(targets).filter(([name]) => !Object.hasOwn(CATALOG.targets, name));
+
+    expect(synthesized.length).toBeGreaterThan(0);
+    for (const [name, spec] of synthesized) {
+      expect(spec.notes, name).toEqual(expect.any(String));
+    }
+    expect(targets['page.memberLookup']?.notes).toMatch(/^Matched first by accessible role and name \(link "Member Lookup"\)/);
+    expect(targets['content.memberId']?.notes).toMatch(/^Field has no accessible name, so it is matched first by its visible label "Member ID:"\./);
+    expect(targets['content.memberId']?.notes).toContain('name attribute');
+    expect(targets['content.balance']?.notes).toMatch(/^Cell located by its row \(Acct Type = \{\{inputs\.accountType\}\}\) and column header \(Balance\)/);
+    expect(targets['content.name']?.notes).toMatch(/^The link in the cell located by its row \(Member ID = \{\{inputs\.memberId\}\}\)/);
+  });
+
+  it('keeps sensitive example values out of the descriptions it copies', () => {
+    const inputs = {
+      ...REQUEST.inputs,
+      memberId: { ...REQUEST.inputs.memberId, description: 'Member ID, e.g. 10001' },
+      accountType: { ...REQUEST.inputs.accountType, description: 'Account type, e.g. Savings' },
+    } as CapabilityRequest['inputs'];
+    const outputs = { balance: { type: 'string', description: 'Balance of member 10001, e.g. 1,234.56 (not 100010)', sensitivity: 'financial' } } as const;
+    const request: CapabilityRequest = { ...REQUEST, inputs, outputs };
+
+    const capability = artifact(synthesizeArtifact(readFlow(), request, CATALOG, PROVENANCE));
+
+    expect(capability.inputs.memberId?.description).toBe('Member ID, e.g. <memberId>');
+    // Not sensitive: an enum value is documentation, not record data.
+    expect(capability.inputs.accountType?.description).toBe('Account type, e.g. Savings');
+    expect(capability.outputs.balance?.description).toBe('Balance of member <memberId>, e.g. 1,234.56 (not 100010)');
   });
 });

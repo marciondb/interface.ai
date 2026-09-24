@@ -8,7 +8,7 @@ export type CapabilityFileResult = { ok: true; capability: Capability } | { ok: 
 export function fromCapabilityFile(raw: unknown): CapabilityFileResult {
   const envelope = CapabilityFileInSchema.safeParse(raw);
   if (!envelope.success) return { ok: false, issues: formatIssues(envelope.error) };
-  const sections: Record<string, unknown> = { ...envelope.data };
+  const sections: Partial<typeof envelope.data> = { ...envelope.data };
   delete sections.schemaVersion;
   const parsed = CapabilitySchema.safeParse(sections);
   if (!parsed.success) return { ok: false, issues: formatIssues(parsed.error) };
@@ -18,6 +18,7 @@ export function fromCapabilityFile(raw: unknown): CapabilityFileResult {
 export function toCapabilityFile(capability: Capability): CapabilityFileOut {
   const file: CapabilityFileOut = {
     schemaVersion: 1,
+    ...(capability.status === undefined ? {} : { status: capability.status }),
     capability: capability.capability,
     preconditions: capability.preconditions,
     inputs: capability.inputs,

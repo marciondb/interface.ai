@@ -15,7 +15,8 @@
           "name": "value",
           "value": "Continue"
         }
-      ]
+      ],
+      "notes": "Button of the interstitial notice, which can appear on any content page. Matched first by accessible role and name, which are stable across cosmetic markup changes; the value attribute is the submit button's own caption, a fallback if its accessible name changes."
     }
   },
   "outcomes": [

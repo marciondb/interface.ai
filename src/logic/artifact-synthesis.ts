@@ -1,10 +1,11 @@
-import type { Candidate, Capability, Outcome, Predicate, Provenance, Step, StepAction, TargetSpec } from '../models/capability';
+import type { Candidate, Capability, Outcome, Predicate, Provenance, Risk, Step, StepAction, TargetSpec } from '../models/capability';
 import { CapabilitySchema, PLACEHOLDER, predicateTarget } from '../models/capability';
 import type { CapabilityRequest } from '../models/capability-request';
 import type { AgentTraceStep, HumanTraceStep, TraceStep } from '../models/discovery';
 import { outcomeTargets, type OutcomeCatalog } from '../models/outcome-catalog';
 import type { Observation, ObservationNode } from '../models/observation';
 import { evaluatePredicate } from './checkpoint';
+import { targetNotes } from './target-notes';
 
 export type SynthesisErrorCode =
   | 'no_steps'
@@ -147,16 +148,44 @@ function pathOf(url: string): string {
   return `${parsed.pathname}${parsed.search}`;
 }
 
-function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog: OutcomeCatalog, provenance: Provenance): unknown {
-  const parameterize = parameterizer(request);
-  const outcomes: Outcome[] = request.outcomes.flatMap((id) => catalog.outcomes.filter((outcome) => outcome.id === id));
-  const recoveryTargets = new Set(outcomes.flatMap(outcomeTargets));
-  const targets: Record<string, TargetSpec> = {};
-  const targetBySpec = new Map<string, string>();
-  const steps: Step[] = [];
-  const produced = new Set<string>();
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
-  function targetFor(step: TraceStep, read: boolean): string {
+// Descriptions are copied into the artifact: an example value of a sensitive input written into
+// one would publish a real record's data, so it becomes the input's name.
+function withoutExamples(request: CapabilityRequest): (text: string) => string {
+  const sensitive = Object.entries(request.inputs).filter(([, input]) => input.sensitivity !== 'none');
+  return (text) =>
+    sensitive.reduce(
+      (scrubbed, [name, { example }]) => scrubbed.replace(new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(example)}(?![A-Za-z0-9])`, 'g'), `<${name}>`),
+      text,
+    );
+}
+
+// The contract is the request's, minus the discovery examples.
+function contractOf(request: CapabilityRequest): { inputs: Record<string, unknown>; outputs: Capability['outputs'] } {
+  const scrub = withoutExamples(request);
+  const inputs = Object.fromEntries(
+    Object.entries(request.inputs).map(([name, input]) => {
+      const spec: Record<string, unknown> = { ...input, description: scrub(input.description) };
+      delete spec.example;
+      return [name, spec];
+    }),
+  );
+  const outputs = Object.fromEntries(Object.entries(request.outputs).map(([name, output]) => [name, { ...output, description: scrub(output.description) }]));
+  return { inputs, outputs };
+}
+
+type Parameterize = (text: string) => string;
+
+// Names the elements the steps act on: one target per distinct locator chain, each with notes
+// on why its chain is robust.
+function targetRegistry(parameterize: Parameterize, reserved: ReadonlySet<string>) {
+  const targets: Record<string, TargetSpec> = {};
+  const bySpec = new Map<string, string>();
+
+  function locate(step: TraceStep, read: boolean): string {
     const { element } = step;
     const verb = step.actor === 'human' ? `the human's ${step.action.kind}` : step.decision.action.kind;
     if (element === undefined) return fail('untargetable_element', `${verb} has no element to locate`, step.stepId);
@@ -166,131 +195,170 @@ function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog:
     }
     const spec: TargetSpec = element.node.frame === null ? { candidates } : { frame: element.node.frame, candidates };
     const key = JSON.stringify(spec);
-    const existing = targetBySpec.get(key);
+    const existing = bySpec.get(key);
     if (existing !== undefined) return existing;
     const name = unique(
       `${camel(words(element.node.frame ?? 'page'))}.${camel(nameWords(element, spec))}`,
-      new Set([...Object.keys(targets), ...recoveryTargets]),
+      new Set([...Object.keys(targets), ...reserved]),
       '',
     );
-    targets[name] = spec;
-    targetBySpec.set(key, name);
+    targets[name] = { ...spec, notes: targetNotes(spec, { read, accessibleName: element.node.name !== '' }) };
+    bySpec.set(key, name);
     return name;
   }
 
-  function revealed(step: TraceStep): Predicate {
-    const node = revealedText(step.observation, step.observationAfter);
-    if (node === undefined) return fail('no_checkpoint', 'the action revealed no text to check for', step.stepId);
-    const text = parameterize(node.name.trim());
-    return node.frame === null ? { kind: 'text_visible', text } : { kind: 'text_visible', text, frame: node.frame };
-  }
+  return { targets, locate };
+}
 
-  // A handoff becomes a step only when the human did one thing automation can repeat: a single
-  // click on an element of the screen they were handed, with any confirmation dialog it opened
-  // accepted. The step is risky, so replay hands it (and its dialog) to a human again; what it
-  // clicks is only located, never performed, by automation.
-  function humanStep(stepId: string, handoff: readonly HumanTraceStep[]): void {
-    const clicks = handoff.filter((step) => step.action.kind === 'click');
-    const others = handoff
-      .filter(({ action }) => action.kind === 'input' || (action.kind === 'dialog' && action.decision !== 'accept'))
-      .map(({ action }) => (action.kind === 'dialog' ? `a dialog ${action.decision}` : action.kind));
-    const [click, ...moreClicks] = clicks;
-    if (click === undefined || moreClicks.length > 0 || others.length > 0) {
-      const did = [`${String(clicks.length)} click(s)`, ...others].join(', ');
-      return fail('unsupported_human_steps', `the human did ${did} during the handoff; only a single click can become a step`, stepId);
+type Registry = ReturnType<typeof targetRegistry>;
+
+// A step before it gets its id; `idWords` name it.
+type StepDraft = { readonly idWords: readonly string[]; readonly action: StepAction; readonly risk: Risk; readonly checkpoint: Predicate };
+
+function leafWords(target: string): string[] {
+  return words(target.split('.').at(-1) ?? target);
+}
+
+function revealedCheckpoint(step: TraceStep, parameterize: Parameterize): Predicate {
+  const node = revealedText(step.observation, step.observationAfter);
+  if (node === undefined) return fail('no_checkpoint', 'the action revealed no text to check for', step.stepId);
+  const text = parameterize(node.name.trim());
+  return node.frame === null ? { kind: 'text_visible', text } : { kind: 'text_visible', text, frame: node.frame };
+}
+
+// A handoff becomes a step only when the human did one thing automation can repeat: a single
+// click on an element of the screen they were handed, with any confirmation dialog it opened
+// accepted. The step is risky, so replay hands it (and its dialog) to a human again; what it
+// clicks is only located, never performed, by automation.
+function humanStep(stepId: string, handoff: readonly HumanTraceStep[], registry: Registry, parameterize: Parameterize): StepDraft {
+  const clicks = handoff.filter((step) => step.action.kind === 'click');
+  const others = handoff
+    .filter(({ action }) => action.kind === 'input' || (action.kind === 'dialog' && action.decision !== 'accept'))
+    .map(({ action }) => (action.kind === 'dialog' ? `a dialog ${action.decision}` : action.kind));
+  const [click, ...moreClicks] = clicks;
+  if (click === undefined || moreClicks.length > 0 || others.length > 0) {
+    const did = [`${String(clicks.length)} click(s)`, ...others].join(', ');
+    return fail('unsupported_human_steps', `the human did ${did} during the handoff; only a single click can become a step`, stepId);
+  }
+  const target = registry.locate(click, false);
+  return { idWords: ['click', ...leafWords(target)], action: { kind: 'click', target }, risk: 'risky', checkpoint: revealedCheckpoint(click, parameterize) };
+}
+
+function agentStep(step: AgentTraceStep, registry: Registry, parameterize: Parameterize): StepDraft {
+  const { decision } = step;
+  const verb = decision.action.kind;
+  if (decision.kind === 'read') {
+    const { output } = decision;
+    const target = registry.locate(step, true);
+    return { idWords: [verb, ...words(output)], action: { kind: 'read', target, output }, risk: 'safe', checkpoint: { kind: 'target_visible', target } };
+  }
+  const performed = decision.action;
+  switch (performed.kind) {
+    case 'click':
+    case 'press': {
+      const target = registry.locate(step, false);
+      const action: StepAction = performed.kind === 'click' ? { kind: 'click', target } : { kind: 'press', target, key: performed.key };
+      return { idWords: [verb, ...leafWords(target)], action, risk: 'safe', checkpoint: revealedCheckpoint(step, parameterize) };
     }
-    const target = targetFor(click, false);
-    const id = unique(kebab(['click', ...words(target.split('.').at(-1) ?? target)]), new Set(steps.map((existing) => existing.id)), '-');
-    steps.push({ id, action: { kind: 'click', target }, risk: 'risky', checkpoint: revealed(click) });
+    case 'fill':
+    case 'select': {
+      const target = registry.locate(step, false);
+      const value = parameterize(performed.kind === 'fill' ? performed.value : performed.option);
+      return {
+        idWords: [verb, ...leafWords(target)],
+        action: { kind: performed.kind, target, value },
+        risk: 'safe',
+        checkpoint: { kind: 'value_equals', target, value },
+      };
+    }
+    case 'navigate': {
+      const path = pathOf(performed.url);
+      return { idWords: [verb, ...words(path)], action: { kind: 'navigate', path }, risk: 'safe', checkpoint: revealedCheckpoint(step, parameterize) };
+    }
+    default: {
+      const unhandled: never = performed;
+      return unhandled;
+    }
   }
+}
 
-  // The application rejecting what the model did (a declared business outcome newly shown, e.g.
-  // a validation error on submit) makes the step a detour, not part of the procedure.
+// The application rejecting what the model did (a declared business outcome newly shown, e.g.
+// a validation error on submit) makes the step a detour, not part of the procedure.
+function rejectionDetector(outcomes: readonly Outcome[]): (step: AgentTraceStep) => boolean {
   const rejections = outcomes.filter((outcome) => outcome.kind === 'business' && predicateTarget(outcome.when) === undefined);
-  function rejected(step: AgentTraceStep): boolean {
-    const shows = (observation: Observation, detector: Predicate) => evaluatePredicate(detector, { observation, targets: {} }).holds;
-    return rejections.some(({ when }) => shows(step.observationAfter, when) && !shows(step.observation, when));
-  }
+  const shows = (observation: Observation, detector: Predicate) => evaluatePredicate(detector, { observation, targets: {} }).holds;
+  return (step) => rejections.some(({ when }) => shows(step.observationAfter, when) && !shows(step.observation, when));
+}
 
+// The ordered steps: agent actions that made progress and were not rejected, each output read
+// once, and one step per human handoff.
+function procedureOf(
+  trace: readonly TraceStep[],
+  registry: Registry,
+  parameterize: Parameterize,
+  rejected: (step: AgentTraceStep) => boolean,
+): { steps: Step[]; produced: ReadonlySet<string> } {
+  const steps: Step[] = [];
+  const produced = new Set<string>();
   const handoffs = new Set<string>();
+  const add = ({ idWords, ...step }: StepDraft) => {
+    steps.push({ id: unique(kebab(idWords), new Set(steps.map((existing) => existing.id)), '-'), ...step });
+  };
+
   for (const step of trace) {
     if (step.actor === 'human') {
       if (handoffs.has(step.interventionId)) continue;
       handoffs.add(step.interventionId);
-      humanStep(step.stepId, trace.filter((other): other is HumanTraceStep => other.actor === 'human' && other.interventionId === step.interventionId));
+      const handoff = trace.filter((other): other is HumanTraceStep => other.actor === 'human' && other.interventionId === step.interventionId);
+      add(humanStep(step.stepId, handoff, registry, parameterize));
       continue;
     }
     if (!step.progressed || rejected(step)) continue;
-    const { decision } = step;
-    let action: StepAction;
-    let checkpoint: Predicate;
-    let label: string[];
-    if (decision.kind === 'read') {
-      const { output } = decision;
-      if (produced.has(output)) continue;
-      produced.add(output);
-      const target = targetFor(step, true);
-      action = { kind: 'read', target, output };
-      checkpoint = { kind: 'target_visible', target };
-      label = words(output);
-    } else {
-      const performed = decision.action;
-      switch (performed.kind) {
-        case 'click':
-        case 'press': {
-          const target = targetFor(step, false);
-          action = performed.kind === 'click' ? { kind: 'click', target } : { kind: 'press', target, key: performed.key };
-          checkpoint = revealed(step);
-          label = words(target.split('.').at(-1) ?? target);
-          break;
-        }
-        case 'fill':
-        case 'select': {
-          const target = targetFor(step, false);
-          const value = parameterize(performed.kind === 'fill' ? performed.value : performed.option);
-          action = { kind: performed.kind, target, value };
-          checkpoint = { kind: 'value_equals', target, value };
-          label = words(target.split('.').at(-1) ?? target);
-          break;
-        }
-        case 'navigate':
-          action = { kind: 'navigate', path: pathOf(performed.url) };
-          checkpoint = revealed(step);
-          label = words(action.path);
-          break;
-        default: {
-          const unhandled: never = performed;
-          return unhandled;
-        }
-      }
+    if (step.decision.kind === 'read') {
+      if (produced.has(step.decision.output)) continue;
+      produced.add(step.decision.output);
     }
-    const id = unique(kebab([decision.action.kind, ...label]), new Set(steps.map((existing) => existing.id)), '-');
-    steps.push({ id, action, risk: 'safe', checkpoint });
+    add(agentStep(step, registry, parameterize));
   }
+  return { steps, produced };
+}
 
+// Every declared output is read and every input drives some target or step.
+function checkContract(request: CapabilityRequest, targets: Record<string, TargetSpec>, steps: readonly Step[], produced: ReadonlySet<string>): void {
   if (steps.length === 0) fail('no_steps', 'the trace has no step that made progress');
   for (const output of Object.keys(request.outputs)) {
     if (!produced.has(output)) fail('output_not_read', `output ${output} was never read`);
   }
   const used = JSON.stringify({ targets, steps });
-  // The catalog declares every recovery target; one it did not would fail CapabilitySchema below.
-  for (const name of recoveryTargets) {
-    const spec = catalog.targets[name];
-    if (spec !== undefined) targets[name] = spec;
-  }
   for (const [input, { example }] of Object.entries(request.inputs)) {
     if (!used.includes(`{{inputs.${input}}}`)) fail('input_not_used', `input ${input} (example ${JSON.stringify(example)}) appears in no step`);
   }
+}
 
-  const inputs = Object.fromEntries(
-    Object.entries(request.inputs).map(([name, input]) => [name, Object.fromEntries(Object.entries(input).filter(([field]) => field !== 'example'))]),
+// The catalog declares every recovery target; one it did not would fail CapabilitySchema.
+function recoveryTargetsOf(catalog: OutcomeCatalog, names: ReadonlySet<string>): Record<string, TargetSpec> {
+  return Object.fromEntries(
+    [...names].flatMap((name) => {
+      const spec = catalog.targets[name];
+      return spec === undefined ? [] : [[name, spec]];
+    }),
   );
+}
+
+function build(trace: readonly TraceStep[], request: CapabilityRequest, catalog: OutcomeCatalog, provenance: Provenance): unknown {
+  const parameterize = parameterizer(request);
+  const outcomes: Outcome[] = request.outcomes.flatMap((id) => catalog.outcomes.filter((outcome) => outcome.id === id));
+  const recoveryNames = new Set(outcomes.flatMap(outcomeTargets));
+  const registry = targetRegistry(parameterize, recoveryNames);
+  const { steps, produced } = procedureOf(trace, registry, parameterize, rejectionDetector(outcomes));
+  checkContract(request, registry.targets, steps, produced);
   return {
+    // A reviewer approves it before replay resolves to it by default (ADR-007).
+    status: 'draft',
     capability: request.capability,
     preconditions: [{ kind: 'authenticated_session' }],
-    inputs,
-    outputs: request.outputs,
-    targets,
+    ...contractOf(request),
+    targets: { ...registry.targets, ...recoveryTargetsOf(catalog, recoveryNames) },
     steps,
     outcomes,
     provenance,
